@@ -7,4 +7,5 @@ pub struct ContractContext {
     pub modifiers: Vec<String>,
     pub constants: Vec<String>,
     pub contract_name: String,
+    pub source_code: String, // full contract source (comments stripped if include_comments=false)
 }

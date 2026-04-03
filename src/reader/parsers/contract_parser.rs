@@ -36,5 +36,12 @@ pub fn parse_contract(source: &str, include_comments: bool) -> Result<ContractCo
     let mut constants = Vec::new();
     for cap in const_re.captures_iter(&cleaned) { if let Some(m) = cap.get(1) { constants.push(m.as_str().to_string()); } }
 
-    Ok(ContractContext { functions, state_variables, modifiers, constants, contract_name })
+    Ok(ContractContext { 
+        functions, 
+        state_variables, 
+        modifiers, 
+        constants, 
+        contract_name,
+        source_code: cleaned,
+    })
 }

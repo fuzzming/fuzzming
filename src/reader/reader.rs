@@ -21,7 +21,8 @@ impl Reader {
 #[async_trait]
 impl LlmReaderPort for Reader {
     async fn get_contract_context(&self, path: &str, include_comments: bool) -> Result<ContractContext> {
-        let data = self.fs.read_file(path).await.context(format!("reading contract file {}", path))?;
+        let data = self.fs.read_contract(path, include_comments).await.context(format!("reading contract file {}", path))?;
+        // The FileSystemReader returns the full file contents (comments stripped if requested).
         let ctx = contract_parser::parse_contract(&data, include_comments)?;
         Ok(ctx)
     }

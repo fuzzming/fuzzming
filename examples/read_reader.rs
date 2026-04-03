@@ -2,7 +2,6 @@ use fuzzming::reader::infrastructure::FileSystemReader;
 use fuzzming::reader::reader::Reader;
 use fuzzming::interfaces::contexts::InvariantFiles;
 use fuzzming::llm::ports::LlmReaderPort; // bring trait into scope so methods on Reader are available
-use serde_json::to_string_pretty;
 
 #[tokio::main]
 async fn main() {
@@ -18,16 +17,9 @@ async fn main() {
 
     let reader = Reader::new(fs, inv);
 
-    // Contract context
+    // Contract context - print raw source code without pragma/imports
     match reader.get_contract_context("examples/Simple.sol", true).await {
-        Ok(ctx) => println!("Contract context: {}", to_string_pretty(&ctx).unwrap()),
+        Ok(ctx) => println!("{}", ctx.source_code),
         Err(e) => eprintln!("Failed to read contract: {}", e),
-    }
-
-    // Coverage context
-    match reader.get_coverage_context().await {
-        Ok(Some(ctx)) => println!("Coverage context: {}", to_string_pretty(&ctx).unwrap()),
-        Ok(None) => println!("No coverage available"),
-        Err(e) => eprintln!("Failed to read coverage: {}", e),
     }
 }
