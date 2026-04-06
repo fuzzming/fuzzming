@@ -1,7 +1,6 @@
 use fuzzming::reader::infrastructure::FileSystemReader;
 use fuzzming::reader::reader::Reader;
 use fuzzming::interfaces::contexts::InvariantFiles;
-use fuzzming::llm::ports::LlmReaderPort; // bring trait into scope so methods on Reader are available
 
 #[tokio::main]
 async fn main() {
@@ -15,11 +14,9 @@ async fn main() {
         fuzz_output_path: "examples/fuzz_output.txt".to_string(),
     };
 
-    let reader = Reader::new(fs, inv);
-
-    // Contract context - print raw source code without pragma/imports
-    match reader.get_contract_context("examples/Simple.sol", true).await {
-        Ok(ctx) => println!("{}", ctx.source_code),
+    // Read source code directly from FileSystemReader (without parser overhead)
+    match fs.read_contract("examples/Simple.sol", true).await {
+        Ok(source) => println!("{}", source),
         Err(e) => eprintln!("Failed to read contract: {}", e),
     }
 }
