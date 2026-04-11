@@ -1,2 +1,3 @@
-pub mod openai_adapter;
-pub mod anthropic_adapter;
+pub mod gateways;
+
+pub use gateways::*;
