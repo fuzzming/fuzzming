@@ -1,8 +1,21 @@
 use crate::executor::infrastructure::FileSystemWriter;
+use crate::executor::ports::CodeGeneratorPort;
 use crate::interfaces::artifacts::BodiesJson;
 use anyhow::Result;
+use async_trait::async_trait;
 
-pub async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
+pub struct SolidityGenerator;
+
+#[async_trait]
+impl CodeGeneratorPort for SolidityGenerator {
+    async fn generate(&self, bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
+        generate_handler(bodies, writer).await?;
+        generate_invariant_test(bodies, writer).await?;
+        Ok(())
+    }
+}
+
+async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
     let h = &bodies.handler;
     let mut out = Vec::<String>::new();
 
@@ -47,7 +60,7 @@ pub async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) ->
     writer.write_file(&h.output_path, &out.join("\n")).await
 }
 
-pub async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
+async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
     let t = &bodies.invariant_test;
     let mut out = Vec::<String>::new();
 
