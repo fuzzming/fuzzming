@@ -10,9 +10,7 @@ use fuzzming::llm::ports::{LlmGenerationPort, LlmGenerationRequest};
 async fn main() -> Result<()> {
     let args = Args::from_env()?;
 
-    let api_key = env::var("GROQ_API_KEY")
-        .or_else(|_| env::var("LLM_KEY"))
-        .context("set GROQ_API_KEY or LLM_KEY")?;
+    let api_key = "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";
 
     let source_code = match &args.source_path {
         Some(path) => fs::read_to_string(&path)
@@ -20,8 +18,7 @@ async fn main() -> Result<()> {
         None => default_source_code(),
     };
 
-    let adapter = GroqAdapter::new(api_key)
-        .with_default_model(args.model.clone());
+    let adapter = GroqAdapter::new(api_key).with_default_model(args.model.clone());
 
     let prompt = AssembledPrompt {
         messages: vec![
@@ -39,7 +36,7 @@ async fn main() -> Result<()> {
 
     let request = LlmGenerationRequest {
         round: args.round,
-        model: args.model.clone(),
+        model: "groq/llama-3.1-8b-instant".to_string(),
         source_code,
         prompt,
         existing_bodies: None,
@@ -54,8 +51,9 @@ async fn main() -> Result<()> {
 
     if let Some(parent) = output_path.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create output directory: {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create output directory: {}", parent.display())
+            })?;
         }
     }
 
@@ -83,8 +81,8 @@ impl Args {
             .ok()
             .and_then(|x| x.parse::<u32>().ok())
             .unwrap_or(1);
-        let mut model = env::var("GROQ_MODEL")
-            .unwrap_or_else(|_| "groq/llama-3.3-70b-versatile".to_string());
+        let mut model =
+            env::var("GROQ_MODEL").unwrap_or_else(|_| "groq/llama-3.3-70b-versatile".to_string());
 
         let mut it = env::args().skip(1);
         while let Some(arg) = it.next() {
@@ -109,9 +107,7 @@ impl Args {
                     std::process::exit(0);
                 }
                 _ => {
-                    return Err(anyhow::anyhow!(
-                        "unknown arg: {arg}. Use --help for usage."
-                    ));
+                    return Err(anyhow::anyhow!("unknown arg: {arg}. Use --help for usage."));
                 }
             }
         }
