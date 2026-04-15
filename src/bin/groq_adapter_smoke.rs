@@ -8,9 +8,11 @@ use fuzzming::llm::ports::{LlmGenerationPort, LlmGenerationRequest};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::from_filename(".env").context("failed to load .env from project root")?;
+
     let args = Args::from_env()?;
 
-    let api_key = "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";
+    let api_key = env::var("GROQ_API_KEY").context("missing GROQ_API_KEY in .env")?;
 
     let source_code = match &args.source_path {
         Some(path) => fs::read_to_string(&path)
@@ -129,9 +131,9 @@ fn print_help() {
     println!("  --out <path>      Output JSON path (default: generated/llm_round_<round>.json)");
     println!("  --round <u32>     Round number (default: 1)");
     println!("  --model <name>    Groq model (default: groq/llama-3.3-70b-versatile)");
-    println!("Env fallback:");
-    println!("  GROQ_API_KEY or LLM_KEY (required)");
-    println!("  SMOKE_SOURCE_PATH, SMOKE_OUTPUT_PATH, SMOKE_ROUND, GROQ_MODEL");
+    println!(".env keys:");
+    println!("  GROQ_API_KEY (required)");
+    println!("  SMOKE_SOURCE_PATH, SMOKE_OUTPUT_PATH, SMOKE_ROUND, GROQ_MODEL (optional)");
 }
 
 fn default_source_code() -> String {
