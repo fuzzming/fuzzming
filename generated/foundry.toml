@@ -1,0 +1,13 @@
+profile = "default"
+[profile.default]
+src = "src"
+test = "test"
+
+[fuzz]
+runs = 100000
+max_depth = 100
+
+[invariant]
+engine = "smtchecker"
+max_invariants = 10
+timeout = 10

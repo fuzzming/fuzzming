@@ -2,15 +2,17 @@ use std::path::PathBuf;
 use std::{env, fs};
 
 use anyhow::{Context, Result};
-use fuzzming::interfaces::artifacts::{AssembledPrompt, Message, Role};
 use fuzzming::llm::infrastructure::gateways::groq_adapter::GroqAdapter;
-use fuzzming::llm::ports::{LlmGenerationPort, LlmGenerationRequest};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let _ = dotenvy::dotenv();
+
     let args = Args::from_env()?;
 
-    let api_key = "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";
+    let api_key = env::var("GROQ_API_KEY")
+        .or_else(|_| env::var("LLM_KEY"))
+        .context("missing GROQ_API_KEY (or LLM_KEY)")?;
 
     let source_code = match &args.source_path {
         Some(path) => fs::read_to_string(&path)
@@ -20,47 +22,37 @@ async fn main() -> Result<()> {
 
     let adapter = GroqAdapter::new(api_key).with_default_model(args.model.clone());
 
-    let prompt = AssembledPrompt {
-        messages: vec![
-            Message {
-                role: Role::User,
-                content: "Generate bodies and foundry config JSON for this contract. If round > 1, return minimal patch updates only.".to_string(),
-            },
-        ],
-        round: args.round,
-        context_sections: vec![
-            "Target output must match Rust structs BodiesJson and FoundryConfig.".to_string(),
-            "For round 1 return full content. For later rounds prefer patch mode.".to_string(),
-        ],
-    };
+    let generated = adapter
+        .generate_raw_files(&source_code, &args.model)
+        .await?;
 
-    let request = LlmGenerationRequest {
-        round: args.round,
-        model: "groq/llama-3.1-8b-instant".to_string(),
-        source_code,
-        prompt,
-        existing_bodies: None,
-        existing_foundry_config: None,
-    };
+    let output_dir = resolve_output_dir(args.output_path, args.round);
+    fs::create_dir_all(&output_dir).with_context(|| {
+        format!(
+            "failed to create output directory: {}",
+            output_dir.display()
+        )
+    })?;
 
-    let response = adapter.generate(request).await?;
-    let pretty = serde_json::to_string_pretty(&response)?;
-    let output_path = args
-        .output_path
-        .unwrap_or_else(|| PathBuf::from(format!("generated/llm_round_{}.json", args.round)));
+    let handler_path = output_dir.join("Handler.sol");
+    let invariants_path = output_dir.join("Invariants.t.sol");
+    let config_path = output_dir.join("foundry.toml");
 
-    if let Some(parent) = output_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create output directory: {}", parent.display())
-            })?;
-        }
-    }
+    fs::write(&handler_path, generated.handler_sol)
+        .with_context(|| format!("failed to write handler file: {}", handler_path.display()))?;
+    fs::write(&invariants_path, generated.invariants_sol).with_context(|| {
+        format!(
+            "failed to write invariant test file: {}",
+            invariants_path.display()
+        )
+    })?;
+    fs::write(&config_path, generated.foundry_toml)
+        .with_context(|| format!("failed to write config file: {}", config_path.display()))?;
 
-    fs::write(&output_path, pretty)
-        .with_context(|| format!("failed to write output json: {}", output_path.display()))?;
-
-    println!("Saved generated output to {}", output_path.display());
+    println!("Saved generated files:");
+    println!("- {}", handler_path.display());
+    println!("- {}", invariants_path.display());
+    println!("- {}", config_path.display());
 
     Ok(())
 }
@@ -123,15 +115,36 @@ impl Args {
 
 fn print_help() {
     println!("groq_adapter_smoke usage:");
-    println!("  cargo run --bin groq_adapter_smoke -- --source path/to/Contract.sol --out generated/result.json");
+    println!(
+        "  cargo run --bin groq_adapter_smoke -- --source path/to/Contract.sol --out generated/"
+    );
     println!("Flags:");
     println!("  --source <path>   Solidity contract source file path");
-    println!("  --out <path>      Output JSON path (default: generated/llm_round_<round>.json)");
+    println!("  --out <path>      Output directory or legacy file path (default: generated/)");
     println!("  --round <u32>     Round number (default: 1)");
     println!("  --model <name>    Groq model (default: groq/llama-3.3-70b-versatile)");
     println!("Env fallback:");
-    println!("  GROQ_API_KEY or LLM_KEY (required)");
+    println!("  GROQ_API_KEY or LLM_KEY (required; loaded from .env if present)");
     println!("  SMOKE_SOURCE_PATH, SMOKE_OUTPUT_PATH, SMOKE_ROUND, GROQ_MODEL");
+}
+
+fn resolve_output_dir(output_arg: Option<PathBuf>, round: u32) -> PathBuf {
+    match output_arg {
+        Some(path) => {
+            if path.extension().is_some() {
+                path.parent()
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| PathBuf::from("generated"))
+            } else {
+                path
+            }
+        }
+        None => {
+            let _ = round;
+            PathBuf::from("generated")
+        }
+    }
 }
 
 fn default_source_code() -> String {

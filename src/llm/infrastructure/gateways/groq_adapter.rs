@@ -39,6 +39,13 @@ struct ConfigStage {
     foundry_config: FoundryConfig,
 }
 
+#[derive(Debug, Clone)]
+pub struct RawGeneratedFiles {
+    pub handler_sol: String,
+    pub invariants_sol: String,
+    pub foundry_toml: String,
+}
+
 impl GroqAdapter {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -90,6 +97,58 @@ impl GroqAdapter {
              5. OUTPUT: Return valid JSON only.",
             source_code
         )
+    }
+
+    fn build_raw_files_system_prompt(&self, source_code: &str) -> String {
+        format!(
+            "You are a Senior Smart-Contract Security Researcher and Foundry Fuzzing Expert.\n\
+             SOURCE_CODE:\n{}\n\n\
+             OUTPUT RULES:\n\
+             1. Return only the requested file content.\n\
+             2. No markdown, no fences, no explanations.\n\
+             3. Solidity files must compile in a Foundry project.\n\
+             4. Handler functions must call target contract externally, never reimplement internals.",
+            source_code
+        )
+    }
+
+    fn build_handler_file_prompt(&self) -> String {
+        "Generate ONLY the full Solidity source for a handler file.\n\
+         Requirements:\n\
+         - Include pragma solidity and all required imports.\n\
+         - Name the contract Handler or [Target]Handler.\n\
+         - Hold a reference to the target contract instance.\n\
+         - Maintain actors tracking with address[] and push callers appropriately.\n\
+         - Expose fuzzable functions that call the target contract externally.\n\
+         - Avoid impossible checks (e.g., uint >= 0).\n\
+         Return Solidity source only."
+            .to_string()
+    }
+
+    fn build_invariants_file_prompt(&self, handler_source: &str) -> String {
+        format!(
+            "Generate ONLY the full Solidity source for an invariant test file (.t.sol).\n\
+             Requirements:\n\
+             - Include pragma solidity and required imports.\n\
+             - Include setUp() that deploys the target and handler.\n\
+             - Register target selectors if appropriate.\n\
+             - Add meaningful invariants tied to on-chain balances/accounting.\n\
+             - Do not call target members that do not exist in SOURCE_CODE.\n\
+             Return Solidity source only.\n\
+             Handler source context:\n{}",
+            handler_source
+        )
+    }
+
+    fn build_foundry_toml_prompt(&self) -> String {
+        "Generate ONLY a valid foundry.toml suitable for invariant fuzzing.\n\
+         Requirements:\n\
+         - Include [profile.default].\n\
+         - Set src and test directories for a standard Foundry layout.\n\
+         - Include [fuzz] and [invariant] sections with practical values.\n\
+         - Keep TOML valid and minimal.\n\
+         Return TOML only."
+            .to_string()
     }
 
     fn build_round_one_analysis_prompt(&self, request: &LlmGenerationRequest) -> String {
@@ -251,6 +310,13 @@ Analysis Context:\n\
         options
     }
 
+    fn build_text_options(&self) -> CompletionOptions {
+        let mut options = CompletionOptions::default();
+        options.temperature = self.temperature;
+        options.max_tokens = self.max_tokens;
+        options
+    }
+
     async fn complete_once(
         &self,
         model: &str,
@@ -274,6 +340,68 @@ Analysis Context:\n\
             .and_then(|c| c.message.content.clone())
             .map(|content| content.to_string())
             .ok_or_else(|| anyhow!("groq adapter returned empty content"))
+    }
+
+    async fn complete_once_text(
+        &self,
+        model: &str,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<String> {
+        let response = completion(
+            model,
+            vec![
+                system_message(system_prompt.to_string()),
+                user_message(user_prompt.to_string()),
+            ],
+            Some(self.build_text_options()),
+        )
+        .await
+        .map_err(|e| anyhow!("litellm completion failed: {e}"))?;
+
+        response
+            .choices
+            .first()
+            .and_then(|c| c.message.content.clone())
+            .map(|content| content.to_string())
+            .ok_or_else(|| anyhow!("groq adapter returned empty content"))
+    }
+
+    pub async fn generate_raw_files(
+        &self,
+        source_code: &str,
+        requested_model: &str,
+    ) -> Result<RawGeneratedFiles> {
+        std::env::set_var("GROQ_API_KEY", &self.api_key);
+
+        let model = self.pick_model(requested_model);
+        let system_prompt = self.build_raw_files_system_prompt(source_code);
+
+        let handler_raw = self
+            .complete_once_text(&model, &system_prompt, &self.build_handler_file_prompt())
+            .await?;
+
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        let invariants_raw = self
+            .complete_once_text(
+                &model,
+                &system_prompt,
+                &self.build_invariants_file_prompt(&handler_raw),
+            )
+            .await?;
+
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        let config_raw = self
+            .complete_once_text(&model, &system_prompt, &self.build_foundry_toml_prompt())
+            .await?;
+
+        Ok(RawGeneratedFiles {
+            handler_sol: extract_text_payload(&handler_raw),
+            invariants_sol: extract_text_payload(&invariants_raw),
+            foundry_toml: extract_text_payload(&config_raw),
+        })
     }
 
     async fn request_json<T>(
@@ -445,6 +573,23 @@ fn extract_json_payload(raw: &str) -> Result<String> {
     }
 
     Ok(trimmed.to_string())
+}
+
+fn extract_text_payload(raw: &str) -> String {
+    let trimmed = raw.trim();
+
+    if trimmed.starts_with("```") {
+        let stripped = trimmed
+            .trim_start_matches("```solidity")
+            .trim_start_matches("```toml")
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+        return stripped.to_string();
+    }
+
+    trimmed.to_string()
 }
 
 fn parse_generation_response(payload: &str) -> Result<LlmGenerationResponse> {
