@@ -1,3 +1,4 @@
-pub mod parsers;
-pub mod infrastructure;
+pub mod adapters;
+pub mod ports;
 pub mod reader;
+pub mod use_cases;

@@ -2,9 +2,8 @@ use anyhow::Result;
 use crate::interfaces::contexts::ContractContext;
 use regex::Regex;
 
-/// Simple, extendable contract parser using regex heuristics.
-/// Expects pre-cleaned source (pragma, imports, and optionally comments already removed).
-pub fn parse_contract(source: &str, _include_comments: bool) -> Result<ContractContext> {
+/// Pure use case: parse contract source into metadata
+pub fn parse_contract(source: &str) -> Result<ContractContext> {
     let contract_re = Regex::new(r"contract\s+([A-Za-z0-9_]+)").unwrap();
     let contract_name = contract_re
         .captures(source)
@@ -27,5 +26,5 @@ pub fn parse_contract(source: &str, _include_comments: bool) -> Result<ContractC
     let mut constants = Vec::new();
     for cap in const_re.captures_iter(source) { if let Some(m) = cap.get(1) { constants.push(m.as_str().to_string()); } }
 
-    Ok(ContractContext { functions, state_variables, modifiers, constants, contract_name })
+    Ok(ContractContext { functions, state_variables, modifiers, constants, contract_name, source_code: source.to_string() })
 }
