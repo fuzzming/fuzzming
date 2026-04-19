@@ -1,7 +1,7 @@
 use anyhow::Result;
 use crate::entry::cicd::env_reader::{read_cicd_env, CicdEnv};
 use crate::interfaces::signals::SessionRequest;
-use crate::interfaces::state::{SessionConfig, OutputFormat};
+use crate::interfaces::state::{SessionConfig, OutputFormat, Language, Fuzzer};
 use crate::orchestrator::session_orchestrator::SessionOrchestrator;
 use crate::composition::composition_root::CompositionRoot;
 
@@ -19,6 +19,8 @@ impl CicdAdapter {
             llm_key: env.llm_key.clone(),
             output_format: OutputFormat::Ci,
             ci_mode: true,
+            language: Language::Solidity,
+            fuzzer: Fuzzer::Foundry,
         };
         let request = SessionRequest {
             target_paths: env.target_paths.clone(),

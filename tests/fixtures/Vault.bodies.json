@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "contract": "Vault",
+    "contractPath": "src/Vault.sol",
+    "solidity": "^0.8.20",
+    "generatedAt": "2026-04-02"
+  },
+  "handler": {
+    "contractName": "VaultHandler",
+    "outputPath": "test/handlers/VaultHandler.sol",
+    "imports": [
+      "import {BaseHandler} from \"../base/BaseHandler.sol\";",
+      "import {Vault}       from \"../../src/Vault.sol\";",
+      "import {IERC20}      from \"openzeppelin/token/ERC20/IERC20.sol\";"
+    ],
+    "stateVars": [
+      "Vault  public target;",
+      "IERC20 public token;"
+    ],
+    "ghostVars": [
+      "uint256 public ghost_totalDeposits    = 0;",
+      "uint256 public ghost_totalWithdrawals = 0;"
+    ],
+    "constructorSignature": "constructor(Vault _target, IERC20 _token)",
+    "constructorBody": [
+      "target = _target;",
+      "token  = _token;"
+    ],
+    "functions": {
+      "handler_deposit": "    function handler_deposit(uint256 actorSeed, uint256 amount) external useActor(actorSeed) {\n        amount = bound(amount, 1e6, target.depositCap() - target.totalAssets());\n        vm.assume(token.balanceOf(_currentActor) >= amount);\n        deal(address(token), _currentActor, amount);\n        token.approve(address(target), amount);\n        try target.deposit(amount) returns (uint256 shares) {\n            calls[msg.sig]++;\n            ghost_totalDeposits += amount;\n        } catch {\n            reverts[msg.sig]++;\n        }\n    }",
+      "handler_withdraw": "    function handler_withdraw(uint256 actorSeed, uint256 amount) external useActor(actorSeed) {\n        amount = bound(amount, 1, target.balanceOf(_currentActor));\n        vm.assume(amount > 0);\n        try target.withdraw(amount) {\n            calls[msg.sig]++;\n            ghost_totalWithdrawals += amount;\n        } catch {\n            reverts[msg.sig]++;\n        }\n    }"
+    },
+    "targetSelectors": "    function targetSelectors() public view override returns (FuzzSelector[] memory s) {\n        s = new FuzzSelector[](7);\n        s[0] = FuzzSelector({ addr: address(this), selectors: _arr(this.handler_deposit.selector) });\n        s[1] = FuzzSelector({ addr: address(this), selectors: _arr(this.handler_deposit.selector) });\n        s[2] = FuzzSelector({ addr: address(this), selectors: _arr(this.handler_deposit.selector) });\n        s[3] = FuzzSelector({ addr: address(this), selectors: _arr(this.handler_deposit.selector) });\n        s[4] = FuzzSelector({ addr: address(this), selectors: _arr(this.handler_withdraw.selector) });\n        s[5] = FuzzSelector({ addr: address(this), selectors: _arr(this.handler_withdraw.selector) });\n        s[6] = FuzzSelector({ addr: address(this), selectors: _arr(this.handler_withdraw.selector) });\n    }"
+  },
+  "invariantTest": {
+    "contractName": "VaultInvariantTest",
+    "outputPath": "test/invariants/VaultInvariantTest.sol",
+    "imports": [
+      "import {Test}         from \"forge-std/Test.sol\";",
+      "import {Vault}        from \"../../src/Vault.sol\";",
+      "import {ERC20Mock}    from \"openzeppelin/mocks/ERC20Mock.sol\";",
+      "import {VaultHandler} from \"../handlers/VaultHandler.sol\";"
+    ],
+    "stateVars": [
+      "Vault        public vault;",
+      "ERC20Mock    public token;",
+      "VaultHandler public handler;"
+    ],
+    "setUpBody": [
+      "token   = new ERC20Mock();",
+      "vault   = new Vault(address(token));",
+      "handler = new VaultHandler(vault, token);",
+      "targetContract(address(handler));"
+    ],
+    "invariants": {
+      "totalAssetsMatch": "    function invariant_totalAssetsMatch() external view {\n        assertEq(\n            vault.totalAssets(),\n            handler.ghost_totalDeposits() - handler.ghost_totalWithdrawals(),\n            \"totalAssets diverged\"\n        );\n    }",
+      "depositCapRespected": "    function invariant_depositCapRespected() external view {\n        assertLe(\n            vault.totalAssets(),\n            vault.depositCap(),\n            \"depositCap exceeded\"\n        );\n    }"
+    }
+  }
+}

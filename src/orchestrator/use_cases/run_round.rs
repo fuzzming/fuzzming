@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crate::interfaces::signals::{RoundSignal, FuzzReport, LlmSignal};
-use crate::orchestrator::ports::{LlmEnginePort, FuzzerEnginePort};
+use crate::interfaces::ports::{LlmEnginePort, FuzzerEnginePort};
 
 pub async fn run_round(
     signal: RoundSignal,
