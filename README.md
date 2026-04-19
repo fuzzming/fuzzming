@@ -49,7 +49,7 @@ Termination happens on the first of these conditions:
 
 ## Architecture vision: supporting any language, any fuzzer
 
-FuzzMing is built on **clean architecture with a sequential orchestration model**. The flow is linear — the Orchestrator calls each component in order and passes data between them. Components never call each other. All inter-component contracts are defined in `src/interfaces/ports/` so there is one place to find every boundary in the system.
+FuzzMing is built on **clean architecture with a sequential orchestration model**. The flow is linear — the Orchestrator calls each component in order and passes data between them. Components never call each other. All inter-component contracts are defined in `src/shared/ports/` so there is one place to find every boundary in the system.
 
 ```
 SessionOrchestrator
@@ -63,17 +63,16 @@ SessionOrchestrator
     └── reporter.emit(SessionOutcome)
 ```
 
-Every component is behind a port defined in `src/interfaces/ports/`. The Orchestrator only knows ports — never concrete types. Adding a new language or fuzzer means writing new adapters; the Orchestrator, the ports, and the shared data layer are untouched.
+Every component is behind a port defined in `src/shared/ports/`. The Orchestrator only knows ports — never concrete types. Adding a new language or fuzzer means writing new adapters; the Orchestrator, the ports, and the shared data layer are untouched.
 
 ```
-src/interfaces/ports/        ← all inter-component contracts live here
+src/shared/ports/        ← all inter-component contracts live here
     │
     ├── LlmEnginePort        ← Orchestrator → LLMEngine
     ├── ExecutorPort         ← Orchestrator → Executor
     ├── FuzzerEnginePort     ← Orchestrator → FuzzerEngine
     ├── ReporterPort         ← Orchestrator → Reporter
-    ├── LlmReaderPort        ← LLMEngine → Reader
-    ├── FuzzerReaderPort     ← FuzzerEngine → Reader
+    ├── ReaderPort           ← Orchestrator → Reader
     └── ReporterReaderPort   ← Reporter → Reader
 ```
 
@@ -83,43 +82,39 @@ Internal extension points (language axis, fuzzer axis) stay in each component's 
 
 ## The shared data layer
 
-`src/interfaces/` is the single source of truth for every data shape that crosses a component boundary. It is the answer to the question: *"what does the core need to know?"*
+`src/shared/` is the single source of truth for every data shape that crosses a component boundary. It is the answer to the question: *"what does the core need to know?"*
 
 ```
-src/interfaces/
+src/shared/
 ├── ports/            Inter-component contracts — every boundary in one place
-│   ├── executor_port.rs         Orchestrator → Executor
 │   ├── llm_engine_port.rs       Orchestrator → LLMEngine
 │   ├── fuzzer_engine_port.rs    Orchestrator → FuzzerEngine
+│   ├── executor_port.rs         Orchestrator → Executor
 │   ├── reporter_port.rs         Orchestrator → Reporter
-│   ├── llm_reader_port.rs       LLMEngine → Reader
-│   ├── fuzzer_reader_port.rs    FuzzerEngine → Reader
+│   ├── reader_port.rs           Orchestrator → Reader
 │   └── reporter_reader_port.rs  Reporter → Reader
 │
-├── artifacts/        Structured outputs produced during a round
-│   ├── bodies_json.rs           LLM-generated test bodies (language-agnostic envelope)
-│   ├── executor_input.rs        BodiesJson + FuzzerConfigArtifact bundled for one round
+├── models/           All shared data structures — no direction, no I/O
+│   ├── bodies_json.rs           LLM-generated test bodies
+│   ├── foundry_config.rs        Foundry fuzzing parameters
+│   ├── executor_input.rs        BodiesJson + FuzzerConfigArtifact bundled for the executor
 │   ├── fuzzer_config_artifact.rs  Enum wrapping per-fuzzer config (Foundry, Echidna, ...)
-│   ├── foundry_config.rs        Foundry-specific config fields
-│   ├── invariant_set.rs         Parsed set of invariants / properties
-│   ├── assembled_prompt.rs      Prompt handed to the LLM
-│   └── runner_result.rs         Parsed output from the fuzzer subprocess
-│
-├── contexts/         Read-only input snapshots passed into use cases
-│   ├── contract_context.rs      Source text + metadata of target file(s)
-│   ├── coverage_context.rs      Parsed line/branch coverage state
-│   ├── fuzz_report_context.rs   Raw output from the fuzzer for the LLM
+│   ├── contract_context.rs      Raw Solidity source code
+│   ├── coverage_context.rs      Uncovered lines/branches/functions
+│   ├── invariant_files.rs       File paths the system operates on
+│   ├── session_config.rs        LLM key, language, fuzzer choice
+│   ├── session_state.rs         Rounds remaining, current round
 │   └── ...
 │
-├── signals/          Typed messages that flow between components
-│   ├── llm_signal.rs            LLMEngine → Orchestrator
-│   ├── round_signal.rs          per-round state transition
-│   ├── session_outcome.rs       final termination reason
-│   └── ...
+├── requests/         Data flowing INTO components from the orchestrator
+│   ├── round_signal.rs          Per-round input: source, fuzz output, coverage, existing artifacts
+│   └── session_request.rs       Entry point → orchestrator: targets, max rounds, config
 │
-└── state/            Mutable session state owned by the Orchestrator
-    ├── session_config.rs        includes Language and Fuzzer enums
-    └── session_state.rs
+└── responses/        Data flowing OUT of components to the orchestrator
+    ├── llm_signal.rs            LLM → Orchestrator: generated bodies + config
+    ├── fuzz_report.rs           Fuzzer → Orchestrator: outcome + paths
+    ├── termination_decision.rs  Use case → Orchestrator: stop or continue
+    └── session_outcome.rs       Orchestrator → Reporter: final result
 ```
 
 **Key properties of the shared data layer:**
@@ -141,7 +136,7 @@ The full checklist to add, for example, **Rust + cargo-fuzz**:
 2. **Executor language adapter** — add `src/executor/adapters/rust_generator.rs` implementing `CodeGeneratorPort` to write `fuzz_target!` harness files.
 3. **Executor fuzzer adapter** — add `src/executor/adapters/cargo_fuzz_config_writer.rs` implementing `ConfigWriterPort` to write `Cargo.toml` fuzz config.
 4. **Fuzzer adapter** — add `src/fuzzer/adapters/cargo_fuzz_runner.rs` implementing `TestRunnerPort` to run `cargo fuzz run`.
-5. **Config artifact** — add `CargoFuzzConfig` to `src/interfaces/artifacts/` and a `CargoFuzz` variant to `FuzzerConfigArtifact`.
+5. **Config artifact** — add `CargoFuzzConfig` to `src/shared/artifacts/` and a `CargoFuzz` variant to `FuzzerConfigArtifact`.
 6. **LLM prompt** — add a Rust-flavoured prompt template to `LLMEngine`'s prompt assembler.
 7. **SessionConfig** — add `Language::Rust` and `Fuzzer::CargoFuzz` variants.
 8. **Composition root** — add match arms in `CompositionRoot::build` for the new variants.
@@ -185,7 +180,7 @@ FuzzMing follows **semantic versioning** (`MAJOR.MINOR.PATCH`) with the followin
 
 | Version bump | Trigger |
 |---|---|
-| `MAJOR` | Breaking change to the shared data layer (`src/interfaces/`) or to the CLI surface |
+| `MAJOR` | Breaking change to the shared data layer (`src/shared/`) or to the CLI surface |
 | `MINOR` | New language or fuzzer support, new LLM adapter, new CLI flag |
 | `PATCH` | Bug fix, prompt tuning, documentation |
 
@@ -255,7 +250,7 @@ No language-specific crates are needed — the language adapters shell out to th
 
 ```
 src/
-├── interfaces/          Shared data layer — signals, contexts, artifacts, state
+├── shared/              Shared contracts — models, ports, requests, responses
 ├── orchestrator/        Session loop + termination logic
 ├── llm/                 Prompt assembly, test body generation, config adaptation
 ├── fuzzer/              Fuzzer subprocess execution and outcome evaluation
@@ -280,7 +275,7 @@ Each component follows the same internal layout:
 **Hard rules:**
 
 - No component calls another component directly — the Orchestrator sequences all calls.
-- All inter-component port traits live in `src/interfaces/ports/`.
+- All inter-component port traits live in `src/shared/ports/`.
 - Internal extension points (language axis, fuzzer axis) live in the component's own `ports/`.
 - `Reader` never writes. `Executor` never reads.
 - `Executor` never touches developer-owned files.

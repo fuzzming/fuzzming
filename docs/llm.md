@@ -32,7 +32,7 @@ src/llm/
     ├── litellm_client.rs                   # Implements LlmClientPort — only file that imports litellm_rs
     └── mod.rs
 
-src/interfaces/
+src/shared/
 ├── requests/round_signal.rs                # RoundSignal — input from orchestrator
 └── responses/llm_signal.rs                 # LlmSignal — output to orchestrator
 ```

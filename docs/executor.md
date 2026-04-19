@@ -9,7 +9,7 @@ This document covers everything added or modified in the executor implementation
 ### `src/lib.rs`
 Added a library target so examples and future integration tests can import crate modules directly. `main.rs` is now a thin entry point that delegates to the library.
 
-### `src/interfaces/artifacts/bodies_json.rs`
+### `src/shared/artifacts/bodies_json.rs`
 Defines the `BodiesJson` artifact — the structured JSON produced by the LLM each round. Every value is already valid Solidity. The generator assembles `.sol` files from these strings without any interpretation.
 
 Key types:
@@ -50,10 +50,10 @@ Reads `examples/Vault.bodies.json`, writes `test/Vault.bodies.json` and both gen
 
 ## Modified files
 
-### `src/interfaces/artifacts/foundry_config.rs`
+### `src/shared/artifacts/foundry_config.rs`
 Added `current_toml: Option<String>`. The Reader provides the existing `foundry.toml` content; the Orchestrator packages it into `FoundryConfig` before calling the Executor. This lets `FoundryConfigWriter` patch only the managed sections without the Executor ever reading the file itself.
 
-### `src/interfaces/artifacts/mod.rs`
+### `src/shared/artifacts/mod.rs`
 Added `pub mod bodies_json` and the corresponding `pub use`.
 
 ### `src/llm/ports/executor_port.rs`
