@@ -1,28 +1,18 @@
 use std::collections::HashMap;
 
 use anyhow::{anyhow, bail, Context, Result};
-use async_trait::async_trait;
 use litellm_rs::{completion, system_message, user_message, CompletionOptions};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::json;
 
-use crate::interfaces::artifacts::{BodiesJson, FoundryConfig, Role};
-use crate::llm::application::ports::{
-    LlmGenerationPort, LlmGenerationRequest, LlmGenerationResponse,
-};
-
-pub struct GroqAdapter {
-    api_key: String,
-    default_model: String,
-    temperature: Option<f32>,
-    max_tokens: Option<u32>,
-}
+use crate::interfaces::artifacts::{BodiesJson, FoundryConfig};
+use crate::llm::ports::{LlmGenerationRequest, LlmGenerationResponse};
 
 const MAX_ATTEMPTS: usize = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AnalysisStage {
-    // Using Value to prevent parsing errors when LLM returns objects instead of strings
+    // Value keeps parser resilient when model returns objects instead of plain strings.
     vulnerability_analysis: Vec<serde_json::Value>,
     handler_logic_pseudocode: serde_json::Value,
     invariant_mathematical_proofs: Vec<serde_json::Value>,
@@ -39,29 +29,94 @@ struct ConfigStage {
     foundry_config: FoundryConfig,
 }
 
-impl GroqAdapter {
-    pub fn new(api_key: impl Into<String>) -> Self {
+pub(crate) struct LiteLlmGenerationAdapter {
+    api_key_env_var: &'static str,
+    model_prefix: &'static str,
+    empty_content_error: &'static str,
+    api_key: String,
+    default_model: String,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
+}
+
+impl LiteLlmGenerationAdapter {
+    pub(crate) fn new(
+        api_key_env_var: &'static str,
+        model_prefix: &'static str,
+        default_model: impl Into<String>,
+        api_key: impl Into<String>,
+        empty_content_error: &'static str,
+    ) -> Self {
         Self {
+            api_key_env_var,
+            model_prefix,
+            empty_content_error,
             api_key: api_key.into(),
-            default_model: "openai/gpt-oss-120b".to_string(),
+            default_model: default_model.into(),
             temperature: Some(0.1),
             max_tokens: Some(4_096),
         }
     }
 
-    pub fn with_default_model(mut self, model: impl Into<String>) -> Self {
+    pub(crate) fn with_default_model(mut self, model: impl Into<String>) -> Self {
         self.default_model = model.into();
         self
     }
 
-    pub fn with_temperature(mut self, temperature: Option<f32>) -> Self {
+    pub(crate) fn with_temperature(mut self, temperature: Option<f32>) -> Self {
         self.temperature = temperature;
         self
     }
 
-    pub fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
+    pub(crate) fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
         self.max_tokens = max_tokens;
         self
+    }
+
+    pub(crate) async fn generate(
+        &self,
+        request: LlmGenerationRequest,
+    ) -> Result<LlmGenerationResponse> {
+        std::env::set_var(self.api_key_env_var, &self.api_key);
+
+        if request.round == 1 {
+            return self.generate_round_one_chained(&request).await;
+        }
+
+        let system_prompt = self.build_system_prompt(&request.source_code);
+        let mut user_prompt = self.build_round_n_prompt(&request)?;
+        let model = self.pick_model(&request.model);
+
+        let mut last_error = String::new();
+
+        for attempt in 1..=MAX_ATTEMPTS {
+            let content = self
+                .complete_once(&model, &system_prompt, &user_prompt)
+                .await?;
+            let payload = extract_json_payload(&content)?;
+
+            match parse_generation_response(&payload) {
+                Ok(parsed) => return Ok(parsed),
+                Err(err) => {
+                    last_error = err.to_string();
+                    if attempt == MAX_ATTEMPTS {
+                        break;
+                    }
+                    user_prompt = build_parse_repair_prompt(
+                        "round generation",
+                        "mode + canonical full/patch fields",
+                        &payload,
+                        &last_error,
+                    );
+                }
+            }
+        }
+
+        bail!(
+            "model returned invalid structured output after {} attempts: {}",
+            MAX_ATTEMPTS,
+            last_error
+        )
     }
 
     fn pick_model(&self, requested_model: &str) -> String {
@@ -71,10 +126,10 @@ impl GroqAdapter {
             requested_model.to_string()
         };
 
-        if model.starts_with("groq/") {
+        if model.starts_with(&format!("{}/", self.model_prefix)) {
             model
         } else {
-            format!("groq/{model}")
+            format!("{}/{}", self.model_prefix, model)
         }
     }
 
@@ -92,23 +147,21 @@ impl GroqAdapter {
         )
     }
 
-    fn build_round_one_analysis_prompt(&self, request: &LlmGenerationRequest) -> String {
-        format!(
-            "Stage 1/3: Security Analysis & Logic Design.\n\
-             Analyze: Ghost borrowing, Inflation attacks, and rounding errors.\n\
-             \n\
-             Return this JSON exactly:\n\
-             {{\n\
-               \"vulnerability_analysis\": [\"string\"],\n\
-               \"handler_logic_pseudocode\": \"string describing state tracking\",\n\
-               \"invariant_mathematical_proofs\": [\"string\"],\n\
-               \"critical_invariants\": [\"string\"]\n\
-             }}"
-        )
+    fn build_round_one_analysis_prompt(&self) -> String {
+        "Stage 1/3: Security Analysis & Logic Design.\n\
+         Analyze: Ghost borrowing, Inflation attacks, and rounding errors.\n\
+         \n\
+         Return this JSON exactly:\n\
+         {\n\
+           \"vulnerability_analysis\": [\"string\"],\n\
+           \"handler_logic_pseudocode\": \"string describing state tracking\",\n\
+           \"invariant_mathematical_proofs\": [\"string\"],\n\
+           \"critical_invariants\": [\"string\"]\n\
+         }"
+        .to_string()
     }
 
     fn build_round_one_bodies_prompt(&self, analysis: &AnalysisStage) -> Result<String> {
-        // Convert the flexible analysis Value back into a pretty string for the LLM to read
         let analysis_summary = serde_json::to_string_pretty(analysis)?;
 
         Ok(format!(
@@ -133,14 +186,14 @@ No for-in loops: Use the actors array pattern in your logic.\n\
 \n\
 REQUIRED JSON STRUCTURE:\n\
 {{\n\
-  \"bodies\": {{\n\
-    \"meta\": {{\n\
+    \"bodies\": {{\n\
+        \"meta\": {{\n\
       \"contract\": \"TargetContractName\",\n\
       \"contractPath\": \"path/to/Target.sol\",\n\
       \"solidity\": \"solidity_version_string\",\n\
       \"generatedAt\": \"timestamp\"\n\
-    }},\n\
-    \"handler\": {{\n\
+        }},\n\
+        \"handler\": {{\n\
       \"contractName\": \"HandlerName\",\n\
       \"outputPath\": \"path/to/Handler.sol\",\n\
       \"imports\": [\"array\", \"of\", \"import\", \"lines\"],\n\
@@ -148,22 +201,22 @@ REQUIRED JSON STRUCTURE:\n\
       \"ghostVars\": [\"array\", \"of\", \"ghost\", \"variables\"],\n\
       \"constructorSignature\": \"signature_string\",\n\
       \"constructorBody\": [\"array\", \"of\", \"solidity\", \"lines\"],\n\
-      \"functions\": {{\n\
+            \"functions\": {{\n\
         \"functionName\": \"full_solidity_function_string\"\n\
-      }},\n\
+            }},\n\
       \"targetSelectors\": \"selector_expression_string\"\n\
-    }},\n\
-    \"invariantTest\": {{\n\
+        }},\n\
+        \"invariantTest\": {{\n\
       \"contractName\": \"TestName\",\n\
       \"outputPath\": \"path/to/Test.sol\",\n\
       \"imports\": [\"array\", \"of\", \"import\", \"lines\"],\n\
       \"stateVars\": [\"array\", \"of\", \"state\", \"variables\"],\n\
       \"setUpBody\": [\"array\", \"of\", \"setup\", \"lines\"],\n\
-      \"invariants\": {{\n\
+            \"invariants\": {{\n\
         \"invariantName\": \"full_solidity_function_string\"\n\
-      }}\n\
+            }}\n\
+        }}\n\
     }}\n\
-  }}\n\
 }}\n\
 \n\
 Analysis Context:\n\
@@ -186,16 +239,16 @@ Analysis Context:\n\
         Ok(format!(
             "Stage 3/3: generate Foundry config only.\n\
              Return this exact JSON shape:\n\
-             {{\n\
-               \"foundry_config\": {{\n\
+                         {{\n\
+                             \"foundry_config\": {{\n\
                  \"depth\": integer,\n\
                  \"runs\": integer,\n\
                  \"seed\": \"0x...\",\n\
                  \"max_test_rejects\": integer,\n\
                  \"dictionary_weight\": integer,\n\
-                 \"call_sequence_weights\": {{\"handlerFunctionName\": float}}\n\
-               }}\n\
-             }}\n\
+                                 \"call_sequence_weights\": {{\"handlerFunctionName\": float}}\n\
+                             }}\n\
+                         }}\n\
              \n\
              Guidance:\n\
              - call_sequence_weights keys must match handler function names exactly.\n\
@@ -220,18 +273,18 @@ Analysis Context:\n\
              Return JSON only.\n\
              \n\
              If round is 1, return:\n\
-             {{\n\
+                         {{\n\
                \"mode\":\"full\",\n\
                \"bodies\": {{...}},\n\
                \"foundry_config\": {{...}}\n\
-             }}\n\
+                         }}\n\
              \n\
              If round > 1, prefer patch mode:\n\
-             {{\n\
+                         {{\n\
                \"mode\":\"patch\",\n\
                \"bodies_updates\":[{{\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}],\n\
                \"foundry_config_updates\":[{{\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}]\n\
-             }}\n\
+                         }}\n\
              \n\
              Existing bodies:\n{}\n\
              \n\
@@ -273,7 +326,7 @@ Analysis Context:\n\
             .first()
             .and_then(|c| c.message.content.clone())
             .map(|content| content.to_string())
-            .ok_or_else(|| anyhow!("groq adapter returned empty content"))
+            .ok_or_else(|| anyhow!(self.empty_content_error))
     }
 
     async fn request_json<T>(
@@ -325,21 +378,18 @@ Analysis Context:\n\
         let model = self.pick_model(&request.model);
         let system_prompt = self.build_system_prompt(&request.source_code);
 
-        // STEP 1: Deep Analysis (The "Thinking" Phase)
         let analysis: AnalysisStage = self
             .request_json(
                 &model,
                 &system_prompt,
-                self.build_round_one_analysis_prompt(request),
+                self.build_round_one_analysis_prompt(),
                 "analysis",
                 "vulnerability_analysis, handler_logic_pseudocode, invariant_mathematical_proofs",
             )
             .await?;
 
-        // Prevent burst rate limits (Groq strict free tier)
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-        // STEP 2: Body Generation (The "Coding" Phase - Informed by Step 1)
         let bodies_stage: BodiesStage = self
             .request_json(
                 &model,
@@ -350,10 +400,8 @@ Analysis Context:\n\
             )
             .await?;
 
-        // Prevent burst rate limits
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-        // STEP 3: Config Generation
         let config_stage: ConfigStage = self
             .request_json(
                 &model,
@@ -368,52 +416,6 @@ Analysis Context:\n\
             bodies: bodies_stage.bodies,
             foundry_config: config_stage.foundry_config,
         })
-    }
-}
-
-#[async_trait]
-impl LlmGenerationPort for GroqAdapter {
-    async fn generate(&self, request: LlmGenerationRequest) -> Result<LlmGenerationResponse> {
-        std::env::set_var("GROQ_API_KEY", &self.api_key);
-
-        if request.round == 1 {
-            return self.generate_round_one_chained(&request).await;
-        }
-
-        let system_prompt = self.build_system_prompt(&request.source_code);
-        let mut user_prompt = self.build_round_n_prompt(&request)?;
-        let model = self.pick_model(&request.model);
-
-        let mut last_error = String::new();
-
-        for attempt in 1..=MAX_ATTEMPTS {
-            let content = self
-                .complete_once(&model, &system_prompt, &user_prompt)
-                .await?;
-            let payload = extract_json_payload(&content)?;
-
-            match parse_generation_response(&payload) {
-                Ok(parsed) => return Ok(parsed),
-                Err(err) => {
-                    last_error = err.to_string();
-                    if attempt == MAX_ATTEMPTS {
-                        break;
-                    }
-                    user_prompt = build_parse_repair_prompt(
-                        "round generation",
-                        "mode + canonical full/patch fields",
-                        &payload,
-                        &last_error,
-                    );
-                }
-            }
-        }
-
-        bail!(
-            "model returned invalid structured output after {} attempts: {}",
-            MAX_ATTEMPTS,
-            last_error
-        )
     }
 }
 

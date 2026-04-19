@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::interfaces::contexts::{ContractContext, FuzzReportContext, CoverageContext};
+use crate::interfaces::contexts::{ContractContext, CoverageContext, FuzzReportContext};
 
 #[async_trait]
 pub trait LlmReaderPort: Send + Sync {

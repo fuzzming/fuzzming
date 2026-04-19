@@ -1,3 +1,1 @@
-pub mod gateways;
-
-pub use gateways::*;
+// Infrastructure layer for shared low-level components.

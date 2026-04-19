@@ -1,7 +1,8 @@
 use anyhow::Result;
+
 use crate::interfaces::artifacts::{AssembledPrompt, InvariantSet};
-use crate::llm::application::ports::LlmGateway;
-use crate::llm::application::parsers::invariant_parser::parse_invariants;
+use crate::llm::ports::LlmGateway;
+use crate::llm::usecases::parsers::invariant_parser::parse_invariants;
 
 pub async fn generate_invariants(
     prompt: AssembledPrompt,

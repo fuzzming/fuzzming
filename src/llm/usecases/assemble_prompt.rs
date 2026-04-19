@@ -1,6 +1,7 @@
 use anyhow::Result;
+
 use crate::interfaces::artifacts::AssembledPrompt;
-use crate::interfaces::contexts::{ContractContext, FuzzReportContext, CoverageContext};
+use crate::interfaces::contexts::{ContractContext, CoverageContext, FuzzReportContext};
 
 pub fn assemble_prompt(
     round: u32,

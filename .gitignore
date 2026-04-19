@@ -3,3 +3,6 @@ Cargo.lock
 examples
 .env
 .env.*
+
+# Local-only smoke harness (contains secrets and generated artifacts)
+test/llm_generation/
