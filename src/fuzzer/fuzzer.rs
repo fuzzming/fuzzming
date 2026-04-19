@@ -4,18 +4,18 @@ use crate::interfaces::signals::{RoundSignal, FuzzReport};
 use crate::interfaces::ports::FuzzerEnginePort;
 use crate::fuzzer::ports::TestRunnerPort;
 
-pub struct FuzzerEngine {
+pub struct Fuzzer {
     pub runner: Box<dyn TestRunnerPort>,
 }
 
-impl FuzzerEngine {
+impl Fuzzer {
     pub fn new(runner: Box<dyn TestRunnerPort>) -> Self {
         Self { runner }
     }
 }
 
 #[async_trait]
-impl FuzzerEnginePort for FuzzerEngine {
+impl FuzzerEnginePort for Fuzzer {
     async fn run(&self, signal: RoundSignal) -> Result<FuzzReport> {
         todo!()
     }

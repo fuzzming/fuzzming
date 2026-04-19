@@ -1,5 +1,5 @@
 use crate::interfaces::state::SessionConfig;
-use crate::orchestrator::session_orchestrator::SessionOrchestrator;
+use crate::orchestrator::orchestrator::SessionOrchestrator;
 
 pub struct CompositionRoot;
 

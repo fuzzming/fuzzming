@@ -1,9 +1,9 @@
-use anyhow::Result;
+use crate::composition::composition_root::CompositionRoot;
 use crate::entry::cli::arg_parser::{parse_args, CliArgs};
 use crate::interfaces::signals::SessionRequest;
-use crate::interfaces::state::{SessionConfig, OutputFormat, Language, Fuzzer};
-use crate::orchestrator::session_orchestrator::SessionOrchestrator;
-use crate::composition::composition_root::CompositionRoot;
+use crate::interfaces::state::{Fuzzer, Language, OutputFormat, SessionConfig};
+use crate::orchestrator::orchestrator::SessionOrchestrator;
+use anyhow::Result;
 
 pub struct CliRunner;
 
@@ -17,7 +17,11 @@ impl CliRunner {
         let config = SessionConfig {
             llm_url: args.llm_url.clone(),
             llm_key: args.llm_key.clone(),
-            output_format: if args.ci_mode { OutputFormat::Ci } else { OutputFormat::Terminal },
+            output_format: if args.ci_mode {
+                OutputFormat::Ci
+            } else {
+                OutputFormat::Terminal
+            },
             ci_mode: args.ci_mode,
             language: Language::Solidity,
             fuzzer: Fuzzer::Foundry,
@@ -26,7 +30,11 @@ impl CliRunner {
             target_paths: args.targets.clone(),
             max_rounds: args.max_rounds,
             config: config.clone(),
-            output_format: if args.ci_mode { OutputFormat::Ci } else { OutputFormat::Terminal },
+            output_format: if args.ci_mode {
+                OutputFormat::Ci
+            } else {
+                OutputFormat::Terminal
+            },
             ci_mode: args.ci_mode,
         };
         let orchestrator = CompositionRoot::build(config);
