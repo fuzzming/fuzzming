@@ -1,7 +1,7 @@
+use crate::shared::models::CoverageContext;
+use crate::shared::models::SessionConfig;
+use crate::shared::models::{BodiesJson, FoundryConfig};
 use serde::{Deserialize, Serialize};
-use crate::interfaces::artifacts::{BodiesJson, FoundryConfig};
-use crate::interfaces::contexts::CoverageContext;
-use crate::interfaces::state::SessionConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoundSignal {

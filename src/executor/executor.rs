@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::executor::infrastructure::FileSystemWriter;
 use crate::executor::ports::{CodeGeneratorPort, ConfigWriterPort};
 use crate::executor::use_cases::write_bodies::write_bodies;
-use crate::interfaces::artifacts::ExecutorInput;
-use crate::interfaces::ports::ExecutorPort;
+use crate::shared::models::ExecutorInput;
+use crate::shared::ports::ExecutorPort;
 use anyhow::Result;
 use async_trait::async_trait;
 

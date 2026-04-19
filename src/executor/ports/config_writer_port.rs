@@ -1,5 +1,5 @@
 use crate::executor::infrastructure::FileSystemWriter;
-use crate::interfaces::artifacts::FuzzerConfigArtifact;
+use crate::shared::models::FuzzerConfigArtifact;
 use anyhow::Result;
 use async_trait::async_trait;
 

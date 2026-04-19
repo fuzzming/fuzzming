@@ -1,4 +1,4 @@
-use crate::interfaces::signals::{RoundSignal, LlmSignal};
+use crate::shared::{requests::round_signal::RoundSignal, responses::llm_signal::LlmSignal};
 use anyhow::Result;
 use async_trait::async_trait;
 

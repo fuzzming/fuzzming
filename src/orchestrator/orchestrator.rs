@@ -1,6 +1,9 @@
+use crate::shared::{
+    ports::{ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReporterPort},
+    requests::session_request::SessionRequest,
+    responses::session_outcome::SessionOutcome,
+};
 use anyhow::Result;
-use crate::interfaces::signals::{SessionRequest, SessionOutcome};
-use crate::interfaces::ports::{LlmEnginePort, FuzzerEnginePort, ReporterPort, ExecutorPort};
 
 pub struct SessionOrchestrator {
     pub llm_engine: Box<dyn LlmEnginePort>,
@@ -16,7 +19,12 @@ impl SessionOrchestrator {
         executor: Box<dyn ExecutorPort>,
         reporter: Box<dyn ReporterPort>,
     ) -> Self {
-        Self { llm_engine, fuzzer_engine, executor, reporter }
+        Self {
+            llm_engine,
+            fuzzer_engine,
+            executor,
+            reporter,
+        }
     }
 
     pub async fn run(&self, request: SessionRequest) -> Result<SessionOutcome> {

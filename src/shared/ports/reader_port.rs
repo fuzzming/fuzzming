@@ -1,4 +1,4 @@
-use crate::interfaces::contexts::{ContractContext, CoverageContext, InvariantFiles};
+use crate::shared::models::{ContractContext, CoverageContext, InvariantFiles};
 use anyhow::Result;
 use async_trait::async_trait;
 

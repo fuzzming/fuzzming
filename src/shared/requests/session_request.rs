@@ -1,5 +1,5 @@
+use crate::shared::models::{OutputFormat, SessionConfig};
 use serde::{Deserialize, Serialize};
-use crate::interfaces::state::{SessionConfig, OutputFormat};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionRequest {

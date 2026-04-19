@@ -1,4 +1,4 @@
-use crate::interfaces::signals::{RoundSignal, FuzzReport};
+use crate::shared::{requests::round_signal::RoundSignal, responses::fuzz_report::FuzzReport};
 use anyhow::Result;
 use async_trait::async_trait;
 

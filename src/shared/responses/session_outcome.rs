@@ -1,5 +1,5 @@
+use crate::shared::responses::fuzz_report::FuzzPaths;
 use serde::{Deserialize, Serialize};
-use crate::interfaces::signals::fuzz_report::FuzzPaths;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TerminationReason {

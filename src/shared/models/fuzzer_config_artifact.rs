@@ -1,4 +1,4 @@
-use crate::interfaces::artifacts::FoundryConfig;
+use crate::shared::models::FoundryConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

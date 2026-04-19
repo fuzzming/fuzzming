@@ -1,7 +1,7 @@
+use crate::fuzzer::ports::TestRunnerPort;
+use crate::shared::models::RunnerResult;
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::interfaces::artifacts::RunnerResult;
-use crate::fuzzer::ports::TestRunnerPort;
 
 pub struct ForgeRunner {
     pub working_dir: String,

@@ -1,6 +1,5 @@
+use crate::shared::responses::{fuzz_report::FuzzPaths, session_outcome::TerminationReason};
 use serde::{Deserialize, Serialize};
-use crate::interfaces::signals::fuzz_report::FuzzPaths;
-use crate::interfaces::signals::session_outcome::TerminationReason;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminationDecision {

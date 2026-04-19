@@ -1,4 +1,6 @@
 mod litellm_generation_adapter;
+mod prompt_builder;
+mod response_parser;
+mod stages;
 
-pub mod groq_adapter;
-pub mod openrouter_adapter;
+pub use litellm_generation_adapter::LiteLlmGenerationAdapter;

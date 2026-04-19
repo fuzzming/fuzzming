@@ -1,6 +1,6 @@
+use crate::shared::models::RunnerResult;
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::interfaces::artifacts::RunnerResult;
 
 #[async_trait]
 pub trait TestRunnerPort: Send + Sync {

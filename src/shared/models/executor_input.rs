@@ -1,4 +1,4 @@
-use crate::interfaces::artifacts::{BodiesJson, FuzzerConfigArtifact};
+use crate::shared::models::{BodiesJson, FuzzerConfigArtifact};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,5 +1,4 @@
-use crate::interfaces::contexts::ReportArtifacts;
-use crate::interfaces::signals::FuzzPaths;
+use crate::shared::{models::ReportArtifacts, responses::fuzz_report::FuzzPaths};
 use anyhow::Result;
 use async_trait::async_trait;
 

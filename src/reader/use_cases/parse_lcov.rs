@@ -1,4 +1,4 @@
-use crate::interfaces::contexts::{CoverageContext, CoverageGap, GapType};
+use crate::shared::models::{CoverageContext, CoverageGap, GapType};
 use anyhow::Result;
 use regex::Regex;
 

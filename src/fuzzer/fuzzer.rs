@@ -1,8 +1,9 @@
+use crate::fuzzer::ports::TestRunnerPort;
+use crate::shared::ports::FuzzerEnginePort;
+use crate::shared::requests::round_signal::RoundSignal;
+use crate::shared::responses::fuzz_report::FuzzReport;
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::interfaces::signals::{RoundSignal, FuzzReport};
-use crate::interfaces::ports::FuzzerEnginePort;
-use crate::fuzzer::ports::TestRunnerPort;
 
 pub struct Fuzzer {
     pub runner: Box<dyn TestRunnerPort>,

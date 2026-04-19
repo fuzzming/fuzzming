@@ -1,7 +1,7 @@
-use crate::interfaces::contexts::CoverageContext;
 use crate::reader::infrastructure::FileSystemReader;
 use crate::reader::ports::coverage_reader_port::CoverageReaderPort;
 use crate::reader::use_cases::parse_lcov;
+use crate::shared::models::CoverageContext;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;

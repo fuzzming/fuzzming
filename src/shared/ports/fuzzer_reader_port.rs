@@ -1,4 +1,4 @@
-use crate::interfaces::contexts::InvariantFiles;
+use crate::interfaces::types::InvariantFiles;
 use anyhow::Result;
 use async_trait::async_trait;
 

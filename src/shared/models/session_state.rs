@@ -1,5 +1,5 @@
+use crate::shared::models::session_config::SessionConfig;
 use serde::{Deserialize, Serialize};
-use crate::interfaces::state::session_config::SessionConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionState {

@@ -1,9 +1,9 @@
-use crate::interfaces::contexts::{ContractContext, CoverageContext, InvariantFiles};
-use crate::interfaces::ports::ReaderPort;
 use crate::reader::infrastructure::FileSystemReader;
 use crate::reader::ports::{
     contract_reader_port::ContractReaderPort, coverage_reader_port::CoverageReaderPort,
 };
+use crate::shared::models::{ContractContext, CoverageContext, InvariantFiles};
+use crate::shared::ports::ReaderPort;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;

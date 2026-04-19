@@ -3,12 +3,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::interfaces::artifacts::{AssembledPrompt, BodiesJson, FoundryConfig};
+use crate::shared::models::{AssembledPrompt, BodiesJson, FoundryConfig};
 
 #[derive(Debug, Clone)]
 pub struct LlmGenerationRequest {
     pub round: u32,
-    pub model: String,
     pub source_code: String,
     pub prompt: AssembledPrompt,
     pub existing_bodies: Option<BodiesJson>,
@@ -33,9 +32,7 @@ pub struct JsonBlockUpdate {
     /// Dot path of the block to replace in the previous JSON artifact.
     /// Example: "handler.functions.invariant_deposit".
     pub path: String,
-    /// New value for that block.
     pub value: Value,
-    /// Why the block change is required.
     pub reason: String,
 }
 
