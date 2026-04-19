@@ -7,7 +7,7 @@
   },
   "handler": {
     "contractName": "VaultHandler",
-    "outputPath": "examples/output/test/handlers/VaultHandler.sol",
+    "outputPath": "test/handlers/VaultHandler.sol",
     "imports": [
       "import {BaseHandler} from \"../base/BaseHandler.sol\";",
       "import {Vault}       from \"../../src/Vault.sol\";",
@@ -34,7 +34,7 @@
   },
   "invariantTest": {
     "contractName": "VaultInvariantTest",
-    "outputPath": "examples/output/test/invariants/VaultInvariantTest.sol",
+    "outputPath": "test/invariants/VaultInvariantTest.sol",
     "imports": [
       "import {Test}         from \"forge-std/Test.sol\";",
       "import {Vault}        from \"../../src/Vault.sol\";",
