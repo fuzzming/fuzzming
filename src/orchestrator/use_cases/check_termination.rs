@@ -1,8 +1,7 @@
-use crate::shared::{
-    models::SessionState,
-    responses::{fuzz_report::FuzzReport, termination_decision::TerminationDecision},
-};
+use crate::orchestrator::domain::Session;
+use crate::shared::responses::fuzz_report::FuzzReport;
+use crate::shared::responses::termination_decision::TerminationDecision;
 
-pub fn check_termination(report: &FuzzReport, state: &SessionState) -> TerminationDecision {
-    todo!()
+pub fn check_termination(report: &FuzzReport, session: &Session) -> TerminationDecision {
+    session.should_terminate(report)
 }

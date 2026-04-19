@@ -1,6 +1,6 @@
-use crate::shared::{models::SessionState, requests::session_request::SessionRequest};
-use anyhow::Result;
+use crate::orchestrator::domain::Session;
+use crate::shared::requests::session_request::SessionRequest;
 
-pub fn initialise_session(request: SessionRequest) -> Result<SessionState> {
-    todo!()
+pub fn initialise_session(request: &SessionRequest) -> Session {
+    Session::new(request)
 }
