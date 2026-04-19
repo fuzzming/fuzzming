@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub enum GapType {
     Line,
     Branch,
+    Function,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

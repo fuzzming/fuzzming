@@ -1,10 +1,14 @@
-use crate::interfaces::contexts::{ContractContext, FuzzReportContext, CoverageContext};
+use crate::interfaces::contexts::{ContractContext, CoverageContext};
 use anyhow::Result;
 use async_trait::async_trait;
 
 #[async_trait]
 pub trait LlmReaderPort: Send + Sync {
-    async fn get_contract_context(&self) -> Result<ContractContext>;
-    async fn get_fuzz_report_context(&self) -> Result<Option<FuzzReportContext>>;
+    async fn get_contract_context(
+        &self,
+        path: &str,
+        include_comments: bool,
+    ) -> Result<ContractContext>;
+    async fn get_fuzz_output(&self) -> Result<Option<String>>;
     async fn get_coverage_context(&self) -> Result<Option<CoverageContext>>;
 }
