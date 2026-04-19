@@ -1,46 +1,62 @@
+use crate::interfaces::contexts::{ContractContext, CoverageContext, InvariantFiles};
+use crate::interfaces::ports::ReaderPort;
+use crate::reader::infrastructure::FileSystemReader;
+use crate::reader::ports::{
+    contract_reader_port::ContractReaderPort, coverage_reader_port::CoverageReaderPort,
+};
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::interfaces::contexts::{ContractContext, FuzzReportContext, CoverageContext, InvariantFiles};
-use crate::interfaces::ports::{LlmReaderPort, FuzzerReaderPort};
-use crate::reader::infrastructure::FileSystemReader;
+use std::sync::Arc;
 
 pub struct Reader {
-    pub fs: FileSystemReader,
-    pub invariant_files: InvariantFiles,
+    contract_reader: Arc<dyn ContractReaderPort>,
+    coverage_reader: Arc<dyn CoverageReaderPort>,
+    fs_reader: Arc<FileSystemReader>,
+    invariant_files: InvariantFiles,
 }
 
 impl Reader {
-    pub fn new(fs: FileSystemReader, invariant_files: InvariantFiles) -> Self {
-        Self { fs, invariant_files }
+    pub fn new(
+        contract_reader: Arc<dyn ContractReaderPort>,
+        coverage_reader: Arc<dyn CoverageReaderPort>,
+        fs_reader: Arc<FileSystemReader>,
+        invariant_files: InvariantFiles,
+    ) -> Self {
+        Self {
+            contract_reader,
+            coverage_reader,
+            fs_reader,
+            invariant_files,
+        }
     }
 }
 
 #[async_trait]
-impl LlmReaderPort for Reader {
-    async fn get_contract_context(&self) -> Result<ContractContext> {
-        todo!()
+impl ReaderPort for Reader {
+    async fn get_contract_context(
+        &self,
+        path: &str,
+        _include_comments: bool,
+    ) -> Result<ContractContext> {
+        let source_code = self
+            .contract_reader
+            .get_contract_context(path, false)
+            .await?;
+        Ok(ContractContext { source_code })
     }
 
-    async fn get_fuzz_report_context(&self) -> Result<Option<FuzzReportContext>> {
-        todo!()
+    async fn get_fuzz_output(&self) -> Result<Option<String>> {
+        self.fs_reader
+            .read_file_optional(&self.invariant_files.fuzz_output_path)
+            .await
     }
 
     async fn get_coverage_context(&self) -> Result<Option<CoverageContext>> {
-        todo!()
+        self.coverage_reader
+            .read_coverage(&self.invariant_files.lcov_path)
+            .await
     }
-}
-
-#[async_trait]
-impl FuzzerReaderPort for Reader {
     async fn get_invariant_files(&self) -> Result<InvariantFiles> {
-        todo!()
-    }
-
-    async fn get_fuzz_output(&self) -> Result<String> {
-        todo!()
-    }
-
-    async fn get_lcov(&self) -> Result<String> {
-        todo!()
+        Ok(self.invariant_files.clone())
     }
 }
