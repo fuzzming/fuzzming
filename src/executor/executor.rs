@@ -1,26 +1,35 @@
+use std::sync::Arc;
+
+use crate::executor::infrastructure::FileSystemWriter;
+use crate::executor::ports::{CodeGeneratorPort, ConfigWriterPort};
+use crate::executor::use_cases::write_bodies::write_bodies;
+use crate::interfaces::artifacts::ExecutorInput;
+use crate::interfaces::ports::ExecutorPort;
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::interfaces::artifacts::{InvariantSet, FoundryConfig};
-use crate::llm::ports::ExecutorPort;
-use crate::executor::infrastructure::FileSystemWriter;
 
 pub struct Executor {
-    pub writer: FileSystemWriter,
+    writer: FileSystemWriter,
+    generator: Arc<dyn CodeGeneratorPort>,
+    config_writer: Arc<dyn ConfigWriterPort>,
 }
 
 impl Executor {
-    pub fn new(writer: FileSystemWriter) -> Self {
-        Self { writer }
+    pub fn new(
+        writer: FileSystemWriter,
+        generator: Arc<dyn CodeGeneratorPort>,
+        config_writer: Arc<dyn ConfigWriterPort>,
+    ) -> Self {
+        Self { writer, generator, config_writer }
     }
 }
 
 #[async_trait]
 impl ExecutorPort for Executor {
-    async fn write_invariants(&self, set: InvariantSet) -> Result<()> {
-        todo!()
-    }
-
-    async fn write_foundry_config(&self, config: FoundryConfig) -> Result<()> {
-        todo!()
+    async fn execute(&self, input: ExecutorInput) -> Result<()> {
+        write_bodies(&input.bodies, &self.writer).await?;
+        self.generator.generate(&input.bodies, &self.writer).await?;
+        self.config_writer.write(&input.fuzzer_config, &self.writer).await?;
+        Ok(())
     }
 }

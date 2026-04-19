@@ -1,9 +1,6 @@
-use anyhow::Result;
-use async_trait::async_trait;
-use crate::interfaces::signals::{SessionOutcome, FuzzPaths};
-use crate::interfaces::contexts::ReportArtifacts;
-use crate::orchestrator::ports::ReporterPort;
-use crate::reporter::ports::{ReporterReaderPort, OutputPort};
+use crate::interfaces::signals::SessionOutcome;
+use crate::interfaces::ports::{ReporterPort, ReporterReaderPort};
+use crate::reporter::ports::OutputPort;
 
 pub struct Reporter {
     pub reader: Box<dyn ReporterReaderPort>,

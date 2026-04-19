@@ -1,7 +1,7 @@
 use anyhow::Result;
 use crate::entry::cli::arg_parser::{parse_args, CliArgs};
 use crate::interfaces::signals::SessionRequest;
-use crate::interfaces::state::{SessionConfig, OutputFormat};
+use crate::interfaces::state::{SessionConfig, OutputFormat, Language, Fuzzer};
 use crate::orchestrator::session_orchestrator::SessionOrchestrator;
 use crate::composition::composition_root::CompositionRoot;
 
@@ -19,6 +19,8 @@ impl CliRunner {
             llm_key: args.llm_key.clone(),
             output_format: if args.ci_mode { OutputFormat::Ci } else { OutputFormat::Terminal },
             ci_mode: args.ci_mode,
+            language: Language::Solidity,
+            fuzzer: Fuzzer::Foundry,
         };
         let request = SessionRequest {
             target_paths: args.targets.clone(),

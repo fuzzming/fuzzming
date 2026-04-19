@@ -1,8 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use crate::interfaces::contexts::{ContractContext, FuzzReportContext, CoverageContext, InvariantFiles};
-use crate::llm::ports::LlmReaderPort;
-use crate::fuzzer::ports::FuzzerReaderPort;
+use crate::interfaces::ports::{LlmReaderPort, FuzzerReaderPort};
 use crate::reader::infrastructure::FileSystemReader;
 
 pub struct Reader {
