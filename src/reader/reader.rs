@@ -1,5 +1,5 @@
 use crate::interfaces::contexts::{ContractContext, CoverageContext, InvariantFiles};
-use crate::llm::ports::LlmReaderPort;
+use crate::interfaces::ports::LlmReaderPort;
 use crate::reader::infrastructure::FileSystemReader;
 use crate::reader::ports::{
     contract_reader_port::ContractReaderPort, coverage_reader_port::CoverageReaderPort,
@@ -38,7 +38,10 @@ impl LlmReaderPort for Reader {
         path: &str,
         _include_comments: bool,
     ) -> Result<ContractContext> {
-        let source_code = self.contract_reader.get_contract_context(path, false).await?;
+        let source_code = self
+            .contract_reader
+            .get_contract_context(path, false)
+            .await?;
         Ok(ContractContext { source_code })
     }
 

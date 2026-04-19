@@ -1,6 +1,6 @@
+use crate::interfaces::contexts::InvariantFiles;
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::interfaces::contexts::InvariantFiles;
 
 #[async_trait]
 pub trait FuzzerReaderPort: Send + Sync {

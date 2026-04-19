@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use crate::interfaces::signals::{RoundSignal, FuzzReport};
-use crate::fuzzer::ports::{FuzzerReaderPort, TestRunnerPort};
-use crate::orchestrator::ports::FuzzerEnginePort;
+use crate::interfaces::ports::{FuzzerEnginePort, FuzzerReaderPort};
+use crate::fuzzer::ports::TestRunnerPort;
 
 pub struct FuzzerEngine {
     pub reader: Box<dyn FuzzerReaderPort>,
