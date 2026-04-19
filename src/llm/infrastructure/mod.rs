@@ -1,2 +1,2 @@
-pub mod openai_adapter;
-pub mod anthropic_adapter;
+mod litellm_client;
+pub use litellm_client::LiteLlmClient;

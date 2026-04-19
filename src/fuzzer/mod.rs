@@ -1,4 +1,4 @@
 pub mod use_cases;
 pub mod ports;
 pub mod infrastructure;
-pub mod fuzzer_engine;
+pub mod fuzzer;

@@ -1,4 +1,4 @@
-use crate::interfaces::contexts::CoverageContext;
+use crate::shared::models::CoverageContext;
 use anyhow::Result;
 use async_trait::async_trait;
 

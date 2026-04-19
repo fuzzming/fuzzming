@@ -1,7 +1,7 @@
+use crate::shared::models::InvariantFiles;
+use crate::shared::models::RunnerResult;
+use crate::shared::responses::fuzz_report::FuzzReport;
 use anyhow::Result;
-use crate::interfaces::artifacts::RunnerResult;
-use crate::interfaces::signals::FuzzReport;
-use crate::interfaces::contexts::InvariantFiles;
 
 pub fn evaluate_outcome(
     fuzz_result: &RunnerResult,

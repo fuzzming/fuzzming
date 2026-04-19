@@ -1,6 +1,6 @@
+use crate::llm::domain::Prompt;
+use crate::shared::models::{AssembledPrompt, ContractContext, CoverageContext};
 use anyhow::Result;
-use crate::interfaces::artifacts::AssembledPrompt;
-use crate::interfaces::contexts::{ContractContext, CoverageContext};
 
 pub fn assemble_prompt(
     round: u32,
@@ -8,5 +8,6 @@ pub fn assemble_prompt(
     fuzz_output: Option<String>,
     coverage_context: Option<CoverageContext>,
 ) -> Result<AssembledPrompt> {
-    todo!()
+    Ok(Prompt::new(round, contract_context.source_code, fuzz_output, coverage_context)
+        .into_assembled())
 }

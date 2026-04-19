@@ -1,5 +1,5 @@
 use crate::executor::infrastructure::FileSystemWriter;
-use crate::interfaces::artifacts::BodiesJson;
+use crate::shared::models::BodiesJson;
 use anyhow::Result;
 
 pub async fn write_bodies(bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {

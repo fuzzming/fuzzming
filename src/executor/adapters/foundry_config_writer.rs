@@ -1,8 +1,8 @@
-use anyhow::Result;
-use async_trait::async_trait;
 use crate::executor::infrastructure::FileSystemWriter;
 use crate::executor::ports::ConfigWriterPort;
-use crate::interfaces::artifacts::{FoundryConfig, FuzzerConfigArtifact};
+use crate::shared::models::{FoundryConfig, FuzzerConfigArtifact};
+use anyhow::Result;
+use async_trait::async_trait;
 
 pub struct FoundryConfigWriter;
 
@@ -98,7 +98,10 @@ fn replace_or_append_section(toml: &str, header: &str, new_section: &str) -> Str
                 (true, false) => format!("{}\n\n{}\n", new_section, after_trimmed),
                 (false, true) => format!("{}\n\n{}\n", before_trimmed, new_section),
                 (false, false) => {
-                    format!("{}\n\n{}\n\n{}\n", before_trimmed, new_section, after_trimmed)
+                    format!(
+                        "{}\n\n{}\n\n{}\n",
+                        before_trimmed, new_section, after_trimmed
+                    )
                 }
             }
         }
@@ -112,7 +115,11 @@ mod tests {
     #[test]
     fn appends_when_absent() {
         let toml = "[profile.default]\nsolver_timeout = 10000\n";
-        let result = replace_or_append_section(toml, "[profile.fuzzming]", "[profile.fuzzming]\nruns = 1000");
+        let result = replace_or_append_section(
+            toml,
+            "[profile.fuzzming]",
+            "[profile.fuzzming]\nruns = 1000",
+        );
         assert!(result.contains("[profile.default]"));
         assert!(result.contains("[profile.fuzzming]"));
         assert!(result.contains("runs = 1000"));
@@ -121,7 +128,11 @@ mod tests {
     #[test]
     fn replaces_existing_section() {
         let toml = "[profile.default]\nsolver_timeout = 10000\n\n[profile.fuzzming]\nruns = 500\n";
-        let result = replace_or_append_section(toml, "[profile.fuzzming]", "[profile.fuzzming]\nruns = 1000");
+        let result = replace_or_append_section(
+            toml,
+            "[profile.fuzzming]",
+            "[profile.fuzzming]\nruns = 1000",
+        );
         assert!(result.contains("[profile.default]"));
         assert!(result.contains("runs = 1000"));
         assert!(!result.contains("runs = 500"));
@@ -130,14 +141,19 @@ mod tests {
     #[test]
     fn preserves_section_after_replaced_one() {
         let toml = "[profile.fuzzming]\nruns = 500\n\n[profile.coverage]\ndepth = 50\n";
-        let result = replace_or_append_section(toml, "[profile.fuzzming]", "[profile.fuzzming]\nruns = 1000");
+        let result = replace_or_append_section(
+            toml,
+            "[profile.fuzzming]",
+            "[profile.fuzzming]\nruns = 1000",
+        );
         assert!(result.contains("runs = 1000"));
         assert!(result.contains("[profile.coverage]"));
     }
 
     #[test]
     fn empty_base_produces_clean_output() {
-        let result = replace_or_append_section("", "[profile.fuzzming]", "[profile.fuzzming]\nruns = 1000");
+        let result =
+            replace_or_append_section("", "[profile.fuzzming]", "[profile.fuzzming]\nruns = 1000");
         assert_eq!(result, "[profile.fuzzming]\nruns = 1000\n");
     }
 }

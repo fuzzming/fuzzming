@@ -1,9 +1,9 @@
-use crate::interfaces::contexts::{ContractContext, CoverageContext, InvariantFiles};
-use crate::interfaces::ports::LlmReaderPort;
 use crate::reader::infrastructure::FileSystemReader;
 use crate::reader::ports::{
     contract_reader_port::ContractReaderPort, coverage_reader_port::CoverageReaderPort,
 };
+use crate::shared::models::{ContractContext, CoverageContext, InvariantFiles};
+use crate::shared::ports::ReaderPort;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -32,7 +32,7 @@ impl Reader {
 }
 
 #[async_trait]
-impl LlmReaderPort for Reader {
+impl ReaderPort for Reader {
     async fn get_contract_context(
         &self,
         path: &str,
@@ -55,5 +55,8 @@ impl LlmReaderPort for Reader {
         self.coverage_reader
             .read_coverage(&self.invariant_files.lcov_path)
             .await
+    }
+    async fn get_invariant_files(&self) -> Result<InvariantFiles> {
+        Ok(self.invariant_files.clone())
     }
 }

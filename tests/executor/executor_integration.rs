@@ -1,12 +1,10 @@
 use anyhow::Result;
 use fuzzming::{
     executor::{
-        adapters::solidity_generator::SolidityGenerator,
-        infrastructure::FileSystemWriter,
-        ports::CodeGeneratorPort,
-        use_cases::write_bodies::write_bodies,
+        adapters::solidity_generator::SolidityGenerator, infrastructure::FileSystemWriter,
+        ports::CodeGeneratorPort, use_cases::write_bodies::write_bodies,
     },
-    interfaces::artifacts::BodiesJson,
+    shared::models::BodiesJson,
 };
 use std::path::PathBuf;
 
@@ -25,12 +23,14 @@ async fn executor_generates_vault_files() -> Result<()> {
     // --- assertions ---
 
     let bodies_path = output_dir().join("test/Vault.bodies.json");
-    assert!(bodies_path.exists(), "test/Vault.bodies.json was not created");
+    assert!(
+        bodies_path.exists(),
+        "test/Vault.bodies.json was not created"
+    );
     let written: BodiesJson = serde_json::from_str(&std::fs::read_to_string(&bodies_path)?)?;
     assert_eq!(written.meta.contract, "Vault");
 
-    let handler_src =
-        std::fs::read_to_string(output_dir().join("test/handlers/VaultHandler.sol"))?;
+    let handler_src = std::fs::read_to_string(output_dir().join("test/handlers/VaultHandler.sol"))?;
     assert!(handler_src.contains("pragma solidity ^0.8.20"));
     assert!(handler_src.contains("contract VaultHandler is BaseHandler"));
     assert!(handler_src.contains("function handler_deposit"));

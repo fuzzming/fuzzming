@@ -1,9 +1,8 @@
-use anyhow::Result;
-use crate::entry::cicd::env_reader::{read_cicd_env, CicdEnv};
-use crate::interfaces::signals::SessionRequest;
-use crate::interfaces::state::{SessionConfig, OutputFormat, Language, Fuzzer};
-use crate::orchestrator::session_orchestrator::SessionOrchestrator;
 use crate::composition::composition_root::CompositionRoot;
+use crate::entry::cicd::env_reader::{read_cicd_env, CicdEnv};
+use crate::shared::models::{Fuzzer, Language, OutputFormat, SessionConfig};
+use crate::shared::requests::session_request::SessionRequest;
+use anyhow::Result;
 
 pub struct CicdAdapter;
 

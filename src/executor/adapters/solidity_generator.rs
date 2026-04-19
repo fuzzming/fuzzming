@@ -1,6 +1,6 @@
 use crate::executor::infrastructure::FileSystemWriter;
 use crate::executor::ports::CodeGeneratorPort;
-use crate::interfaces::artifacts::BodiesJson;
+use crate::shared::models::BodiesJson;
 use anyhow::Result;
 use async_trait::async_trait;
 
