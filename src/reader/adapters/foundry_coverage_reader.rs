@@ -1,6 +1,6 @@
+use crate::reader::domain::Coverage;
 use crate::reader::infrastructure::FileSystemReader;
 use crate::reader::ports::coverage_reader_port::CoverageReaderPort;
-use crate::reader::use_cases::parse_lcov;
 use crate::shared::models::CoverageContext;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -24,10 +24,10 @@ impl CoverageReaderPort for FoundryCoverageReader {
             None => return Ok(None),
         };
 
-        let mut coverage = parse_lcov::parse_lcov(&raw_lcov)?;
+        let mut coverage = Coverage::from_lcov(&raw_lcov)?;
 
-        for gap in coverage.gaps.iter_mut() {
-            if gap.file.is_empty() {
+        for gap in coverage.gaps_mut() {
+            if gap.file.is_empty() || gap.line == 0 {
                 continue;
             }
             if let Ok(source) = self.reader.read_file(&gap.file).await {
@@ -48,6 +48,6 @@ impl CoverageReaderPort for FoundryCoverageReader {
             }
         }
 
-        Ok(Some(coverage))
+        Ok(Some(coverage.into_context()))
     }
 }
