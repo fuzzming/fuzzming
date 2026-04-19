@@ -1,20 +1,16 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use crate::interfaces::signals::{RoundSignal, LlmSignal};
-use crate::interfaces::ports::{LlmEnginePort, LlmReaderPort};
+use crate::interfaces::ports::LlmEnginePort;
 use crate::llm::ports::LlmGateway;
 
 pub struct LlmEngine {
-    pub reader: Box<dyn LlmReaderPort>,
     pub gateway: Box<dyn LlmGateway>,
 }
 
 impl LlmEngine {
-    pub fn new(
-        reader: Box<dyn LlmReaderPort>,
-        gateway: Box<dyn LlmGateway>,
-    ) -> Self {
-        Self { reader, gateway }
+    pub fn new(gateway: Box<dyn LlmGateway>) -> Self {
+        Self { gateway }
     }
 }
 

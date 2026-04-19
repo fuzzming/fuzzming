@@ -2,14 +2,12 @@ pub mod executor_port;
 pub mod llm_engine_port;
 pub mod fuzzer_engine_port;
 pub mod reporter_port;
-pub mod fuzzer_reader_port;
-pub mod llm_reader_port;
+pub mod reader_port;
 pub mod reporter_reader_port;
 
 pub use executor_port::*;
 pub use llm_engine_port::*;
 pub use fuzzer_engine_port::*;
 pub use reporter_port::*;
-pub use fuzzer_reader_port::*;
-pub use llm_reader_port::*;
+pub use reader_port::*;
 pub use reporter_reader_port::*;
