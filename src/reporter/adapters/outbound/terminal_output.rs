@@ -1,4 +1,4 @@
-use crate::reporter::ports::OutputPort;
+use crate::reporter::ports::outbound::OutputPort;
 
 pub struct TerminalOutput;
 

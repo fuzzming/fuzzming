@@ -1,4 +1,4 @@
-use crate::reporter::ports::OutputPort;
+use crate::reporter::ports::outbound::OutputPort;
 use crate::shared::ports::{ReporterPort, ReporterReaderPort};
 use crate::shared::responses::session_outcome::SessionOutcome;
 
