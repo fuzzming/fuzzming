@@ -1,85 +1,143 @@
-# Executor — What changed
+# Executor Component
 
-This document covers everything added or modified in the executor implementation.
+The Executor is the **write gateway** of FuzzMing. After the Generator produces new bodies and config, the orchestrator packages them into an `ExecutorInput` and calls the Executor. The Executor writes the generated Solidity files and patches `foundry.toml`. It never reads files and never runs external processes.
 
 ---
 
-## New files
+## Responsibility
 
-### `src/lib.rs`
-Added a library target so examples and future integration tests can import crate modules directly. `main.rs` is now a thin entry point that delegates to the library.
+One job: take `BodiesJson` and `FuzzerConfigArtifact` from `ExecutorInput` and write them to disk. All logic for how to write is inside the use case — the inbound adapter is a thin delegator.
 
-### `src/shared/artifacts/bodies_json.rs`
-Defines the `BodiesJson` artifact — the structured JSON produced by the LLM each round. Every value is already valid Solidity. The generator assembles `.sol` files from these strings without any interpretation.
+---
 
-Key types:
-- `BodiesJson` — top-level struct with `meta`, `handler`, `invariant_test`
-- `HandlerBodies` — imports, state vars, ghost vars, constructor, functions (`IndexMap`), target selectors
-- `InvariantTestBodies` — imports, state vars, setUp body, invariants (`IndexMap`)
+## Directory structure
 
-`IndexMap` is used for `functions` and `invariants` so insertion order is preserved across serialisation rounds — critical for stable `targetSelectors` weights.
-
-All fields serialise with camelCase keys to match the JSON schema expected by the LLM.
-
-### `src/executor/writers/bodies_writer.rs`
-Serialises `BodiesJson` to `test/<ContractName>.bodies.json` using `serde_json::to_string_pretty`.
-
-### `src/executor/writers/solidity_generator.rs`
-Two functions — `generate_handler` and `generate_invariant_test` — that assemble complete Solidity contracts from `BodiesJson` strings. The generator emits strings verbatim; it never interprets or reformats them.
-
-### `src/executor/writers/solidity_generator_tests.rs`
-Separate test file linked via `#[path]`. Six tests covering:
-- Handler `.sol` file is created at the path declared in bodies.json
-- Invariant test `.sol` file is created at the path declared in bodies.json
-- Handler content contains all expected Solidity sections
-- Invariant test content contains all expected Solidity sections
-- Functions appear in insertion order (IndexMap guarantee)
-- `bodies.json` is saved to disk and round-trips cleanly through `serde_json`
-
-### `examples/Vault.bodies.json`
-A complete real example using a Vault contract — two handler functions, two invariants, weighted `targetSelectors`. Used directly by the generate example.
-
-### `examples/generate.rs`
-Runnable example:
-```bash
-cargo run --example generate
 ```
-Reads `examples/Vault.bodies.json`, writes `test/Vault.bodies.json` and both generated `.sol` files to `examples/output/`. Use this to inspect output after editing the JSON.
+src/executor/
+├── adapters/
+│   ├── inbound/
+│   │   └── executor.rs                     # Inbound adapter — implements ExecutorPort, delegates to ExecutorRunPort
+│   └── outbound/
+│       ├── file_system_writer.rs           # FileSystemWriter — only place that calls tokio::fs::write
+│       ├── solidity_generator.rs           # Implements CodeGeneratorPort — assembles .sol files from BodiesJson
+│       └── foundry_config_writer.rs        # Implements ConfigWriterPort — patches foundry.toml
+├── ports/
+│   ├── inbound/
+│   │   └── executor_run_port.rs            # ExecutorRunPort — inbound contract between adapter and use case
+│   └── outbound/
+│       ├── code_generator_port.rs          # CodeGeneratorPort — generate(bodies, writer)
+│       └── config_writer_port.rs           # ConfigWriterPort — write(config, writer)
+└── use_cases/
+    ├── execute.rs                          # ExecuteUseCase — owns outbound ports, implements ExecutorRunPort
+    └── write_bodies.rs                     # Pure function: serialise BodiesJson to disk
+```
 
 ---
 
-## Modified files
+## Architecture layers
 
-### `src/shared/artifacts/foundry_config.rs`
-Added `current_toml: Option<String>`. The Reader provides the existing `foundry.toml` content; the Orchestrator packages it into `FoundryConfig` before calling the Executor. This lets `FoundryConfigWriter` patch only the managed sections without the Executor ever reading the file itself.
+```
+Orchestrator
+    │
+    └─ ExecutorPort (shared/ports)
+           │
+    Executor (adapters/inbound)                 ← implements ExecutorPort
+           │
+    ExecutorRunPort (ports/inbound)             ← inbound contract
+           │
+    ExecuteUseCase (use_cases)                  ← implements ExecutorRunPort, owns outbound ports
+           │
+    ├─ CodeGeneratorPort (ports/outbound)       ← outbound contract
+    │      │
+    │  SolidityGenerator (adapters/outbound)    ← implements CodeGeneratorPort
+    │
+    ├─ ConfigWriterPort (ports/outbound)        ← outbound contract
+    │      │
+    │  FoundryConfigWriter (adapters/outbound)  ← implements ConfigWriterPort
+    │
+    └─ FileSystemWriter (adapters/outbound)     ← raw I/O boundary, injected into outbound adapters
+```
 
-### `src/shared/artifacts/mod.rs`
-Added `pub mod bodies_json` and the corresponding `pub use`.
+### Inbound adapter — `adapters/inbound/executor.rs`
 
-### `src/llm/ports/executor_port.rs`
-Replaced `write_invariants(InvariantSet)` with `write_bodies(BodiesJson)`. The old method wrote raw Solidity directly; the new method writes bodies.json and triggers the generator. `append_memory` was removed from the trait (the user removed it as out of scope for this iteration).
+Implements `ExecutorPort`. Holds `Box<dyn ExecutorRunPort>`. Delegates entirely to the use case — contains no logic of its own.
 
-### `src/executor/infrastructure/file_system_writer.rs`
-Implemented. Wraps `tokio::fs::create_dir_all` + `tokio::fs::write`. This is the only place in the codebase that calls those functions directly — all writers go through this struct.
+### Inbound port — `ports/inbound/executor_run_port.rs`
 
-### `src/executor/writers/mod.rs`
-Replaced `invariant_writer` and `memory_writer` with `bodies_writer` and `solidity_generator`.
+```rust
+pub trait ExecutorRunPort: Send + Sync {
+    async fn execute(&self, input: ExecutorInput) -> Result<()>;
+}
+```
 
-### `src/executor/writers/foundry_config_writer.rs`
-Implemented. Builds the `[profile.fuzzming]` TOML section from `FoundryConfig` fields, then patches `foundry.toml` using `replace_or_append_section`. Writes `[profile.coverage]` when the section is absent (first round). Four unit tests cover append, replace, section preservation, and empty-base edge cases.
+### Use case — `use_cases/execute.rs`
 
-### `src/executor/executor.rs`
-Implemented `ExecutorPort`:
-- `write_bodies` — calls `write_bodies`, `generate_handler`, `generate_invariant_test` in sequence
-- `write_foundry_config` — delegates to `foundry_config_writer`
+`ExecuteUseCase` implements `ExecutorRunPort`. Owns all outbound dependencies:
 
-Functions imported directly (`use ... ::fn_name`) rather than called with module-path prefix.
+```rust
+pub struct ExecuteUseCase {
+    writer: FileSystemWriter,
+    generator: Arc<dyn CodeGeneratorPort>,
+    config_writer: Arc<dyn ConfigWriterPort>,
+}
+```
 
-### `src/main.rs`
-Simplified to a single entry point that imports from the library crate.
+Sequences the three write operations: bodies JSON, generated Solidity files, Foundry config patch.
 
-### `Cargo.toml`
-Added:
-- `[lib]` target pointing to `src/lib.rs`
-- `indexmap = { version = "2", features = ["serde"] }` — ordered map for function/invariant keys
-- `[dev-dependencies] tempfile = "3"` — temp directories in tests
+### Outbound ports — `ports/outbound/`
+
+| Trait | Purpose |
+|---|---|
+| `CodeGeneratorPort` | Assemble and write `.sol` files from `BodiesJson` |
+| `ConfigWriterPort` | Patch `foundry.toml` with the new `FoundryConfig` |
+
+### Outbound adapters — `adapters/outbound/`
+
+`FileSystemWriter` is the single I/O boundary — the only struct allowed to call `tokio::fs`. Both `SolidityGenerator` and `FoundryConfigWriter` receive it as a parameter.
+
+`SolidityGenerator` implements `CodeGeneratorPort`. It emits Solidity strings verbatim — it never interprets or reformats them.
+
+`FoundryConfigWriter` implements `ConfigWriterPort`. Builds the `[profile.fuzzming]` TOML section from `FoundryConfig` fields, then patches `foundry.toml` using replace-or-append logic.
+
+---
+
+## Data flow
+
+```
+Orchestrator
+  │
+  └─ Executor::execute(ExecutorInput)        ← ExecutorPort (inbound adapter)
+       │
+       └─ ExecuteUseCase::execute(input)     ← ExecutorRunPort (use case)
+             │
+             ├─ write_bodies(&input.bodies, &writer)
+             │     serialises BodiesJson → test/<Contract>.bodies.json
+             │
+             ├─ generator.generate(&input.bodies, &writer)   ← CodeGeneratorPort
+             │     assembles Handler .sol + InvariantTest .sol
+             │
+             └─ config_writer.write(&input.fuzzer_config, &writer)  ← ConfigWriterPort
+                   patches [profile.fuzzming] in foundry.toml
+```
+
+---
+
+## Wiring at startup
+
+```rust
+let writer         = FileSystemWriter::new(base_path);
+let generator      = Arc::new(SolidityGenerator);
+let config_writer  = Arc::new(FoundryConfigWriter);
+let use_case       = Box::new(ExecuteUseCase::new(writer, generator, config_writer));
+let executor       = Executor::new(use_case);
+```
+
+`Executor` never imports `ExecuteUseCase`. All concrete types are resolved at the entry point only.
+
+---
+
+## Hard rules
+
+- `Executor` never reads files — that is the Reader's job.
+- `Executor` never touches developer-owned files — only fuzzming-managed paths.
+- `FileSystemWriter` is the only struct that calls `tokio::fs`.
