@@ -137,21 +137,66 @@ pub fn build_round_n_prompt(request: &LlmGenerationRequest) -> Result<String> {
 
     Ok(format!(
         "Round: {}\n\
-         Return JSON only.\n\
+         Return JSON only. No markdown, no prose, no code fences.\n\
          \n\
-         If round is 1, return:\n\
+         STRICT OUTPUT CONTRACT:\n\
+         - If round == 1, return exactly:\n\
                      {{\n\
            \"mode\":\"full\",\n\
            \"bodies\": {{...}},\n\
            \"foundry_config\": {{...}}\n\
                      }}\n\
-         \n\
-         If round > 1, prefer patch mode:\n\
+         - If round > 1, you MUST return exactly:\n\
                      {{\n\
            \"mode\":\"patch\",\n\
-           \"bodies_updates\":[{{\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}],\n\
-           \"foundry_config_updates\":[{{\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}]\n\
+               \"bodies_updates\":[{{\"op\":\"add|modify|remove\",\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}],\n\
+               \"foundry_config_updates\":[{{\"op\":\"add|modify|remove\",\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}]\n\
                      }}\n\
+         \n\
+         PATCH RULES (round > 1):\n\
+         1. Multiple patches are allowed: each updates array may contain 0..N items.\n\
+         2. Each patch item MUST contain exactly 4 keys: op, path, value, reason.\n\
+         3. path MUST be a dot-path to the field being replaced.\n\
+         4. op MUST be one of add, modify, remove.\n\
+         5. add requires target key missing; modify requires existing key replacement; remove deletes existing key.\n\
+         6. For remove, set value to null.\n\
+         7. Do not include duplicate path entries in the same response.\n\
+         8. If no change is required for one artifact, return that artifact updates as [].\n\
+         9. Never return nested wrappers like {{\"patch\":{{...}}}} or {{\"full\":{{...}}}}.\n\
+         \n\
+         VALID bodies path prefixes:\n\
+         - meta.contract\n\
+         - meta.contractPath\n\
+         - meta.solidity\n\
+         - meta.generatedAt\n\
+         - handler.contractName\n\
+         - handler.outputPath\n\
+         - handler.imports\n\
+         - handler.stateVars\n\
+         - handler.ghostVars\n\
+         - handler.constructorSignature\n\
+         - handler.constructorBody\n\
+         - handler.functions.<functionName>\n\
+         - handler.targetSelectors\n\
+         - invariantTest.contractName\n\
+         - invariantTest.outputPath\n\
+         - invariantTest.imports\n\
+         - invariantTest.stateVars\n\
+         - invariantTest.setUpBody\n\
+         - invariantTest.invariants.<invariantName>\n\
+         \n\
+         VALID foundry_config path prefixes:\n\
+         - depth\n\
+         - runs\n\
+         - seed\n\
+         - max_test_rejects\n\
+         - dictionary_weight\n\
+         - call_sequence_weights.<handlerFunctionName>\n\
+         - current_toml\n\
+         \n\
+         Examples:\n\
+         - bodies update path: \"handler.functions.deposit\"\n\
+         - config update path: \"call_sequence_weights.withdraw\"\n\
          \n\
          Existing bodies:\n{}\n\
          \n\

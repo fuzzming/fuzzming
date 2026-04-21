@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 
-use crate::llm::ports::LlmGenerationResponse;
+use crate::llm::domain::llm_generation_response::LlmGenerationResponse;
 
 pub fn extract_json_payload(raw: &str) -> Result<String> {
     let trimmed = raw.trim();

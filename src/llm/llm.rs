@@ -1,5 +1,4 @@
-use crate::llm::ports::{LlmGenerationPort, LlmGenerationRequest, LlmGenerationResponse};
-use crate::llm::use_cases::apply_patch::{apply_bodies_patch, apply_config_patch};
+use crate::llm::ports::{LlmGenerationPort, LlmGenerationRequest};
 use crate::llm::use_cases::assemble_prompt::assemble_prompt;
 use crate::shared::models::AssembledPrompt;
 use crate::shared::models::ContractContext;
@@ -41,32 +40,9 @@ impl LlmEnginePort for Llm {
 
         let response = self.gateway.generate(request).await?;
 
-        let (bodies, foundry_config) = match response {
-            LlmGenerationResponse::Full {
-                bodies,
-                foundry_config,
-            } => (bodies, foundry_config),
-            LlmGenerationResponse::Patch {
-                bodies_updates,
-                foundry_config_updates,
-            } => {
-                let existing_bodies = signal.existing_bodies.ok_or_else(|| {
-                    anyhow::anyhow!("received Patch response on round 1 — no existing bodies")
-                })?;
-                let existing_config = signal.existing_foundry_config.ok_or_else(|| {
-                    anyhow::anyhow!("received Patch response on round 1 — no existing config")
-                })?;
-
-                let bodies = apply_bodies_patch(existing_bodies, &bodies_updates)?;
-                let foundry_config = apply_config_patch(existing_config, &foundry_config_updates)?;
-                (bodies, foundry_config)
-            }
-        };
-
         Ok(LlmSignal {
             status: LlmStatus::Done,
-            bodies: Some(bodies),
-            foundry_config: Some(foundry_config),
+            result: Some(response),
             reason: None,
         })
     }
