@@ -1,4 +1,4 @@
-use crate::llm::ports::{LlmGenerationPort, LlmGenerationRequest};
+use crate::llm::ports::outbound::{LlmGenerationPort, LlmGenerationRequest};
 use crate::llm::use_cases::assemble_prompt::assemble_prompt;
 use crate::shared::models::AssembledPrompt;
 use crate::shared::models::ContractContext;

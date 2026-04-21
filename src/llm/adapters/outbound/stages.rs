@@ -4,7 +4,6 @@ use crate::shared::models::{BodiesJson, FoundryConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisStage {
-    // Value keeps parser resilient when model returns objects instead of plain strings.
     pub vulnerability_analysis: Vec<serde_json::Value>,
     pub handler_logic_pseudocode: serde_json::Value,
     pub invariant_mathematical_proofs: Vec<serde_json::Value>,

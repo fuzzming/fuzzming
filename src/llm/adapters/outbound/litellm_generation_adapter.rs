@@ -13,7 +13,7 @@ use super::stages::{AnalysisStage, BodiesStage, ConfigStage};
 use crate::llm::domain::llm_generation_response::{
     LlmGenerationResponse, LlmGenerationResult, LlmUsage,
 };
-use crate::llm::ports::{LlmClientPort, LlmGenerationPort, LlmGenerationRequest};
+use crate::llm::ports::outbound::{LlmClientPort, LlmGenerationPort, LlmGenerationRequest};
 
 const MAX_ATTEMPTS: usize = 2;
 
@@ -109,7 +109,6 @@ impl LiteLlmGenerationAdapter {
             )
             .await?;
 
-
         let bodies_stage: BodiesStage = self
             .request_json(
                 &system_prompt,
@@ -119,7 +118,6 @@ impl LiteLlmGenerationAdapter {
                 &mut usage,
             )
             .await?;
-
 
         let config_stage: ConfigStage = self
             .request_json(

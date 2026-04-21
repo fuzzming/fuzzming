@@ -6,7 +6,7 @@ use litellm_rs::{completion, system_message, user_message, CompletionOptions};
 use serde_json::json;
 
 use crate::llm::domain::llm_generation_response::LlmUsage;
-use crate::llm::ports::LlmClientPort;
+use crate::llm::ports::outbound::LlmClientPort;
 
 pub struct LiteLlmClient {
     model: String,

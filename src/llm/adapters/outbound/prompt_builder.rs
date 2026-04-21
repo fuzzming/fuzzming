@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 
-use crate::llm::ports::LlmGenerationRequest;
+use crate::llm::ports::outbound::LlmGenerationRequest;
 use crate::shared::models::{BodiesJson, Role};
 
 use super::stages::AnalysisStage;
