@@ -4,6 +4,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait LlmRunPort: Send + Sync {
+pub trait GeneratorRunPort: Send + Sync {
     async fn run(&self, signal: RoundSignal) -> Result<LlmSignal>;
 }

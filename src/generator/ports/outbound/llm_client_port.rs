@@ -1,4 +1,4 @@
-use crate::llm::domain::llm_generation_response::LlmUsage;
+use crate::generator::domain::generation_response::GenerationUsage;
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -8,5 +8,5 @@ pub trait LlmClientPort: Send + Sync {
         &self,
         system_prompt: &str,
         user_prompt: &str,
-    ) -> Result<(String, Option<LlmUsage>)>;
+    ) -> Result<(String, Option<GenerationUsage>)>;
 }

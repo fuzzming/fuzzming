@@ -1,26 +1,26 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::llm::ports::inbound::LlmRunPort;
-use crate::llm::ports::outbound::{LlmGenerationPort, LlmGenerationRequest};
+use crate::generator::ports::inbound::GeneratorRunPort;
+use crate::generator::ports::outbound::{GenerationPort, GenerationRequest};
 use crate::shared::models::ContractContext;
 use crate::shared::requests::round_signal::RoundSignal;
 use crate::shared::responses::llm_signal::{LlmSignal, LlmStatus};
 
 use super::assemble_prompt::assemble_prompt;
 
-pub struct LlmRunUseCase {
-    gateway: Box<dyn LlmGenerationPort>,
+pub struct GeneratorRunUseCase {
+    gateway: Box<dyn GenerationPort>,
 }
 
-impl LlmRunUseCase {
-    pub fn new(gateway: Box<dyn LlmGenerationPort>) -> Self {
+impl GeneratorRunUseCase {
+    pub fn new(gateway: Box<dyn GenerationPort>) -> Self {
         Self { gateway }
     }
 }
 
 #[async_trait]
-impl LlmRunPort for LlmRunUseCase {
+impl GeneratorRunPort for GeneratorRunUseCase {
     async fn run(&self, signal: RoundSignal) -> Result<LlmSignal> {
         let prompt = assemble_prompt(
             signal.round,
@@ -31,7 +31,7 @@ impl LlmRunPort for LlmRunUseCase {
             signal.coverage_context.clone(),
         )?;
 
-        let request = LlmGenerationRequest {
+        let request = GenerationRequest {
             round: signal.round,
             source_code: signal.source_code.clone(),
             prompt,

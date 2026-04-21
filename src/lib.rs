@@ -2,7 +2,7 @@ pub mod composition;
 pub mod entry;
 pub mod executor;
 pub mod fuzzer;
-pub mod llm;
+pub mod generator;
 pub mod orchestrator;
 pub mod reader;
 pub mod reporter;

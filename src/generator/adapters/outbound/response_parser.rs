@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 
-use crate::llm::domain::llm_generation_response::LlmGenerationResponse;
+use crate::generator::domain::generation_response::GenerationResponse;
 
 pub fn extract_json_payload(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
@@ -17,7 +17,7 @@ pub fn extract_json_payload(raw: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-pub fn parse_generation_response(payload: &str) -> Result<LlmGenerationResponse> {
+pub fn parse_generation_response(payload: &str) -> Result<GenerationResponse> {
     let mut value: serde_json::Value = serde_json::from_str(payload)
         .with_context(|| format!("failed to parse structured response: {payload}"))?;
 
@@ -120,6 +120,6 @@ mod tests {
         }"#;
 
         let parsed = parse_generation_response(payload).expect("must parse normalized patch");
-        assert!(matches!(parsed, LlmGenerationResponse::Patch { .. }));
+        assert!(matches!(parsed, GenerationResponse::Patch { .. }));
     }
 }

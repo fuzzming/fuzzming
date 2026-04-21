@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use litellm_rs::{completion, system_message, user_message, CompletionOptions};
 use serde_json::json;
 
-use crate::llm::domain::llm_generation_response::LlmUsage;
-use crate::llm::ports::outbound::LlmClientPort;
+use crate::generator::domain::generation_response::GenerationUsage;
+use crate::generator::ports::outbound::LlmClientPort;
 
 pub struct LiteLlmClient {
     model: String,
@@ -35,7 +35,7 @@ impl LiteLlmClient {
         &self,
         system_prompt: &str,
         user_prompt: &str,
-    ) -> Result<(String, Option<LlmUsage>)> {
+    ) -> Result<(String, Option<GenerationUsage>)> {
         let response = completion(
             &self.model,
             vec![
@@ -47,7 +47,7 @@ impl LiteLlmClient {
         .await
         .map_err(|e| anyhow!("litellm completion failed: {e}"))?;
 
-        let usage = response.usage.as_ref().map(|usage| LlmUsage {
+        let usage = response.usage.as_ref().map(|usage| GenerationUsage {
             calls: 1,
             prompt_tokens: usage.prompt_tokens as u64,
             completion_tokens: usage.completion_tokens as u64,
@@ -86,7 +86,7 @@ impl LlmClientPort for LiteLlmClient {
         &self,
         system_prompt: &str,
         user_prompt: &str,
-    ) -> Result<(String, Option<LlmUsage>)> {
+    ) -> Result<(String, Option<GenerationUsage>)> {
         self.call(system_prompt, user_prompt).await
     }
 }

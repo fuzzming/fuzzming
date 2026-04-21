@@ -10,10 +10,10 @@ use super::response_parser::{
     build_parse_repair_prompt, extract_json_payload, parse_generation_response,
 };
 use super::stages::{AnalysisStage, BodiesStage, ConfigStage};
-use crate::llm::domain::llm_generation_response::{
-    LlmGenerationResponse, LlmGenerationResult, LlmUsage,
+use crate::generator::domain::generation_response::{
+    GenerationResponse, GenerationResult, GenerationUsage,
 };
-use crate::llm::ports::outbound::{LlmClientPort, LlmGenerationPort, LlmGenerationRequest};
+use crate::generator::ports::outbound::{LlmClientPort, GenerationPort, GenerationRequest};
 
 const MAX_ATTEMPTS: usize = 2;
 
@@ -39,7 +39,7 @@ impl LiteLlmGenerationAdapter {
         }
     }
 
-    fn merge_usage(total: &mut LlmUsage, usage: Option<LlmUsage>) {
+    fn merge_usage(total: &mut GenerationUsage, usage: Option<GenerationUsage>) {
         if let Some(usage) = usage {
             total.calls = total.calls.saturating_add(usage.calls);
             total.prompt_tokens = total.prompt_tokens.saturating_add(usage.prompt_tokens);
@@ -61,7 +61,7 @@ impl LiteLlmGenerationAdapter {
         initial_prompt: String,
         stage_name: &str,
         schema_hint: &str,
-        usage_total: &mut LlmUsage,
+        usage_total: &mut GenerationUsage,
     ) -> Result<T>
     where
         T: DeserializeOwned,
@@ -94,10 +94,10 @@ impl LiteLlmGenerationAdapter {
 
     async fn generate_round_one(
         &self,
-        request: &LlmGenerationRequest,
-    ) -> Result<LlmGenerationResult> {
+        request: &GenerationRequest,
+    ) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
-        let mut usage = LlmUsage::default();
+        let mut usage = GenerationUsage::default();
 
         let analysis: AnalysisStage = self
             .request_json(
@@ -129,8 +129,8 @@ impl LiteLlmGenerationAdapter {
             )
             .await?;
 
-        Ok(LlmGenerationResult {
-            response: LlmGenerationResponse::Full {
+        Ok(GenerationResult {
+            response: GenerationResponse::Full {
                 bodies: bodies_stage.bodies,
                 foundry_config: config_stage.foundry_config,
             },
@@ -140,12 +140,12 @@ impl LiteLlmGenerationAdapter {
 
     async fn generate_round_n(
         &self,
-        request: &LlmGenerationRequest,
-    ) -> Result<LlmGenerationResult> {
+        request: &GenerationRequest,
+    ) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
         let mut user_prompt = build_round_n_prompt(request)?;
         let mut last_error = String::new();
-        let mut usage = LlmUsage::default();
+        let mut usage = GenerationUsage::default();
 
         for attempt in 1..=MAX_ATTEMPTS {
             let (content, call_usage) = self.client.complete(&system_prompt, &user_prompt).await?;
@@ -154,7 +154,7 @@ impl LiteLlmGenerationAdapter {
 
             match parse_generation_response(&payload) {
                 Ok(parsed) => {
-                    return Ok(LlmGenerationResult {
+                    return Ok(GenerationResult {
                         response: parsed,
                         usage,
                     })
@@ -183,8 +183,8 @@ impl LiteLlmGenerationAdapter {
 }
 
 #[async_trait]
-impl LlmGenerationPort for LiteLlmGenerationAdapter {
-    async fn generate(&self, request: LlmGenerationRequest) -> Result<LlmGenerationResult> {
+impl GenerationPort for LiteLlmGenerationAdapter {
+    async fn generate(&self, request: GenerationRequest) -> Result<GenerationResult> {
         self.set_api_key();
 
         if request.round == 1 {

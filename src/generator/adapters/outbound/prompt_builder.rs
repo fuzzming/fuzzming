@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 
-use crate::llm::ports::outbound::LlmGenerationRequest;
+use crate::generator::ports::outbound::GenerationRequest;
 use crate::shared::models::{BodiesJson, Role};
 
 use super::stages::AnalysisStage;
 
-pub fn system_prompt_from_request(request: &LlmGenerationRequest) -> String {
+pub fn system_prompt_from_request(request: &GenerationRequest) -> String {
     request
         .prompt
         .messages
@@ -129,7 +129,7 @@ pub fn build_round_one_config_prompt(
     ))
 }
 
-pub fn build_round_n_prompt(request: &LlmGenerationRequest) -> Result<String> {
+pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
     let existing_bodies_json = serde_json::to_string_pretty(&request.existing_bodies)
         .context("failed to serialize existing bodies")?;
     let existing_config_json = serde_json::to_string_pretty(&request.existing_foundry_config)

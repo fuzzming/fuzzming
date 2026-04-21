@@ -1,4 +1,4 @@
-use crate::llm::domain::Prompt;
+use crate::generator::domain::Prompt;
 use crate::shared::models::{AssembledPrompt, ContractContext, CoverageContext};
 use anyhow::Result;
 

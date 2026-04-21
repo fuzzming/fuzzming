@@ -5,7 +5,7 @@ use crate::shared::models::{BodiesJson, FoundryConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "camelCase")]
-pub enum LlmGenerationResponse {
+pub enum GenerationResponse {
     Full {
         bodies: BodiesJson,
         foundry_config: FoundryConfig,
@@ -17,7 +17,7 @@ pub enum LlmGenerationResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct LlmUsage {
+pub struct GenerationUsage {
     pub calls: u64,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
@@ -28,9 +28,9 @@ pub struct LlmUsage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmGenerationResult {
-    pub response: LlmGenerationResponse,
-    pub usage: LlmUsage,
+pub struct GenerationResult {
+    pub response: GenerationResponse,
+    pub usage: GenerationUsage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
