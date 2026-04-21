@@ -64,7 +64,7 @@ Traits — the contracts each component must implement. The orchestrator depends
 
 | Trait | Implemented by | Signature |
 |---|---|---|
-| `LlmEnginePort` | `Llm` | `run(RoundSignal) -> LlmSignal` |
+| `LlmEnginePort` | `Generator` | `run(RoundSignal) -> LlmSignal` |
 | `FuzzerEnginePort` | `Fuzzer` | `run(RoundSignal) -> FuzzReport` |
 | `ExecutorPort` | `Executor` | `execute(ExecutorInput) -> ()` |
 | `ReaderPort` | `Reader` | `get_contract_context`, `get_fuzz_output`, `get_coverage_context`, `get_invariant_files` |

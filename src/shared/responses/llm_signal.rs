@@ -1,4 +1,4 @@
-use crate::llm::domain::llm_generation_response::LlmGenerationResult;
+use crate::generator::domain::generation_response::GenerationResult;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,6 +10,6 @@ pub enum LlmStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmSignal {
     pub status: LlmStatus,
-    pub result: Option<LlmGenerationResult>,
+    pub result: Option<GenerationResult>,
     pub reason: Option<String>,
 }

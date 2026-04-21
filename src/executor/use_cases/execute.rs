@@ -1,0 +1,43 @@
+use std::sync::Arc;
+
+use anyhow::Result;
+use async_trait::async_trait;
+
+use crate::executor::adapters::outbound::FileSystemWriter;
+use crate::executor::ports::inbound::ExecutorRunPort;
+use crate::executor::ports::outbound::{CodeGeneratorPort, ConfigWriterPort};
+use crate::shared::models::ExecutorInput;
+
+use super::write_bodies::write_bodies;
+
+pub struct ExecuteUseCase {
+    writer: FileSystemWriter,
+    generator: Arc<dyn CodeGeneratorPort>,
+    config_writer: Arc<dyn ConfigWriterPort>,
+}
+
+impl ExecuteUseCase {
+    pub fn new(
+        writer: FileSystemWriter,
+        generator: Arc<dyn CodeGeneratorPort>,
+        config_writer: Arc<dyn ConfigWriterPort>,
+    ) -> Self {
+        Self {
+            writer,
+            generator,
+            config_writer,
+        }
+    }
+}
+
+#[async_trait]
+impl ExecutorRunPort for ExecuteUseCase {
+    async fn execute(&self, input: ExecutorInput) -> Result<()> {
+        write_bodies(&input.bodies, &self.writer).await?;
+        self.generator.generate(&input.bodies, &self.writer).await?;
+        self.config_writer
+            .write(&input.fuzzer_config, &self.writer)
+            .await?;
+        Ok(())
+    }
+}

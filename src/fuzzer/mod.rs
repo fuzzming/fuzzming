@@ -1,4 +1,3 @@
-pub mod use_cases;
+pub mod adapters;
 pub mod ports;
-pub mod infrastructure;
-pub mod fuzzer;
+pub mod use_cases;

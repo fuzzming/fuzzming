@@ -1,4 +1,4 @@
-use crate::executor::infrastructure::FileSystemWriter;
+use crate::executor::adapters::outbound::FileSystemWriter;
 use crate::shared::models::BodiesJson;
 use anyhow::Result;
 

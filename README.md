@@ -26,10 +26,10 @@ The first supported stack is **Solidity + Foundry**. The architecture is intenti
 Each round follows this sequence:
 
 ```
-1. LLMEngine reads the target source file(s) and any previous fuzz output / coverage gaps
-2. LLMEngine assembles a prompt and calls the configured LLM endpoint
-3. LLMEngine writes generated test bodies → fuzzming-owned test files
-4. LLMEngine writes an adapted fuzzer config for the current round
+1. Reader reads the target source file(s) and any previous fuzz output / coverage gaps
+2. Generator assembles a prompt and calls the configured LLM endpoint
+3. Executor writes generated test bodies → fuzzming-owned test files
+4. Executor writes an adapted fuzzer config for the current round
 5. FuzzerEngine runs the fuzzer subprocess
 6. If the run exits clean → FuzzerEngine runs the coverage tool
 7. Orchestrator evaluates the outcome and either stops or starts the next round
@@ -49,12 +49,12 @@ Termination happens on the first of these conditions:
 
 ## Architecture vision: supporting any language, any fuzzer
 
-FuzzMing is built on **clean architecture with a sequential orchestration model**. The flow is linear — the Orchestrator calls each component in order and passes data between them. Components never call each other. All inter-component contracts are defined in `src/shared/ports/` so there is one place to find every boundary in the system.
+FuzzMing is built on **hexagonal architecture with a sequential orchestration model**. The flow is linear — the Orchestrator calls each component in order and passes data between them. Components never call each other. All inter-component contracts are defined in `src/shared/ports/` so there is one place to find every boundary in the system.
 
 ```
 SessionOrchestrator
     │
-    ├── llm_engine.run(RoundSignal) ──────────────► LlmSignal
+    ├── generator.run(RoundSignal) ───────────────► LlmSignal
     │                                                    │
     ├── executor.execute(ExecutorInput) ◄────────────────┘
     │
@@ -68,7 +68,7 @@ Every component is behind a port defined in `src/shared/ports/`. The Orchestrato
 ```
 src/shared/ports/        ← all inter-component contracts live here
     │
-    ├── LlmEnginePort        ← Orchestrator → LLMEngine
+    ├── LlmEnginePort        ← Orchestrator → Generator
     ├── ExecutorPort         ← Orchestrator → Executor
     ├── FuzzerEnginePort     ← Orchestrator → FuzzerEngine
     ├── ReporterPort         ← Orchestrator → Reporter
@@ -87,7 +87,7 @@ Internal extension points (language axis, fuzzer axis) stay in each component's 
 ```
 src/shared/
 ├── ports/            Inter-component contracts — every boundary in one place
-│   ├── llm_engine_port.rs       Orchestrator → LLMEngine
+│   ├── llm_engine_port.rs       Orchestrator → Generator
 │   ├── fuzzer_engine_port.rs    Orchestrator → FuzzerEngine
 │   ├── executor_port.rs         Orchestrator → Executor
 │   ├── reporter_port.rs         Orchestrator → Reporter
@@ -137,7 +137,7 @@ The full checklist to add, for example, **Rust + cargo-fuzz**:
 3. **Executor fuzzer adapter** — add `src/executor/adapters/cargo_fuzz_config_writer.rs` implementing `ConfigWriterPort` to write `Cargo.toml` fuzz config.
 4. **Fuzzer adapter** — add `src/fuzzer/adapters/cargo_fuzz_runner.rs` implementing `TestRunnerPort` to run `cargo fuzz run`.
 5. **Config artifact** — add `CargoFuzzConfig` to `src/shared/artifacts/` and a `CargoFuzz` variant to `FuzzerConfigArtifact`.
-6. **LLM prompt** — add a Rust-flavoured prompt template to `LLMEngine`'s prompt assembler.
+6. **Generator prompt** — add a Rust-flavoured prompt template to `src/generator/use_cases/assemble_prompt.rs`.
 7. **SessionConfig** — add `Language::Rust` and `Fuzzer::CargoFuzz` variants.
 8. **Composition root** — add match arms in `CompositionRoot::build` for the new variants.
 
@@ -252,35 +252,38 @@ No language-specific crates are needed — the language adapters shell out to th
 src/
 ├── shared/              Shared contracts — models, ports, requests, responses
 ├── orchestrator/        Session loop + termination logic
-├── llm/                 Prompt assembly, test body generation, config adaptation
+├── generator/           Prompt assembly, test body generation, config adaptation
 ├── fuzzer/              Fuzzer subprocess execution and outcome evaluation
 ├── reader/              Single read gateway + all file and output parsers
-├── executor/            Single write gateway — use_cases, ports, adapters, infrastructure
+├── executor/            Single write gateway — use_cases, ports, adapters
 ├── reporter/            Stateless report formatter (terminal and CI output)
 ├── entry/               CLI (clap) and CI/CD (env vars) entry points
 └── composition/         Composition root — the only file wiring concrete types
 ```
 
-Each component follows the same internal layout:
+Each component follows the same hexagonal internal layout:
 
 ```
 <component>/
-├── <component>.rs    ← main struct, implements its inter-component port
-├── use_cases/        ← application logic, no I/O
-├── ports/            ← internal extension point traits (not inter-component)
-├── adapters/         ← tool-specific implementations of internal ports
-└── infrastructure/   ← raw I/O boundary (fs, process, HTTP)
+├── adapters/
+│   ├── inbound/    ← receives external input, implements shared inter-component port, delegates to inbound port
+│   └── outbound/   ← implements outbound port traits, owns all I/O (fs, HTTP, subprocess)
+├── ports/
+│   ├── inbound/    ← trait contract between inbound adapter and use case
+│   └── outbound/   ← trait contract between use case and outbound adapters
+└── use_cases/      ← application logic, no I/O, owns outbound port dependencies
 ```
 
 **Hard rules:**
 
 - No component calls another component directly — the Orchestrator sequences all calls.
 - All inter-component port traits live in `src/shared/ports/`.
-- Internal extension points (language axis, fuzzer axis) live in the component's own `ports/`.
+- Inbound adapters never hold outbound ports directly — they go through a use case via an inbound port.
+- Internal extension points (language axis, fuzzer axis) live in the component's own `ports/outbound/`.
 - `Reader` never writes. `Executor` never reads.
 - `Executor` never touches developer-owned files.
 - `CompositionRoot` is the only file that wires concrete types.
-- `infrastructure/` touches the OS. `adapters/` translates between the port language and the tool language.
+- All OS calls (fs, process, HTTP) live in `adapters/outbound/` only.
 
 ---
 
@@ -344,7 +347,7 @@ Implementation order that respects the dependency graph:
 
 1. `Reader` + `FileSystemReader` — no external dependencies
 2. `Executor` + `FileSystemWriter` — no external dependencies
-3. `LLMEngine` (LLM adapters, parsers, use cases)
+3. `Generator` (LLM adapters, parsers, use cases)
 4. `FuzzerEngine` (Foundry runner, outcome evaluation)
 5. `Reporter` (format use cases, terminal and CI output)
 6. `SessionOrchestrator` (wire everything via `CompositionRoot`)

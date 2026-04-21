@@ -1,0 +1,125 @@
+use anyhow::{bail, Context, Result};
+
+use crate::generator::domain::generation_response::GenerationResponse;
+
+pub fn extract_json_payload(raw: &str) -> Result<String> {
+    let trimmed = raw.trim();
+
+    if trimmed.starts_with("```") {
+        let stripped = trimmed
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+        return Ok(stripped.to_string());
+    }
+
+    Ok(trimmed.to_string())
+}
+
+pub fn parse_generation_response(payload: &str) -> Result<GenerationResponse> {
+    let mut value: serde_json::Value = serde_json::from_str(payload)
+        .with_context(|| format!("failed to parse structured response: {payload}"))?;
+
+    normalize_envelope(&mut value);
+
+    serde_json::from_value(value)
+        .with_context(|| format!("failed to parse structured response: {payload}"))
+}
+
+pub fn build_parse_repair_prompt(
+    stage_name: &str,
+    schema_hint: &str,
+    previous_payload: &str,
+    parse_error: &str,
+) -> String {
+    format!(
+        "Your {stage_name} JSON is invalid. Repair it.\n\
+         Return JSON only, no markdown.\n\
+         Required shape: {schema_hint}\n\
+         Parse error: {parse_error}\n\
+         Invalid payload:\n{previous_payload}"
+    )
+}
+
+fn normalize_envelope(value: &mut serde_json::Value) {
+    let Some(obj) = value.as_object_mut() else {
+        return;
+    };
+
+    let mode = obj
+        .get("mode")
+        .and_then(|m| m.as_str())
+        .map(|m| m.to_string());
+
+    match mode.as_deref() {
+        Some("full") => {
+            if let Some(full) = obj.remove("full") {
+                if let Some(full_obj) = full.as_object() {
+                    if !obj.contains_key("bodies") {
+                        if let Some(bodies) = full_obj.get("bodies") {
+                            obj.insert("bodies".to_string(), bodies.clone());
+                        }
+                    }
+                    if !obj.contains_key("foundry_config") {
+                        if let Some(foundry_config) = full_obj.get("foundry_config") {
+                            obj.insert("foundry_config".to_string(), foundry_config.clone());
+                        }
+                    }
+                }
+            }
+        }
+        Some("patch") => {
+            if let Some(patch) = obj.remove("patch") {
+                if let Some(patch_obj) = patch.as_object() {
+                    if !obj.contains_key("bodies_updates") {
+                        if let Some(bodies_updates) = patch_obj.get("bodies_updates") {
+                            obj.insert("bodies_updates".to_string(), bodies_updates.clone());
+                        }
+                    }
+                    if !obj.contains_key("foundry_config_updates") {
+                        if let Some(foundry_config_updates) =
+                            patch_obj.get("foundry_config_updates")
+                        {
+                            obj.insert(
+                                "foundry_config_updates".to_string(),
+                                foundry_config_updates.clone(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_markdown_code_fence() {
+        let raw =
+            "```json\n{\"mode\":\"patch\",\"bodies_updates\":[],\"foundry_config_updates\":[]}\n```";
+        let out = extract_json_payload(raw).expect("must parse fence");
+        assert_eq!(
+            out,
+            "{\"mode\":\"patch\",\"bodies_updates\":[],\"foundry_config_updates\":[]}"
+        );
+    }
+
+    #[test]
+    fn normalizes_nested_patch_envelope() {
+        let payload = r#"{
+            "mode": "patch",
+            "patch": {
+                "bodies_updates": [],
+                "foundry_config_updates": []
+            }
+        }"#;
+
+        let parsed = parse_generation_response(payload).expect("must parse normalized patch");
+        assert!(matches!(parsed, GenerationResponse::Patch { .. }));
+    }
+}
