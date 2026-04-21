@@ -1,8 +1,9 @@
 use anyhow::Result;
 use fuzzming::{
     executor::{
-        adapters::solidity_generator::SolidityGenerator, infrastructure::FileSystemWriter,
-        ports::CodeGeneratorPort, use_cases::write_bodies::write_bodies,
+        adapters::outbound::{FileSystemWriter, SolidityGenerator},
+        ports::outbound::CodeGeneratorPort,
+        use_cases::write_bodies::write_bodies,
     },
     shared::models::BodiesJson,
 };

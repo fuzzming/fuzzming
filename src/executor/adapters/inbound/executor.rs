@@ -1,41 +1,23 @@
-use std::sync::Arc;
-
-use crate::executor::adapters::outbound::FileSystemWriter;
-use crate::executor::ports::outbound::{CodeGeneratorPort, ConfigWriterPort};
-use crate::executor::use_cases::write_bodies::write_bodies;
-use crate::shared::models::ExecutorInput;
-use crate::shared::ports::ExecutorPort;
 use anyhow::Result;
 use async_trait::async_trait;
 
+use crate::executor::ports::inbound::ExecutorRunPort;
+use crate::shared::models::ExecutorInput;
+use crate::shared::ports::ExecutorPort;
+
 pub struct Executor {
-    writer: FileSystemWriter,
-    generator: Arc<dyn CodeGeneratorPort>,
-    config_writer: Arc<dyn ConfigWriterPort>,
+    use_case: Box<dyn ExecutorRunPort>,
 }
 
 impl Executor {
-    pub fn new(
-        writer: FileSystemWriter,
-        generator: Arc<dyn CodeGeneratorPort>,
-        config_writer: Arc<dyn ConfigWriterPort>,
-    ) -> Self {
-        Self {
-            writer,
-            generator,
-            config_writer,
-        }
+    pub fn new(use_case: Box<dyn ExecutorRunPort>) -> Self {
+        Self { use_case }
     }
 }
 
 #[async_trait]
 impl ExecutorPort for Executor {
     async fn execute(&self, input: ExecutorInput) -> Result<()> {
-        write_bodies(&input.bodies, &self.writer).await?;
-        self.generator.generate(&input.bodies, &self.writer).await?;
-        self.config_writer
-            .write(&input.fuzzer_config, &self.writer)
-            .await?;
-        Ok(())
+        self.use_case.execute(input).await
     }
 }
