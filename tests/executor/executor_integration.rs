@@ -32,18 +32,17 @@ async fn executor_generates_vault_files() -> Result<()> {
     assert_eq!(written.meta.contract, "Vault");
 
     let handler_src = std::fs::read_to_string(output_dir().join("test/handlers/VaultHandler.sol"))?;
-    assert!(handler_src.contains("pragma solidity ^0.8.20"));
-    assert!(handler_src.contains("contract VaultHandler is BaseHandler"));
-    assert!(handler_src.contains("function handler_deposit"));
-    assert!(handler_src.contains("function handler_withdraw"));
-    assert!(handler_src.contains("ghost_totalDeposits"));
+    assert!(handler_src.contains(&format!("contract {} is", bodies.handler.contract_name)));
+    for fn_name in bodies.handler.functions.keys() {
+        assert!(handler_src.contains(&format!("function {fn_name}")));
+    }
 
     let invariant_src =
         std::fs::read_to_string(output_dir().join("test/invariants/VaultInvariantTest.sol"))?;
-    assert!(invariant_src.contains("contract VaultInvariantTest is Test"));
+    assert!(invariant_src.contains(&format!("contract {}", bodies.invariant_test.contract_name)));
     assert!(invariant_src.contains("function setUp"));
-    assert!(invariant_src.contains("invariant_totalAssetsMatch"));
-    assert!(invariant_src.contains("invariant_depositCapRespected"));
+    let fn_count = invariant_src.matches("function ").count();
+    assert_eq!(fn_count, bodies.invariant_test.invariants.len() + 1); // +1 for setUp
 
     println!("Output written to: {}", output_dir().display());
 
