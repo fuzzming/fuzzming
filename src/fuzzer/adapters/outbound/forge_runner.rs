@@ -1,4 +1,4 @@
-use crate::fuzzer::ports::TestRunnerPort;
+use crate::fuzzer::ports::outbound::TestRunnerPort;
 use crate::shared::models::RunnerResult;
 use anyhow::Result;
 use async_trait::async_trait;

@@ -1,4 +1,4 @@
-use crate::fuzzer::ports::TestRunnerPort;
+use crate::fuzzer::ports::outbound::TestRunnerPort;
 use crate::shared::ports::FuzzerEnginePort;
 use crate::shared::requests::round_signal::RoundSignal;
 use crate::shared::responses::fuzz_report::FuzzReport;
