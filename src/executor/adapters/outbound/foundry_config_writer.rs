@@ -1,5 +1,5 @@
-use crate::executor::infrastructure::FileSystemWriter;
-use crate::executor::ports::ConfigWriterPort;
+use crate::executor::adapters::outbound::FileSystemWriter;
+use crate::executor::ports::outbound::ConfigWriterPort;
 use crate::shared::models::{FoundryConfig, FuzzerConfigArtifact};
 use anyhow::Result;
 use async_trait::async_trait;

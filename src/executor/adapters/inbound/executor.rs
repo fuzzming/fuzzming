@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::executor::infrastructure::FileSystemWriter;
-use crate::executor::ports::{CodeGeneratorPort, ConfigWriterPort};
+use crate::executor::adapters::outbound::FileSystemWriter;
+use crate::executor::ports::outbound::{CodeGeneratorPort, ConfigWriterPort};
 use crate::executor::use_cases::write_bodies::write_bodies;
 use crate::shared::models::ExecutorInput;
 use crate::shared::ports::ExecutorPort;

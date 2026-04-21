@@ -13,7 +13,6 @@ impl FileSystemWriter {
         }
     }
 
-    /// Creates parent directories if they do not exist.
     pub async fn write_file(&self, path: &str, content: &str) -> Result<()> {
         let full_path = self.base_path.join(path);
         if let Some(parent) = full_path.parent() {
