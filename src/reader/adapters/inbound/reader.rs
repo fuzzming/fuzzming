@@ -1,7 +1,5 @@
-use crate::reader::infrastructure::FileSystemReader;
-use crate::reader::ports::{
-    contract_reader_port::ContractReaderPort, coverage_reader_port::CoverageReaderPort,
-};
+use crate::reader::adapters::outbound::FileSystemReader;
+use crate::reader::ports::outbound::{ContractReaderPort, CoverageReaderPort};
 use crate::shared::models::{ContractContext, CoverageContext, InvariantFiles};
 use crate::shared::ports::ReaderPort;
 use anyhow::Result;
@@ -56,6 +54,7 @@ impl ReaderPort for Reader {
             .read_coverage(&self.invariant_files.lcov_path)
             .await
     }
+
     async fn get_invariant_files(&self) -> Result<InvariantFiles> {
         Ok(self.invariant_files.clone())
     }

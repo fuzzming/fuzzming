@@ -1,5 +1,5 @@
-use crate::reader::infrastructure::FileSystemReader;
-use crate::reader::ports::contract_reader_port::ContractReaderPort;
+use crate::reader::adapters::outbound::FileSystemReader;
+use crate::reader::ports::outbound::ContractReaderPort;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
