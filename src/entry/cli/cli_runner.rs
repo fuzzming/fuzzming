@@ -1,6 +1,7 @@
 use crate::composition::composition_root::CompositionRoot;
 use crate::entry::cli::arg_parser::parse_args;
 use crate::shared::models::{Fuzzer, Language, OutputFormat, SessionConfig};
+use crate::shared::ports::OrchestratorPort;
 use crate::shared::requests::session_request::SessionRequest;
 use anyhow::Result;
 
