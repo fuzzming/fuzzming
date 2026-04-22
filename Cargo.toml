@@ -39,3 +39,7 @@ path = "tests/executor/executor_integration.rs"
 [[test]]
 name = "reader_integration"
 path = "tests/reader/reader_integration.rs"
+
+[[test]]
+name = "fuzzer_integration"
+path = "tests/fuzzer/fuzzer_integration.rs"

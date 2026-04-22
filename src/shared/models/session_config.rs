@@ -34,4 +34,6 @@ pub struct SessionConfig {
     pub ci_mode: bool,
     pub language: Language,
     pub fuzzer: Fuzzer,
+    /// Absolute path to the Foundry project root — all forge commands run here.
+    pub workspace_root: String,
 }
