@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use crate::reader::adapters::outbound::FileSystemReader;
 use crate::reader::ports::inbound::ReaderRunPort;
 use crate::reader::ports::outbound::{ContractReaderPort, CoverageReaderPort};
+use crate::reader::use_cases::parse_lcov::parse_lcov;
 use crate::shared::models::{BodiesJson, ContractContext, CoverageContext};
 
 pub struct ReadUseCase {
@@ -47,7 +48,36 @@ impl ReaderRunPort for ReadUseCase {
     }
 
     async fn get_coverage_context(&self, path: &str) -> Result<Option<CoverageContext>> {
-        self.coverage_reader.read_coverage(path).await
+        let raw = match self.coverage_reader.read_lcov(path).await? {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        let mut coverage = parse_lcov(&raw)?;
+
+        for gap in coverage.gaps.iter_mut() {
+            if gap.file.is_empty() {
+                continue;
+            }
+            if let Ok(source) = self.fs_reader.read_file(&gap.file).await {
+                let lines: Vec<&str> = source.lines().collect();
+                if lines.is_empty() {
+                    continue;
+                }
+                let idx = (gap.line as isize - 1).max(0) as usize;
+                let start = idx.saturating_sub(3);
+                let end = std::cmp::min(idx + 3, lines.len().saturating_sub(1));
+                gap.source_context = lines
+                    .iter()
+                    .enumerate()
+                    .take(end + 1)
+                    .skip(start)
+                    .map(|(i, line)| format!("{}: {}", i + 1, line))
+                    .collect();
+            }
+        }
+
+        Ok(Some(coverage))
     }
 
     async fn get_existing_bodies(&self, path: &str) -> Result<Option<BodiesJson>> {
