@@ -22,6 +22,10 @@ pub struct CliArgs {
     /// Run in CI mode (outputs structured for CI/CD pipelines)
     #[arg(long, default_value_t = false)]
     pub ci_mode: bool,
+
+    /// Foundry project root (defaults to current directory)
+    #[arg(long, default_value = ".")]
+    pub workspace_root: String,
 }
 
 pub fn parse_args() -> CliArgs {

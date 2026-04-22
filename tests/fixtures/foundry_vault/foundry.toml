@@ -1,0 +1,12 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+
+[profile.fuzzming]
+fuzz = { runs = 100 }
+invariant = { runs = 50, depth = 100 }
+
+[profile.coverage]
+fuzz = { runs = 50 }
+invariant = { runs = 20, depth = 50 }

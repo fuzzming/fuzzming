@@ -24,6 +24,7 @@ impl CliRunner {
             ci_mode: args.ci_mode,
             language: Language::Solidity,
             fuzzer: Fuzzer::Foundry,
+            workspace_root: args.workspace_root.clone(),
         };
         let request = SessionRequest {
             target_paths: args.targets.clone(),

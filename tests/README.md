@@ -12,7 +12,10 @@ cargo test
 cargo test --test executor_integration
 cargo test --test reader_integration
 cargo test --test generation_adapter_test
+cargo test --test fuzzer_integration
 ```
+
+> **Note:** The fuzzer integration tests require forge to be installed (`~/.foundry/bin/forge`). `ForgeRunner` adds `~/.foundry/bin` to the subprocess PATH automatically, so the tests work even when forge is not in the system PATH.
 
 ---
 
@@ -119,6 +122,41 @@ cargo test apply_patch
 | `error_on_remove_missing_key` | `Remove` on a missing key fails with "not found" |
 | `error_on_missing_intermediate_key` | Navigation through a nonexistent intermediate key fails |
 | `error_on_array_index_out_of_bounds` | Index past end of array fails with "out of bounds" |
+
+---
+
+---
+
+## Fuzzer — `fuzzer/fuzzer_integration.rs`
+
+Runs real `forge test` and `forge coverage` against a self-contained Foundry project in `tests/fixtures/foundry_vault/`. Requires forge to be installed.
+
+Run with:
+
+```bash
+cargo test --test real_fuzzer_integration
+```
+
+### Foundry fixture — `tests/fixtures/foundry_vault/`
+
+A complete Foundry project with no external dependencies beyond forge-std:
+
+| File | Description |
+|---|---|
+| `src/Token.sol` | Minimal ERC20 token with a `mint` function |
+| `src/Vault.sol` | Single-asset vault — 1:1 shares, deposit cap of 1,000,000 tokens |
+| `test/handlers/VaultHandler.sol` | Invariant handler — 3 actors, ghost vars tracking deposits and withdrawals |
+| `test/invariants/VaultInvariantTest.sol` | Two invariants: `totalAssets == deposits - withdrawals` and `totalAssets <= depositCap` |
+| `foundry.toml` | `fuzzming` profile (100 fuzz runs, 50 invariant runs) and `coverage` profile |
+
+### Tests
+
+| Test | What is checked |
+|---|---|
+| `correct_vault_invariants_pass` | Real `forge test --profile fuzzming` passes both invariants → `FuzzOutcome::Pass` |
+| `fuzz_output_written_to_workspace` | `.fuzzming/fuzz_output.txt` is written to the workspace and contains forge's `Suite result` line |
+
+The `foundry_vault/out/`, `cache/`, `lib/`, `.fuzzming/`, and `lcov.info` are gitignored — forge regenerates them on each run.
 
 ---
 

@@ -20,6 +20,7 @@ impl CicdAdapter {
             ci_mode: true,
             language: Language::Solidity,
             fuzzer: Fuzzer::Foundry,
+            workspace_root: std::env::var("WORKSPACE_ROOT").unwrap_or_else(|_| ".".to_string()),
         };
         let request = SessionRequest {
             target_paths: env.target_paths.clone(),
