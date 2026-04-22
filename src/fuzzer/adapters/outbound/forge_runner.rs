@@ -14,12 +14,19 @@ impl ForgeRunner {
     }
 }
 
+fn forge_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let current = std::env::var("PATH").unwrap_or_default();
+    format!("{home}/.foundry/bin:{current}")
+}
+
 #[async_trait]
 impl TestRunnerPort for ForgeRunner {
     async fn run_test(&self, profile_name: &str) -> Result<RunnerResult> {
         let output = tokio::process::Command::new("forge")
             .args(["test"])
             .env("FOUNDRY_PROFILE", profile_name)
+            .env("PATH", forge_path())
             .current_dir(&self.working_dir)
             .output()
             .await
@@ -36,6 +43,7 @@ impl TestRunnerPort for ForgeRunner {
         let output = tokio::process::Command::new("forge")
             .args(["coverage", "--report", "lcov"])
             .env("FOUNDRY_PROFILE", profile_name)
+            .env("PATH", forge_path())
             .current_dir(&self.working_dir)
             .output()
             .await

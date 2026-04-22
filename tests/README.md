@@ -12,7 +12,10 @@ cargo test
 cargo test --test executor_integration
 cargo test --test reader_integration
 cargo test --test generation_adapter_test
+cargo test --test fuzzer_integration
 ```
+
+> **Note:** The fuzzer integration tests require forge to be installed (`~/.foundry/bin/forge`). `ForgeRunner` adds `~/.foundry/bin` to the subprocess PATH automatically, so the tests work even when forge is not in the system PATH.
 
 ---
 
