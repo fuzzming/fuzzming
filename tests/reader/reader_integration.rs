@@ -1,11 +1,8 @@
 use anyhow::Result;
-use fuzzming::{
-    reader::{
-        adapters::outbound::{FileSystemReader, FoundryCoverageReader, SolidityContractReader},
-        ports::inbound::ReaderRunPort,
-        use_cases::read::ReadUseCase,
-    },
-    shared::models::InvariantFiles,
+use fuzzming::reader::{
+    adapters::outbound::{FileSystemReader, FoundryCoverageReader, SolidityContractReader},
+    ports::inbound::ReaderRunPort,
+    use_cases::read::ReadUseCase,
 };
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -16,13 +13,7 @@ fn make_use_case(dir: &TempDir) -> ReadUseCase {
     let fs_reader = Arc::new(FileSystemReader::new(base.clone()));
     let contract_reader = Arc::new(SolidityContractReader::new(Arc::clone(&fs_reader)));
     let coverage_reader = Arc::new(FoundryCoverageReader::new(Arc::clone(&fs_reader)));
-    let invariant_files = InvariantFiles {
-        invariant_file_path: format!("{base}/test/InvariantTest.sol"),
-        foundry_toml_path: format!("{base}/foundry.toml"),
-        lcov_path: format!("{base}/lcov.info"),
-        fuzz_output_path: format!("{base}/fuzz_output.json"),
-    };
-    ReadUseCase::new(contract_reader, coverage_reader, fs_reader, invariant_files)
+    ReadUseCase::new(contract_reader, coverage_reader, fs_reader)
 }
 
 #[tokio::test]
