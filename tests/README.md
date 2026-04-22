@@ -69,6 +69,59 @@ The `LlmClientPort` is replaced with a `MockLlmClient` that returns pre-loaded r
 
 ---
 
+## Patch Applier — `executor::use_cases::apply_patch` (unit tests)
+
+Verifies `apply_patches<T>()` — the dot-path JSON patch engine used by the executor to apply round-N LLM updates to existing `BodiesJson` and `FoundryConfig` artifacts.
+
+Run with:
+
+```bash
+cargo test apply_patch
+```
+
+### BodiesJson patches
+
+| Test | What is checked |
+|---|---|
+| `replace_existing_function_body` | Replace a handler function body; other functions untouched |
+| `add_new_function` | Add a new key to `handler.functions`; map grows by 1 |
+| `remove_function` | Remove a key from `handler.functions`; map shrinks by 1 |
+| `add_new_invariant` | Add a new entry to `invariantTest.invariants` |
+| `replace_meta_field` | Replace a scalar field at `meta.solidity` |
+| `replace_array_element_by_index` | Replace `handler.stateVars.0` by numeric index |
+| `add_to_array_appends` | `Add` on an array always appends; the last path segment is ignored |
+| `remove_array_element_by_index` | Remove `handler.stateVars.0`; array becomes empty |
+| `multiple_patches_applied_in_order` | Add then Replace on the same key — second patch wins |
+| `bracket_navigation_syntax` | Navigate an intermediate array segment via numeric index |
+
+### FoundryConfig patches
+
+| Test | What is checked |
+|---|---|
+| `replace_depth` | Replace scalar field at root level |
+| `replace_runs` | Replace another root-level scalar |
+| `add_call_sequence_weight` | Add a new key into `call_sequence_weights` |
+| `replace_call_sequence_weight` | Overwrite an existing weight value |
+| `remove_call_sequence_weight` | Remove a weight entry from the map |
+
+### FuzzerConfigArtifact
+
+| Test | What is checked |
+|---|---|
+| `patch_fuzzer_config_artifact` | Path navigates through the enum variant name (`"Foundry.depth"`) |
+
+### Error cases
+
+| Test | What is checked |
+|---|---|
+| `error_on_empty_path` | Empty string path is rejected immediately |
+| `error_on_add_duplicate_key` | `Add` to an existing key fails with "already exists" |
+| `error_on_remove_missing_key` | `Remove` on a missing key fails with "not found" |
+| `error_on_missing_intermediate_key` | Navigation through a nonexistent intermediate key fails |
+| `error_on_array_index_out_of_bounds` | Index past end of array fails with "out of bounds" |
+
+---
+
 ## Fixtures
 
 `tests/fixtures/Vault.bodies.json` — a complete `BodiesJson` for a Vault contract with two handler functions and two invariants. Used by both the executor and generator tests.
