@@ -1,5 +1,5 @@
 use crate::shared::models::ReportArtifacts;
 
-pub fn format_dev_test_failure(artifacts: &ReportArtifacts) -> String {
+pub fn format_dev_test_failure(_artifacts: &ReportArtifacts) -> String {
     todo!()
 }

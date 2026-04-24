@@ -55,6 +55,19 @@ impl ReaderRunPort for ReadUseCase {
 
         let mut coverage = parse_lcov(&raw)?;
 
+        if let Ok(prefixes_raw) = std::env::var("FUZZMING_COVERAGE_PREFIXES") {
+            let prefixes: Vec<String> = prefixes_raw
+                .split(',')
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect();
+            if !prefixes.is_empty() {
+                coverage.gaps.retain(|gap| {
+                    prefixes.iter().any(|prefix| gap.file.starts_with(prefix))
+                });
+            }
+        }
+
         for gap in coverage.gaps.iter_mut() {
             if gap.file.is_empty() {
                 continue;

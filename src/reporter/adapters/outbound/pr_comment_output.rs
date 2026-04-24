@@ -13,7 +13,7 @@ impl PrCommentOutput {
 }
 
 impl OutputPort for PrCommentOutput {
-    fn write(&self, output: &str) {
+    fn write(&self, _output: &str) {
         todo!()
     }
 }

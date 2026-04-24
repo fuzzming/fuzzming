@@ -87,11 +87,41 @@ impl Prompt {
     }
 
     fn format_coverage(coverage: &CoverageContext) -> String {
+        let line_pct = if coverage.line_found == 0 {
+            100.0
+        } else {
+            (coverage.line_hit as f64 / coverage.line_found as f64) * 100.0
+        };
+        let branch_pct = if coverage.branch_found == 0 {
+            100.0
+        } else {
+            (coverage.branch_hit as f64 / coverage.branch_found as f64) * 100.0
+        };
+        let fn_pct = if coverage.function_found == 0 {
+            100.0
+        } else {
+            (coverage.function_hit as f64 / coverage.function_found as f64) * 100.0
+        };
+
+        let mut lines = vec![format!(
+            "COVERAGE SUMMARY: lines {}/{} ({:.1}%), branches {}/{} ({:.1}%), functions {}/{} ({:.1}%)",
+            coverage.line_hit,
+            coverage.line_found,
+            line_pct,
+            coverage.branch_hit,
+            coverage.branch_found,
+            branch_pct,
+            coverage.function_hit,
+            coverage.function_found,
+            fn_pct
+        )];
+
         if coverage.gaps.is_empty() {
-            return "COVERAGE: Full coverage achieved.".to_string();
+            lines.push("COVERAGE: Full coverage achieved.".to_string());
+            return lines.join("\n");
         }
 
-        let mut lines = vec!["COVERAGE GAPS (never executed):".to_string()];
+        lines.push("COVERAGE GAPS (never executed):".to_string());
         for gap in &coverage.gaps {
             let kind = match gap.gap_type {
                 GapType::Line => "line",
