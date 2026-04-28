@@ -4,5 +4,5 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait ReporterReaderPort: Send + Sync {
-    async fn get_report_artifacts(&self) -> Result<ReportArtifacts>;
+    async fn get_report_artifacts(&self, contract_name: &str) -> Result<ReportArtifacts>;
 }

@@ -1,3 +1,6 @@
+use anyhow::Result;
+use async_trait::async_trait;
+
 use crate::reporter::ports::outbound::OutputPort;
 
 pub struct TerminalOutput;
@@ -14,8 +17,10 @@ impl Default for TerminalOutput {
     }
 }
 
+#[async_trait]
 impl OutputPort for TerminalOutput {
-    fn write(&self, output: &str) {
+    async fn write(&self, output: &str) -> Result<()> {
         println!("{}", output);
+        Ok(())
     }
 }
