@@ -130,7 +130,15 @@ Orchestrator
              │     builds user message:   round number + fuzz output + coverage gaps
              │     → AssembledPrompt
              │
-             ├─ GenerationRequest { round, source_code, prompt, existing_bodies, existing_foundry_config }
+             ├─ GenerationRequest {
+             │       round,
+             │       contract_name,    ← from signal (e.g. "Vault")
+             │       contract_path,    ← from signal (e.g. "src/Vault.sol")
+             │       source_code,
+             │       prompt,
+             │       existing_bodies,
+             │       existing_foundry_config
+             │   }
              │
              └─ gateway.generate(request)            ← GenerationPort trait call
                    │
@@ -174,6 +182,12 @@ Returns `AnalysisStage`:
 
 Prompt: given stage 1 analysis, generate the full `BodiesJson` — Handler contract and invariant test contract.
 
+The prompt tells the LLM exactly:
+- The contract names to use (`{Contract}Handler`, `{Contract}InvariantTest`)
+- The required import lines (derived by FuzzMing from `contract_name` and `contract_path`)
+- The file layout (`test/fuzzming/{Contract}/`)
+- That `outputPath` must NOT be included — paths are managed by the tool
+
 Returns `BodiesStage { bodies: BodiesJson }`.
 
 **Stage 3 — Foundry config**
@@ -191,7 +205,7 @@ From round 2 onwards, the model receives the assembled prompt (fuzz output + cov
 - `Full` — complete replacement of bodies and config
 - `Patch` — a list of `JsonBlockUpdate` operations
 
-`Patch` is preferred when only specific functions need to change.
+`Patch` is preferred when only specific functions need to change. Valid patch paths do not include `handler.outputPath` or `invariantTest.outputPath` — those fields no longer exist.
 
 ---
 
@@ -251,12 +265,16 @@ let generator = Generator::new(use_case);
 ```rust
 pub struct GenerationRequest {
     pub round: u32,
+    pub contract_name: String,           // e.g. "Vault" — used to build prompt constraints
+    pub contract_path: String,           // e.g. "src/Vault.sol" — injected into import lines
     pub source_code: String,
     pub prompt: AssembledPrompt,
     pub existing_bodies: Option<BodiesJson>,
     pub existing_foundry_config: Option<FoundryConfig>,
 }
 ```
+
+`contract_name` and `contract_path` are forwarded from `RoundSignal` — the orchestrator derives them from the CLI `--targets` argument, never from the LLM.
 
 ### `GenerationResponse`
 ```rust

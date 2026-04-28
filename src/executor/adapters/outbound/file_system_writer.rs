@@ -15,15 +15,12 @@ impl FileSystemWriter {
     pub async fn write_file(&self, path: &str, content: &str) -> Result<()> {
         let full_path = self.base_path.join(path);
         let parent = full_path.parent().unwrap_or(&full_path);
-        // Create both base dir and target parent before canonicalizing — canonicalize requires existence.
-        create_dir_all(&self.base_path).await.with_context(|| {
-            format!("failed to create workspace root: {}", self.base_path.display())
+        // Create parent dirs (implicitly creates base_path too) before canonicalizing.
+        create_dir_all(parent).await.with_context(|| {
+            format!("failed to create directories for {}", full_path.display())
         })?;
         let canonical_base = self.base_path.canonicalize().with_context(|| {
             format!("failed to canonicalize workspace root: {}", self.base_path.display())
-        })?;
-        create_dir_all(parent).await.with_context(|| {
-            format!("failed to create directories for {}", full_path.display())
         })?;
         let canonical_parent = parent.canonicalize().with_context(|| {
             format!("failed to canonicalize parent of {}", full_path.display())

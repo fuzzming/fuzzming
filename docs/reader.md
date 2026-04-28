@@ -1,15 +1,15 @@
 # Reader Component
 
-The Reader is the **read gateway** of FuzzMing. Before every LLM round, the orchestrator asks the Reader for three things: the contract source code, the coverage gaps, and the forge fuzz output. The Reader collects all of that and hands it back so the orchestrator can assemble the `RoundSignal`.
+The Reader is the **read gateway** of FuzzMing. Before every LLM round, the orchestrator asks the Reader for the contract source code and the coverage gaps. The Reader collects all of that and hands it back so the orchestrator can assemble the `RoundSignal`.
 
 ---
 
 ## The big picture
 
 ```
-forge coverage  ──► lcov.info           ─┐
-forge test      ──► fuzz_output.json    ─┤──► Reader ──► Orchestrator ──► Generator
-src/Vault.sol   ──► .sol file           ─┘
+forge coverage  ──► .fuzzming/{Contract}/lcov.info     ─┐
+forge test      ──► .fuzzming/{Contract}/fuzz_output.txt─┤──► Reader ──► Orchestrator ──► Generator
+src/Vault.sol   ──► .sol file                           ─┘
 ```
 
 The Reader never writes anything. It only reads and transforms.
@@ -25,7 +25,7 @@ src/reader/
 │   │   └── reader.rs                      # Inbound adapter — implements ReaderPort, delegates to ReaderRunPort
 │   └── outbound/
 │       ├── file_system_reader.rs          # FileSystemReader — only place that calls tokio::fs::read
-│       ├── solidity_contract_reader.rs    # Implements ContractReaderPort — reads .sol, strips pragma/imports
+│       ├── solidity_contract_reader.rs    # Implements ContractReaderPort — reads .sol, strips comments
 │       └── foundry_coverage_reader.rs     # Implements CoverageReaderPort — parses LCOV + attaches source lines
 ├── ports/
 │   ├── inbound/
@@ -73,9 +73,7 @@ Implements `ReaderPort`. Holds `Box<dyn ReaderRunPort>`. Delegates all method ca
 ```rust
 pub trait ReaderRunPort: Send + Sync {
     async fn get_contract_context(&self, path: &str, include_comments: bool) -> Result<ContractContext>;
-    async fn get_fuzz_output(&self) -> Result<Option<String>>;
-    async fn get_coverage_context(&self) -> Result<Option<CoverageContext>>;
-    async fn get_invariant_files(&self) -> Result<InvariantFiles>;
+    async fn get_coverage_context(&self, lcov_path: &str) -> Result<Option<CoverageContext>>;
 }
 ```
 
@@ -88,22 +86,10 @@ pub struct ReadUseCase {
     contract_reader: Arc<dyn ContractReaderPort>,
     coverage_reader: Arc<dyn CoverageReaderPort>,
     fs_reader: Arc<FileSystemReader>,
-    invariant_files: InvariantFiles,
 }
 ```
 
-`FileSystemReader` is the single I/O boundary — the only struct allowed to call `tokio::fs`. Both adapters and the use case receive it via `Arc`.
-
-`InvariantFiles` carries all the paths:
-
-```rust
-pub struct InvariantFiles {
-    pub invariant_file_path: String,
-    pub foundry_toml_path:   String,
-    pub lcov_path:           String,
-    pub fuzz_output_path:    String,
-}
-```
+`FileSystemReader` is the single I/O boundary — the only struct allowed to call `tokio::fs`. It takes a `PathBuf` base path. Both adapters and the use case receive it via `Arc`.
 
 ---
 
@@ -111,21 +97,17 @@ pub struct InvariantFiles {
 
 ### 1. `get_contract_context(path)` → raw Solidity source
 
-Reads the target contract and strips `pragma` and `import` lines. The Generator receives the full contract body as raw source — no regex extraction, no summarising.
+Reads the target contract and strips single-line comments (`//`), block comments (`/* */`), and inline comments. The Generator receives the clean contract body as raw source.
 
 ```
 src/Vault.sol
-  ↓ strip pragma + import
+  ↓ strip comments
 ContractContext { source_code: "contract Vault { ... }" }
 ```
 
-### 2. `get_fuzz_output()` → raw forge JSON or nothing
+### 2. `get_coverage_context(lcov_path)` → uncovered locations with source snippets
 
-Reads the JSON file produced by `forge test --json` and passes it raw. Returns `None` if the file does not exist yet (first round).
-
-### 3. `get_coverage_context()` → uncovered locations with source snippets
-
-Reads `lcov.info` and returns every line, branch, and function that was never executed. Returns `None` if the file does not exist yet.
+Reads the per-contract `lcov.info` written by the fuzzer to `.fuzzming/{Contract}/lcov.info` and returns every line, branch, and function that was never executed. Returns `None` if the file does not exist yet (first round).
 
 **How `parse_lcov` works:**
 
@@ -162,17 +144,13 @@ Orchestrator
              │
              ├─ get_contract_context(path)
              │     SolidityContractReader reads via FileSystemReader
-             │     strips pragma + imports → ContractContext
+             │     strips comments → ContractContext
              │
-             ├─ get_fuzz_output()
-             │     FileSystemReader opens fuzz_output.json
-             │     → None if missing, Some(raw_json) if present
-             │
-             └─ get_coverage_context()
-                   FoundryCoverageReader reads lcov.info via FileSystemReader
+             └─ get_coverage_context(lcov_path)
+                   FoundryCoverageReader reads .fuzzming/{Contract}/lcov.info
                    parse_lcov() finds all 0-hit records
                    enriches each gap with ±3 lines of source
-                   → CoverageContext { gaps }
+                   → None (first round) or CoverageContext { gaps, line_found, line_hit, ... }
 ```
 
 ---
@@ -180,10 +158,10 @@ Orchestrator
 ## Wiring at startup
 
 ```rust
-let fs_reader       = Arc::new(FileSystemReader::new(base_path));
+let fs_reader       = Arc::new(FileSystemReader::new(workspace_root)); // PathBuf
 let contract_reader = Arc::new(SolidityContractReader::new(Arc::clone(&fs_reader)));
 let coverage_reader = Arc::new(FoundryCoverageReader::new(Arc::clone(&fs_reader)));
-let use_case        = Box::new(ReadUseCase::new(contract_reader, coverage_reader, fs_reader, invariant_files));
+let use_case        = Box::new(ReadUseCase::new(contract_reader, coverage_reader, fs_reader));
 let reader          = Reader::new(use_case);
 ```
 
@@ -205,10 +183,10 @@ A line with multiple branches produces one `CoverageGap` per branch. The Generat
 
 **Fix needed:** deduplicate gaps by `(file, line)` after parsing.
 
-### 3. Only handles Solidity paths from `SF:`
+### 3. Absolute `SF:` paths
 
-The `SF:` path is used as-is to open the source file. If forge writes an absolute path or a path relative to a different root, the enrichment silently fails and `source_context` stays empty.
+The `SF:` path is used as-is to open the source file. If forge writes an absolute path, the reader now handles it correctly by falling back to the absolute path when the workspace-relative path doesn't resolve. If the path is neither relative nor absolute-readable, `source_context` stays empty.
 
 ### 4. Does not generalise beyond Solidity + Foundry
 
-`SolidityContractReader` hard-codes Solidity-specific stripping. A different language would need a different adapter implementing `ContractReaderPort`.
+`SolidityContractReader` hard-codes Solidity comment stripping. A different language would need a different adapter implementing `ContractReaderPort`.

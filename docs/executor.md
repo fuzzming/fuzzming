@@ -93,11 +93,37 @@ Sequences the three write operations: bodies JSON, generated Solidity files, Fou
 
 ### Outbound adapters — `adapters/outbound/`
 
-`FileSystemWriter` is the single I/O boundary — the only struct allowed to call `tokio::fs`. Both `SolidityGenerator` and `FoundryConfigWriter` receive it as a parameter.
+`FileSystemWriter` is the single I/O boundary — the only struct allowed to call `tokio::fs`. Both `SolidityGenerator` and `FoundryConfigWriter` receive it as a parameter. It takes a `PathBuf` base path and enforces a path traversal guard on every write.
 
-`SolidityGenerator` implements `CodeGeneratorPort`. It emits Solidity strings verbatim — it never interprets or reformats them.
+`SolidityGenerator` implements `CodeGeneratorPort`. Derives output paths from `bodies.meta.contract` — the LLM never decides where files go:
+
+| File | Path |
+|---|---|
+| Handler | `test/fuzzming/{Contract}/{ContractName}.sol` |
+| Invariant test | `test/fuzzming/{Contract}/{ContractName}.sol` |
+
+The `test/fuzzming/` namespace isolates generated files from the developer's own `test/` code.
 
 `FoundryConfigWriter` implements `ConfigWriterPort`. Builds the `[profile.fuzzming]` TOML section from `FoundryConfig` fields, then patches `foundry.toml` using replace-or-append logic.
+
+---
+
+## File system layout (executor-owned paths)
+
+```
+{workspace_root}/
+├── foundry.toml                          ← executor patches [profile.fuzzming]
+├── test/
+│   └── fuzzming/
+│       └── {ContractName}/
+│           ├── {ContractName}Handler.sol
+│           └── {ContractName}InvariantTest.sol
+└── .fuzzming/
+    └── {ContractName}/
+        └── {ContractName}.bodies.json    ← JSON; forge ignores non-.sol files
+```
+
+Bodies JSON goes to `.fuzzming/` (not `test/fuzzming/`) because it is not Solidity and forge would ignore it anyway — keeping it separate makes the directory intent clearer.
 
 ---
 
@@ -111,10 +137,11 @@ Orchestrator
        └─ ExecuteUseCase::execute(input)     ← ExecutorRunPort (use case)
              │
              ├─ write_bodies(&input.bodies, &writer)
-             │     serialises BodiesJson → test/<Contract>.bodies.json
+             │     serialises BodiesJson → .fuzzming/{Contract}/{Contract}.bodies.json
              │
              ├─ generator.generate(&input.bodies, &writer)   ← CodeGeneratorPort
-             │     assembles Handler .sol + InvariantTest .sol
+             │     assembles Handler .sol → test/fuzzming/{Contract}/{ContractName}.sol
+             │     assembles InvariantTest .sol → test/fuzzming/{Contract}/{ContractName}.sol
              │
              └─ config_writer.write(&input.fuzzer_config, &writer)  ← ConfigWriterPort
                    patches [profile.fuzzming] in foundry.toml
@@ -122,10 +149,26 @@ Orchestrator
 
 ---
 
+## `FileSystemWriter` — path traversal guard
+
+```rust
+pub fn new(base_path: PathBuf) -> Self
+pub async fn write_file(&self, path: &str, content: &str) -> Result<()>
+```
+
+Every write:
+1. Creates the base directory if it does not exist (`create_dir_all`).
+2. Canonicalises the base path.
+3. Creates the target parent directory.
+4. Canonicalises the target parent.
+5. Asserts the target parent starts with the base — rejects paths that contain `..` or symlinks that escape `workspace_root`.
+
+---
+
 ## Wiring at startup
 
 ```rust
-let writer         = FileSystemWriter::new(base_path);
+let writer         = FileSystemWriter::new(workspace_root); // PathBuf
 let generator      = Arc::new(SolidityGenerator);
 let config_writer  = Arc::new(FoundryConfigWriter);
 let use_case       = Box::new(ExecuteUseCase::new(writer, generator, config_writer));
@@ -141,3 +184,4 @@ let executor       = Executor::new(use_case);
 - `Executor` never reads files — that is the Reader's job.
 - `Executor` never touches developer-owned files — only fuzzming-managed paths.
 - `FileSystemWriter` is the only struct that calls `tokio::fs`.
+- The LLM never controls file paths — all paths are derived from `contract_name`.
