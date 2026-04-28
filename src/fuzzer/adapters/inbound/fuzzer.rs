@@ -18,7 +18,7 @@ impl Fuzzer {
 
 #[async_trait]
 impl FuzzerEnginePort for Fuzzer {
-    async fn run(&self, signal: RoundSignal) -> Result<FuzzReport> {
-        self.use_case.run(signal).await
+    async fn run(&self, signals: Vec<RoundSignal>) -> Result<Vec<FuzzReport>> {
+        self.use_case.run(signals).await
     }
 }

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,5 +37,5 @@ pub struct SessionConfig {
     pub language: Language,
     pub fuzzer: Fuzzer,
     /// Absolute path to the Foundry project root — all forge commands run here.
-    pub workspace_root: String,
+    pub workspace_root: PathBuf,
 }

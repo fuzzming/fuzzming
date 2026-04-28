@@ -57,7 +57,8 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     out.push(String::new());
     out.push("}".into());
 
-    writer.write_file(&h.output_path, &out.join("\n")).await
+    let path = format!("test/fuzzming/{}/{}Handler.sol", bodies.meta.contract, h.contract_name);
+    writer.write_file(&path, &out.join("\n")).await
 }
 
 async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
@@ -95,5 +96,6 @@ async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter)
 
     out.push("}".into());
 
-    writer.write_file(&t.output_path, &out.join("\n")).await
+    let path = format!("test/fuzzming/{}/{}InvariantTest.sol", bodies.meta.contract, t.contract_name);
+    writer.write_file(&path, &out.join("\n")).await
 }

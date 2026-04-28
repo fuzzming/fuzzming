@@ -1,5 +1,6 @@
-use anyhow::{Context, Result};
 use std::path::PathBuf;
+
+use anyhow::{Context, Result};
 use tokio::fs;
 
 pub struct FileSystemReader {
@@ -7,10 +8,8 @@ pub struct FileSystemReader {
 }
 
 impl FileSystemReader {
-    pub fn new(base_path: String) -> Self {
-        Self {
-            base_path: PathBuf::from(base_path),
-        }
+    pub fn new(base_path: PathBuf) -> Self {
+        Self { base_path }
     }
 
     pub async fn read_file(&self, path: &str) -> Result<String> {

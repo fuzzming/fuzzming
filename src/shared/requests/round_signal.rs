@@ -7,6 +7,11 @@ use serde::{Deserialize, Serialize};
 pub struct RoundSignal {
     pub round: u32,
     pub config: SessionConfig,
+    /// Stem of the target contract file, e.g. "Vault" from "src/Vault.sol".
+    /// Used to derive all per-contract paths; never comes from the LLM.
+    pub contract_name: String,
+    /// Path to the target contract relative to workspace_root, e.g. "src/Vault.sol".
+    pub contract_path: String,
     pub source_code: String,
     pub fuzz_output: Option<String>,
     pub coverage_context: Option<CoverageContext>,

@@ -7,6 +7,8 @@ use crate::shared::models::{AssembledPrompt, BodiesJson, FoundryConfig};
 #[derive(Debug, Clone)]
 pub struct GenerationRequest {
     pub round: u32,
+    pub contract_name: String,
+    pub contract_path: String,
     pub source_code: String,
     pub prompt: AssembledPrompt,
     pub existing_bodies: Option<BodiesJson>,
