@@ -29,67 +29,103 @@ pub fn build_round_one_analysis_prompt() -> String {
     .to_string()
 }
 
-pub fn build_round_one_bodies_prompt(analysis: &AnalysisStage) -> Result<String> {
+pub fn build_round_one_bodies_prompt(
+    analysis: &AnalysisStage,
+    contract_name: &str,
+    contract_path: &str,
+) -> Result<String> {
     let analysis_summary = serde_json::to_string_pretty(analysis)?;
+    let handler_name = format!("{}Handler", contract_name);
+    let test_name = format!("{}InvariantTest", contract_name);
+
+    // Import lines the LLM must use — derived by FuzzMing, not chosen by the LLM.
+    let handler_target_import = format!(
+        "import {{{{{}}}}} from \"{}\";",
+        contract_name, contract_path
+    );
+    let test_handler_import = format!(
+        "import {{{{{}}}}} from \"./{}.sol\";",
+        handler_name, handler_name
+    );
 
     Ok(format!(
         "Stage 2/3: Solidity Generation.\n\
 \n\
-Based on your previous security analysis, generate the full implementation of the Handler and Invariant test suite. Your output MUST be a valid JSON object matching the internal Rust schema exactly.\n\
+Based on your previous security analysis, generate the full implementation of the Handler and \
+Invariant test suite. Your output MUST be a valid JSON object matching the schema exactly.\n\
+\n\
+FILE LAYOUT (fixed — do not invent other paths):\n\
+  Handler:        test/fuzzming/{contract_name}/{handler_name}.sol\n\
+  Invariant test: test/fuzzming/{contract_name}/{test_name}.sol\n\
+  Both files are in the same directory. Use relative imports between them.\n\
+\n\
+CONTRACT NAMES (use exactly these — do not vary capitalisation or suffixes):\n\
+  handler.contractName:      \"{handler_name}\"\n\
+  invariantTest.contractName: \"{test_name}\"\n\
+  meta.contract:              \"{contract_name}\"\n\
+  meta.contractPath:          \"{contract_path}\"\n\
+\n\
+REQUIRED IMPORT LINES:\n\
+  In {handler_name}.imports, you MUST include:\n\
+    \"{handler_target_import}\"\n\
+  In {test_name}.imports, you MUST include:\n\
+    \"{test_handler_import}\"\n\
 \n\
 STRICT DESIGN RULES:\n\
-1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract instance (e.g., `vault.deposit{{value: msg.value}}()`). Do NOT reimplement the target contract's internal logic inside the handler.\n\
-2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do not explicitly exist in the provided source code.\n\
-3. NO REDUNDANCIES: Do not write meaningless logic or checks, like `require(myUint >= 0)` (since uint256 cannot be negative).\n\
+1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract \
+instance. Do NOT reimplement the target contract's internal logic inside the handler.\n\
+2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
+not explicitly exist in the provided source code.\n\
+3. NO REDUNDANCIES: Do not write meaningless checks like `require(myUint >= 0)`.\n\
 \n\
 STRICT SCHEMA RULES:\n\
-\n\
-Case Sensitivity: Use camelCase for all keys (e.g., contractName, setUpBody, invariantTest).\n\
-\n\
-Structural Integrity: Do not combine code into a single field. Break it down into the arrays and objects specified below.\n\
-\n\
-IndexMap Logic: The functions and invariants keys must be JSON Objects (key-value maps) where the value is the full function body as a string.\n\
-\n\
-No for-in loops: Use the actors array pattern in your logic.\n\
+- Use camelCase for all keys.\n\
+- Do not combine code into a single field — use the arrays and objects specified below.\n\
+- functions and invariants are JSON objects where the value is the full function body as a string.\n\
+- Do not include outputPath — paths are managed by the tool, not the LLM.\n\
 \n\
 REQUIRED JSON STRUCTURE:\n\
 {{\n\
     \"bodies\": {{\n\
         \"meta\": {{\n\
-      \"contract\": \"TargetContractName\",\n\
-      \"contractPath\": \"path/to/Target.sol\",\n\
-      \"solidity\": \"solidity_version_string\",\n\
-      \"generatedAt\": \"timestamp\"\n\
+            \"contract\": \"{contract_name}\",\n\
+            \"contractPath\": \"{contract_path}\",\n\
+            \"solidity\": \"solidity_version_string\",\n\
+            \"generatedAt\": \"timestamp\"\n\
         }},\n\
         \"handler\": {{\n\
-      \"contractName\": \"HandlerName\",\n\
-      \"outputPath\": \"path/to/Handler.sol\",\n\
-      \"imports\": [\"array\", \"of\", \"import\", \"lines\"],\n\
-      \"stateVars\": [\"array\", \"of\", \"state\", \"variables\"],\n\
-      \"ghostVars\": [\"array\", \"of\", \"ghost\", \"variables\"],\n\
-      \"constructorSignature\": \"signature_string\",\n\
-      \"constructorBody\": [\"array\", \"of\", \"solidity\", \"lines\"],\n\
+            \"contractName\": \"{handler_name}\",\n\
+            \"imports\": [\"array of import lines\"],\n\
+            \"stateVars\": [\"array of state variables\"],\n\
+            \"ghostVars\": [\"array of ghost variables\"],\n\
+            \"constructorSignature\": \"signature_string\",\n\
+            \"constructorBody\": [\"array of solidity lines\"],\n\
             \"functions\": {{\n\
-        \"functionName\": \"full_solidity_function_string\"\n\
+                \"functionName\": \"full_solidity_function_string\"\n\
             }},\n\
-      \"targetSelectors\": \"selector_expression_string\"\n\
+            \"targetSelectors\": \"selector_expression_string\"\n\
         }},\n\
         \"invariantTest\": {{\n\
-      \"contractName\": \"TestName\",\n\
-      \"outputPath\": \"path/to/Test.sol\",\n\
-      \"imports\": [\"array\", \"of\", \"import\", \"lines\"],\n\
-      \"stateVars\": [\"array\", \"of\", \"state\", \"variables\"],\n\
-      \"setUpBody\": [\"array\", \"of\", \"setup\", \"lines\"],\n\
+            \"contractName\": \"{test_name}\",\n\
+            \"imports\": [\"array of import lines\"],\n\
+            \"stateVars\": [\"array of state variables\"],\n\
+            \"setUpBody\": [\"array of setup lines\"],\n\
             \"invariants\": {{\n\
-        \"invariantName\": \"full_solidity_function_string\"\n\
+                \"invariantName\": \"full_solidity_function_string\"\n\
             }}\n\
         }}\n\
     }}\n\
 }}\n\
 \n\
 Analysis Context:\n\
-{}\n",
-        analysis_summary
+{analysis_summary}\n",
+        contract_name = contract_name,
+        contract_path = contract_path,
+        handler_name = handler_name,
+        test_name = test_name,
+        handler_target_import = handler_target_import,
+        test_handler_import = test_handler_import,
+        analysis_summary = analysis_summary,
     ))
 }
 
@@ -136,7 +172,7 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
         .context("failed to serialize existing foundry config")?;
 
     Ok(format!(
-        "Round: {}\n\
+        "Round: {round}\n\
          Return JSON only. No markdown, no prose, no code fences.\n\
          \n\
          STRICT OUTPUT CONTRACT:\n\
@@ -170,7 +206,6 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          - meta.solidity\n\
          - meta.generatedAt\n\
          - handler.contractName\n\
-         - handler.outputPath\n\
          - handler.imports\n\
          - handler.stateVars\n\
          - handler.ghostVars\n\
@@ -179,7 +214,6 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          - handler.functions.<functionName>\n\
          - handler.targetSelectors\n\
          - invariantTest.contractName\n\
-         - invariantTest.outputPath\n\
          - invariantTest.imports\n\
          - invariantTest.stateVars\n\
          - invariantTest.setUpBody\n\
@@ -198,9 +232,11 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          - bodies update path: \"handler.functions.deposit\"\n\
          - config update path: \"call_sequence_weights.withdraw\"\n\
          \n\
-         Existing bodies:\n{}\n\
+         Existing bodies:\n{existing_bodies}\n\
          \n\
-         Existing foundry config:\n{}",
-        request.round, existing_bodies_json, existing_config_json
+         Existing foundry config:\n{existing_config}",
+        round = request.round,
+        existing_bodies = existing_bodies_json,
+        existing_config = existing_config_json,
     ))
 }

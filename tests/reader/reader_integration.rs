@@ -10,8 +10,7 @@ use tempfile::TempDir;
 use tokio::fs;
 
 fn make_use_case(dir: &TempDir) -> ReadUseCase {
-    let base = dir.path().to_str().unwrap().to_owned();
-    let fs_reader = Arc::new(FileSystemReader::new(base.clone()));
+    let fs_reader = Arc::new(FileSystemReader::new(dir.path().to_path_buf()));
     let contract_reader = Arc::new(SolidityContractReader::new(Arc::clone(&fs_reader)));
     let coverage_reader = Arc::new(FoundryCoverageReader::new(Arc::clone(&fs_reader)));
     ReadUseCase::new(contract_reader, coverage_reader, fs_reader)

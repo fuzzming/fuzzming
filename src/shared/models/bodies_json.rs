@@ -24,8 +24,6 @@ pub struct BodiesMeta {
 #[serde(rename_all = "camelCase")]
 pub struct HandlerBodies {
     pub contract_name: String,
-    /// Relative path from workspace root, e.g. "test/handlers/VaultHandler.sol"
-    pub output_path: String,
     pub imports: Vec<String>,
     pub state_vars: Vec<String>,
     pub ghost_vars: Vec<String>,
@@ -40,8 +38,6 @@ pub struct HandlerBodies {
 #[serde(rename_all = "camelCase")]
 pub struct InvariantTestBodies {
     pub contract_name: String,
-    /// Relative path from workspace root, e.g. "test/invariants/VaultInvariantTest.sol"
-    pub output_path: String,
     pub imports: Vec<String>,
     pub state_vars: Vec<String>,
     pub set_up_body: Vec<String>,

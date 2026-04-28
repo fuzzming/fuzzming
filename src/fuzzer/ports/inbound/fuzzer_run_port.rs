@@ -6,5 +6,5 @@ use crate::shared::responses::fuzz_report::FuzzReport;
 
 #[async_trait]
 pub trait FuzzerRunPort: Send + Sync {
-    async fn run(&self, signal: RoundSignal) -> Result<FuzzReport>;
+    async fn run(&self, signals: Vec<RoundSignal>) -> Result<Vec<FuzzReport>>;
 }

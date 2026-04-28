@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 #[derive(Debug, Parser)]
@@ -25,7 +27,7 @@ pub struct CliArgs {
 
     /// Foundry project root (defaults to current directory)
     #[arg(long, default_value = ".")]
-    pub workspace_root: String,
+    pub workspace_root: PathBuf,
 }
 
 pub fn parse_args() -> CliArgs {

@@ -187,7 +187,6 @@ mod tests {
             },
             handler: HandlerBodies {
                 contract_name: "VaultHandler".to_string(),
-                output_path: "test/handlers/VaultHandler.sol".to_string(),
                 imports: vec!["import {Vault} from \"src/Vault.sol\";".to_string()],
                 state_vars: vec!["Vault vault;".to_string()],
                 ghost_vars: vec!["uint256 ghost_totalDeposited;".to_string()],
@@ -198,7 +197,6 @@ mod tests {
             },
             invariant_test: InvariantTestBodies {
                 contract_name: "VaultInvariantTest".to_string(),
-                output_path: "test/invariants/VaultInvariantTest.sol".to_string(),
                 imports: vec![],
                 state_vars: vec![],
                 set_up_body: vec![],

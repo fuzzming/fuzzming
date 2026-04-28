@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 
@@ -5,11 +7,11 @@ use crate::fuzzer::ports::outbound::TestRunnerPort;
 use crate::shared::models::RunnerResult;
 
 pub struct ForgeRunner {
-    pub working_dir: String,
+    pub working_dir: PathBuf,
 }
 
 impl ForgeRunner {
-    pub fn new(working_dir: String) -> Self {
+    pub fn new(working_dir: PathBuf) -> Self {
         Self { working_dir }
     }
 }

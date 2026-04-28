@@ -4,5 +4,5 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait FuzzerEnginePort: Send + Sync {
-    async fn run(&self, signal: RoundSignal) -> Result<FuzzReport>;
+    async fn run(&self, signals: Vec<RoundSignal>) -> Result<Vec<FuzzReport>>;
 }

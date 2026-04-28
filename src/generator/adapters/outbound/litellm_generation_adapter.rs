@@ -112,7 +112,7 @@ impl LiteLlmGenerationAdapter {
         let bodies_stage: BodiesStage = self
             .request_json(
                 &system_prompt,
-                build_round_one_bodies_prompt(&analysis)?,
+                build_round_one_bodies_prompt(&analysis, &request.contract_name, &request.contract_path)?,
                 "bodies",
                 "bodies object with valid Solidity syntax",
                 &mut usage,

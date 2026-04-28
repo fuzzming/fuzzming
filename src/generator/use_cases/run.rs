@@ -33,6 +33,8 @@ impl GeneratorRunPort for GeneratorRunUseCase {
 
         let request = GenerationRequest {
             round: signal.round,
+            contract_name: signal.contract_name.clone(),
+            contract_path: signal.contract_path.clone(),
             source_code: signal.source_code.clone(),
             prompt,
             existing_bodies: signal.existing_bodies.clone(),
