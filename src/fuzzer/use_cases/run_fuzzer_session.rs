@@ -57,17 +57,16 @@ impl FuzzerRunPort for RunFuzzerUseCase {
             run_coverage("coverage", &*self.runner).await?;
             let lcov_src = workspace.join("lcov.info");
 
-            for (signal, report) in signals.iter().zip(reports.iter_mut()) {
-                if matches!(report.outcome, FuzzOutcome::Pass) {
-                    let contract = &signal.contract_name;
-                    let contract_dir = workspace.join(FUZZMING_DIR).join(contract);
-                    let lcov_dest = contract_dir.join("lcov.info");
-
-                    let lcov_content = fs::read_to_string(&lcov_src).await?;
-                    let filtered = filter_lcov_for_contract(&lcov_content, contract);
-                    fs::write(&lcov_dest, filtered).await?;
-
-                    report.lcov_path = Some(lcov_dest);
+            if let Ok(lcov_content) = fs::read_to_string(&lcov_src).await {
+                for (signal, report) in signals.iter().zip(reports.iter_mut()) {
+                    if matches!(report.outcome, FuzzOutcome::Pass) {
+                        let contract = &signal.contract_name;
+                        let contract_dir = workspace.join(FUZZMING_DIR).join(contract);
+                        let lcov_dest = contract_dir.join("lcov.info");
+                        let filtered = filter_lcov_for_contract(&lcov_content, contract);
+                        fs::write(&lcov_dest, filtered).await?;
+                        report.lcov_path = Some(lcov_dest);
+                    }
                 }
             }
         }
