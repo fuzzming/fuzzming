@@ -109,15 +109,40 @@ Both `run_test` and `run_coverage` capture stdout, stderr, and exit code into a 
 
 ## Outcome evaluation — inline in `run_fuzzer_session.rs`
 
-`evaluate_outcome_for_contract` scans the combined stdout + stderr for `[FAIL` lines that mention the contract's invariant test name:
+`evaluate_outcome_for_contract` returns `(FuzzOutcome, Vec<BugInfo>)` and delegates bug collection to `collect_bugs_for_contract`:
 
-| Condition | Outcome |
-|---|---|
-| No `[FAIL` line for this contract | `Pass` |
-| `[FAIL` line contains `invariant_` | `Bug` |
-| `[FAIL` line present but no `invariant_` | `DevTestFailed` |
+| Condition | Outcome | Bugs |
+|---|---|---|
+| Exit code 0 | `Pass` | `[]` |
+| Exit code non-zero, bugs found | `Bug` | one `BugInfo` per failing invariant |
+| Exit code non-zero, no bugs found | `DevTestFailed` | `[]` |
 
 Coverage (`forge coverage`) is only triggered when at least one contract's outcome is `Pass`.
+
+### `collect_bugs_for_contract` — forge output state machine
+
+Forge reports each failing invariant with a multi-line block. Both tokens are **always on separate lines** (empirically verified):
+
+```
+[FAIL: assertion message]
+  [Sequence] (original: N, shrunk: M)
+    sender=0x... calldata=handler_reset() args=[]
+ invariant_never_zero() (runs: 1, calls: 1, reverts: 0)
+```
+
+The reliable signal for a failing invariant is a line containing both `invariant_` and `(runs:`. The `[Sequence]` block immediately above it is the reproduction call sequence.
+
+The state machine walks stdout line by line:
+
+1. Enters the contract's section when a line contains `{Contract}InvariantTest`
+2. Exits if a different `InvariantTest` header appears (multi-contract output)
+3. On `[FAIL` — opens a new block, clears the sequence buffer
+4. On `[Sequence]` or `[Shrunk sequence]` — starts collecting sequence lines
+5. On box-drawing characters (`╭`, `╰`, `├`) — sequence collection ends (call stats table)
+6. On `invariant_` + `(runs:` — saves a `BugInfo`, closes the block; a `HashSet` deduplicates by name
+7. Stops at `Failing tests:` — forge prints results twice; this prevents duplicates
+
+Returns `Vec<BugInfo>` — one entry per unique failing invariant, each carrying `invariant_name` and `call_sequence`.
 
 ---
 
@@ -125,7 +150,7 @@ Coverage (`forge coverage`) is only triggered when at least one contract's outco
 
 All contracts run in one forge process. After the process exits, Rust filters the output:
 
-**`filter_output_for_contract`** — keeps only stdout lines that contain `{Contract}InvariantTest`. Written to `.fuzzming/{Contract}/fuzz_output.txt`.
+**`filter_output_for_contract`** — captures the full output section for one contract: starts when a line contains `{Contract}InvariantTest`, stops when the next `InvariantTest` header or `Failing tests:` appears. Written to `.fuzzming/{Contract}/fuzz_output.txt`. This preserves the complete multi-line fail blocks (call sequences, stats) rather than just lines that happen to mention the contract name.
 
 **`filter_lcov_for_contract`** — walks `lcov.info` line by line; keeps each `SF:` block only if the `SF:` path contains the contract name. Written to `.fuzzming/{Contract}/lcov.info`.
 
@@ -160,15 +185,19 @@ Orchestrator
              │     → RunnerResult { stdout, stderr, exit_code }
              │
              ├─ for each contract:
-             │     filter stdout → .fuzzming/{Contract}/fuzz_output.txt
-             │     evaluate_outcome_for_contract() → FuzzOutcome
+             │     filter_output_for_contract() → full section block
+             │       → .fuzzming/{Contract}/fuzz_output.txt
+             │     evaluate_outcome_for_contract()
+             │       → collect_bugs_for_contract() → Vec<BugInfo>
+             │       → (FuzzOutcome, Vec<BugInfo>)
+             │     FuzzReport { outcome, bugs, lcov_path: None }
              │
              └─ if any_pass:
                    run_coverage("coverage", runner)
                    FOUNDRY_PROFILE=coverage forge coverage --report lcov
                    if lcov.info exists:
                      for each passing contract:
-                       filter lcov → .fuzzming/{Contract}/lcov.info
+                       filter_lcov_for_contract() → .fuzzming/{Contract}/lcov.info
                        FuzzReport.lcov_path = Some(path)
 ```
 
@@ -179,7 +208,12 @@ Orchestrator
 ```rust
 pub struct FuzzReport {
     pub outcome: FuzzOutcome,
-    pub lcov_path: Option<PathBuf>,  // set only on Pass; None otherwise
+    /// All failing invariants found in this forge run.
+    /// Populated only when outcome == Bug; empty otherwise.
+    pub bugs: Vec<BugInfo>,
+    /// Path to the lcov.info file written by `forge coverage`.
+    /// Set only when outcome is Pass or FullCoverage; None otherwise.
+    pub lcov_path: Option<PathBuf>,
 }
 
 pub enum FuzzOutcome {
@@ -188,7 +222,14 @@ pub enum FuzzOutcome {
     FullCoverage,   // reserved — not yet returned
     DevTestFailed,
 }
+
+pub struct BugInfo {
+    pub invariant_name: String,  // e.g. "invariant_never_zero"
+    pub call_sequence: String,   // multi-line forge shrunk call sequence
+}
 ```
+
+`bugs` carries all failing invariants found by `collect_bugs_for_contract`. The orchestrator maps each `BugInfo` into a formatted call-sequence string in `ReportArtifacts.call_sequences`.
 
 `lcov_path` carries the absolute path to `.fuzzming/{Contract}/lcov.info`. The orchestrator passes this to the reader for the next round's `CoverageContext`.
 
@@ -218,8 +259,4 @@ let fuzzer   = Fuzzer::new(use_case);
 
 ## Known issues
 
-1. **Exit-code blindness** — `evaluate_outcome_for_contract` returns `Pass` if no `[FAIL]` line mentions the contract, even when forge exited non-zero. Should return `DevTestFailed` when `exit_code != 0` and no contract output is found.
-
-2. **Incomplete call-sequence capture** — `filter_output_for_contract` only keeps lines containing the contract name. Forge's failing call sequence spans multiple lines that don't repeat the contract name, so `fuzz_output.txt` misses most of the sequence.
-
-3. **`FullCoverage` never returned** — no logic detects 100% coverage from lcov data and promotes the outcome.
+1. **`FullCoverage` never returned** — no logic detects 100% coverage from lcov data and promotes the outcome to `FullCoverage`.
