@@ -77,12 +77,14 @@ Each formatter is a pure function `fn(&SessionOutcome) -> String`. No I/O, no si
 
 | Formatter | Trigger | Headline |
 |---|---|---|
-| `format_bug_report` | `TerminationReason::Bug` | `## FuzzMing: Bug Found in \`{contract}\` (round {n})` |
+| `format_bug_report` | `TerminationReason::Bug` | `## FuzzMing: N bug(s) found in \`{contract}\` (round {n})` |
 | `format_coverage_report` | `TerminationReason::FullCoverage` | `## FuzzMing: Full Coverage Achieved for \`{contract}\` (round {n})` |
 | `format_dev_test_failure` | `TerminationReason::DevTestFailed` | `## FuzzMing: Forge Tests Failed for \`{contract}\` (round {n})` |
 | `format_exhausted_report` | `TerminationReason::Exhausted` | `## FuzzMing: Rounds Exhausted for \`{contract}\` ({n} rounds, no bugs found)` |
 
-**Bug report** includes a `Call sequence` block (from `outcome.artifacts.call_sequences`) and the raw forge output (truncated to 3 000 chars).
+**Bug report** renders one numbered block per failing invariant (`**Bug 1:**`, `**Bug 2:**`, …), each showing the invariant's call sequence from `outcome.artifacts.call_sequences`. If no bugs were captured, the block reads `(no call sequences captured)`. The raw forge output follows (truncated to 3 000 chars).
+
+`call_sequences` is populated by the orchestrator from `FuzzReport.bugs`: each `BugInfo` becomes `"{invariant_name}:\n{call_sequence}"` — structured data from the fuzzer's state machine parser, not raw stdout.
 
 **Coverage / Exhausted reports** include a coverage summary from `outcome.artifacts.coverage_summary`.
 
@@ -132,7 +134,10 @@ pub struct ReportArtifacts {
 }
 ```
 
-`ReportArtifacts` is populated by the orchestrator using its existing `ReaderPort` (`get_fuzz_output` and `get_coverage_context`) before `SessionOutcome` is passed to the reporter.
+`ReportArtifacts` is populated by the orchestrator:
+- `fuzz_output` — read from `.fuzzming/{Contract}/fuzz_output.txt` via `ReaderPort::get_fuzz_output`
+- `coverage_summary` — read from `.fuzzming/{Contract}/lcov.info` via `ReaderPort::get_coverage_context`
+- `call_sequences` — mapped from `FuzzReport.bugs`: each `BugInfo` becomes `"{invariant_name}:\n{call_sequence}"`
 
 ---
 
