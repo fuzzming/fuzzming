@@ -1,3 +1,7 @@
+use anyhow::Result;
+use async_trait::async_trait;
+
+#[async_trait]
 pub trait OutputPort: Send + Sync {
-    fn write(&self, output: &str);
+    async fn write(&self, output: &str) -> Result<()>;
 }

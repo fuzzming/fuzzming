@@ -22,7 +22,12 @@ impl Prompt {
         fuzz_output: Option<String>,
         coverage_context: Option<CoverageContext>,
     ) -> Self {
-        Self { source_code, round, fuzz_output, coverage_context }
+        Self {
+            source_code,
+            round,
+            fuzz_output,
+            coverage_context,
+        }
     }
 
     pub fn system_message(&self) -> String {
@@ -78,8 +83,14 @@ impl Prompt {
 
         AssembledPrompt {
             messages: vec![
-                Message { role: Role::System, content: system },
-                Message { role: Role::User, content: user },
+                Message {
+                    role: Role::System,
+                    content: system,
+                },
+                Message {
+                    role: Role::User,
+                    content: user,
+                },
             ],
             round: self.round,
             context_sections,
@@ -134,5 +145,58 @@ impl Prompt {
             }
         }
         lines.join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Prompt;
+    use crate::shared::models::{CoverageContext, CoverageGap, GapType, Role};
+
+    #[test]
+    fn assembled_prompt_includes_context_sections_and_messages() {
+        let coverage = CoverageContext {
+            gaps: vec![CoverageGap {
+                file: "src/MyContract.sol".to_string(),
+                line: 42,
+                gap_type: GapType::Line,
+                source_context: vec!["42: gap".to_string()],
+            }],
+            line_found: 10,
+            line_hit: 2,
+            branch_found: 0,
+            branch_hit: 0,
+            function_found: 0,
+            function_hit: 0,
+        };
+
+        let assembled = Prompt::new(
+            2,
+            "contract C {}".to_string(),
+            Some("revert".to_string()),
+            Some(coverage),
+        )
+        .into_assembled();
+
+        assert_eq!(assembled.messages.len(), 2);
+        assert!(matches!(assembled.messages[0].role, Role::System));
+        assert!(matches!(assembled.messages[1].role, Role::User));
+        assert!(assembled
+            .context_sections
+            .contains(&"fuzz_output".to_string()));
+        assert!(assembled.context_sections.contains(&"coverage".to_string()));
+        assert!(assembled.messages[1].content.contains("Round: 2"));
+        assert!(assembled.messages[1].content.contains("FUZZ OUTPUT"));
+        assert!(assembled.messages[1].content.contains("COVERAGE SUMMARY"));
+    }
+
+    #[test]
+    fn round_one_prompt_includes_full_generation_instruction() {
+        let assembled = Prompt::new(1, "contract C {}".to_string(), None, None).into_assembled();
+
+        assert!(assembled.messages[1]
+            .content
+            .contains("Generate the full handler and invariant test suite"));
+        assert!(assembled.context_sections.is_empty());
     }
 }

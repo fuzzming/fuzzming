@@ -1,3 +1,6 @@
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+
 use crate::reporter::ports::outbound::OutputPort;
 
 pub struct PrCommentOutput {
@@ -12,8 +15,26 @@ impl PrCommentOutput {
     }
 }
 
+#[async_trait]
 impl OutputPort for PrCommentOutput {
-    fn write(&self, _output: &str) {
-        todo!()
+    async fn write(&self, output: &str) -> Result<()> {
+        let url = format!(
+            "https://api.github.com/repos/{}/issues/{}/comments",
+            self.repo, self.pr_number
+        );
+
+        reqwest::Client::new()
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.github_token))
+            .header("User-Agent", "fuzzming")
+            .header("Accept", "application/vnd.github+json")
+            .json(&serde_json::json!({ "body": output }))
+            .send()
+            .await
+            .context("failed to post GitHub PR comment")?
+            .error_for_status()
+            .context("GitHub API returned an error")?;
+
+        Ok(())
     }
 }
