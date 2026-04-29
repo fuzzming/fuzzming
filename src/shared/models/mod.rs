@@ -1,4 +1,5 @@
 pub mod assembled_prompt;
+pub mod bug_info;
 pub mod bodies_json;
 pub mod contract_context;
 pub mod coverage_context;
@@ -13,6 +14,7 @@ pub mod session_config;
 pub mod session_state;
 
 pub use assembled_prompt::*;
+pub use bug_info::*;
 pub use bodies_json::*;
 pub use contract_context::*;
 pub use coverage_context::*;

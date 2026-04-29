@@ -150,11 +150,14 @@ impl RunSessionUseCase {
             _ => None,
         };
 
-        Ok(ReportArtifacts {
-            fuzz_output,
-            coverage_summary,
-            call_sequences: vec![],
-        })
+        // Format each bug as "invariant_name:\n<call_sequence>" for the report.
+        let call_sequences = report
+            .bugs
+            .iter()
+            .map(|b| format!("{}:\n{}", b.invariant_name, b.call_sequence))
+            .collect();
+
+        Ok(ReportArtifacts { fuzz_output, coverage_summary, call_sequences })
     }
 }
 
