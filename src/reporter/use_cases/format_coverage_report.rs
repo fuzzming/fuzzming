@@ -1,7 +1,8 @@
-use crate::shared::models::ReportArtifacts;
+use crate::shared::responses::session_outcome::SessionOutcome;
 
-pub fn format_coverage_report(artifacts: &ReportArtifacts) -> String {
-    let cov = artifacts
+pub fn format_coverage_report(outcome: &SessionOutcome) -> String {
+    let cov = outcome
+        .artifacts
         .coverage_summary
         .as_deref()
         .unwrap_or("(no coverage data)");
@@ -9,6 +10,6 @@ pub fn format_coverage_report(artifacts: &ReportArtifacts) -> String {
     format!(
         "## FuzzMing: Full Coverage Achieved for `{}` (round {})\n\n\
          **Coverage summary:**\n```\n{}\n```",
-        artifacts.contract_name, artifacts.round_history, cov,
+        outcome.contract_name, outcome.rounds_completed, cov,
     )
 }

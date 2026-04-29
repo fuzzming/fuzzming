@@ -1,12 +1,12 @@
-use crate::shared::models::ReportArtifacts;
+use crate::shared::responses::session_outcome::SessionOutcome;
 
-pub fn format_dev_test_failure(artifacts: &ReportArtifacts) -> String {
+pub fn format_dev_test_failure(outcome: &SessionOutcome) -> String {
     format!(
         "## FuzzMing: Forge Tests Failed for `{}` (round {})\n\n\
          **Output:**\n```\n{}\n```",
-        artifacts.contract_name,
-        artifacts.round_history,
-        truncate(&artifacts.fuzz_output, 3000),
+        outcome.contract_name,
+        outcome.rounds_completed,
+        truncate(&outcome.artifacts.fuzz_output, 3000),
     )
 }
 

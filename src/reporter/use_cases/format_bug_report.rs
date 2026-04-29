@@ -1,10 +1,11 @@
-use crate::shared::models::ReportArtifacts;
+use crate::shared::responses::session_outcome::SessionOutcome;
 
-pub fn format_bug_report(artifacts: &ReportArtifacts) -> String {
-    let sequences = if artifacts.call_sequences.is_empty() {
+pub fn format_bug_report(outcome: &SessionOutcome) -> String {
+    let sequences = if outcome.artifacts.call_sequences.is_empty() {
         "  (no call sequence captured)".to_string()
     } else {
-        artifacts
+        outcome
+            .artifacts
             .call_sequences
             .iter()
             .map(|s| format!("  {}", s))
@@ -16,10 +17,10 @@ pub fn format_bug_report(artifacts: &ReportArtifacts) -> String {
         "## FuzzMing: Bug Found in `{}` (round {})\n\n\
          **Failing call sequence:**\n```\n{}\n```\n\n\
          **Forge output:**\n```\n{}\n```",
-        artifacts.contract_name,
-        artifacts.round_history,
+        outcome.contract_name,
+        outcome.rounds_completed,
         sequences,
-        truncate(&artifacts.fuzz_output, 3000),
+        truncate(&outcome.artifacts.fuzz_output, 3000),
     )
 }
 
