@@ -21,7 +21,7 @@ fn signal(workspace: PathBuf) -> RoundSignal {
     RoundSignal {
         round: 1,
         config: SessionConfig {
-            llm_url: String::new(),
+            model: String::new(),
             llm_key: String::new(),
             output_format: OutputFormat::Terminal,
             ci_mode: false,

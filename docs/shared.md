@@ -39,16 +39,30 @@ Pure data structures. No direction — they are not inputs or outputs, they are 
 | `CoverageGap` | A single uncovered location: file, line, type, surrounding source lines |
 | `GapType` | Enum: `Line`, `Branch`, or `Function` |
 | `ReportArtifacts` | Data for the reporter: fuzz output string, coverage summary, call sequences, round count |
-| `SessionConfig` | LLM URL, API key, output format, CI mode, target language, fuzzer choice, `workspace_root: PathBuf` |
+| `SessionConfig` | LLM model identifier, API key, output format, CI mode, target language, fuzzer choice, `workspace_root: PathBuf` |
 | `SessionState` | Rounds remaining, current round, session config, all bugs found so far (keyed by contract name) |
 | `OutputFormat` | Enum: `Terminal` or `Ci` |
 | `Language` | Enum: `Solidity` (Rust, Vyper, Move reserved for future) |
 | `Fuzzer` | Enum: `Foundry` (Echidna, Medusa, CargoFuzz reserved for future) |
 | `RunnerResult` | Raw process output: exit code, stdout, stderr |
 
-**`workspace_root: PathBuf`**
+**`SessionConfig` fields**
 
-`SessionConfig.workspace_root` is a `PathBuf`, not a `String`. All path construction uses `PathBuf::join` — no ad-hoc string concatenation.
+```rust
+pub struct SessionConfig {
+    pub model: String,           // LLM model identifier, e.g. "openrouter/anthropic/claude-3.5-sonnet"
+    pub llm_key: String,         // API key for the model's provider
+    pub output_format: OutputFormat,
+    pub ci_mode: bool,
+    pub language: Language,
+    pub fuzzer: Fuzzer,
+    pub workspace_root: PathBuf, // absolute path — all forge commands run here
+}
+```
+
+`model` uses the litellm-rs prefix convention: `groq/...`, `openrouter/...`, `openai/...`, `anthropic/...`. The prefix determines which env var the adapter sets at runtime (`GROQ_API_KEY`, etc.).
+
+`workspace_root` is a `PathBuf`, not a `String`. All path construction uses `PathBuf::join` — no ad-hoc string concatenation.
 
 **Why `IndexMap` for `functions` and `invariants`?**
 

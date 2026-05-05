@@ -1,8 +1,8 @@
 use crate::composition::composition_root::CompositionRoot;
 use crate::entry::cli::arg_parser::parse_args;
 use crate::shared::models::{Fuzzer, Language, OutputFormat, SessionConfig};
-use crate::shared::ports::OrchestratorPort;
 use crate::shared::requests::session_request::SessionRequest;
+use crate::shared::responses::session_outcome::TerminationReason;
 use anyhow::Result;
 
 pub struct CliRunner;
@@ -15,7 +15,7 @@ impl CliRunner {
     pub async fn run(&self) -> Result<()> {
         let args = parse_args();
         let config = SessionConfig {
-            llm_url: args.llm_url.clone(),
+            model: args.model.clone(),
             llm_key: args.llm_key.clone(),
             output_format: if args.ci_mode {
                 OutputFormat::Ci
@@ -40,6 +40,14 @@ impl CliRunner {
         };
         let orchestrator = CompositionRoot::build(config);
         let outcome = orchestrator.run(request).await?;
+
+        let has_bugs = matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
+            || !outcome.artifacts.call_sequences.is_empty();
+
+        if has_bugs {
+            std::process::exit(1);
+        }
+
         Ok(())
     }
 }
