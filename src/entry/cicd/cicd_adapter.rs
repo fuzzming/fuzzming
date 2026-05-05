@@ -1,5 +1,5 @@
 use crate::composition::composition_root::CompositionRoot;
-use crate::entry::cicd::env_reader::{read_cicd_env, CicdEnv};
+use crate::entry::cicd::env_reader::read_cicd_env;
 use crate::shared::models::{Fuzzer, Language, OutputFormat, SessionConfig};
 use crate::shared::requests::session_request::SessionRequest;
 use anyhow::Result;
@@ -14,7 +14,7 @@ impl CicdAdapter {
     pub async fn run(&self) -> Result<()> {
         let env = read_cicd_env()?;
         let config = SessionConfig {
-            llm_url: env.llm_url.clone(),
+            model: env.model.clone(),
             llm_key: env.llm_key.clone(),
             output_format: OutputFormat::Ci,
             ci_mode: true,

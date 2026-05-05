@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 
 use crate::generator::domain::generation_response::GenerationResponse;
 

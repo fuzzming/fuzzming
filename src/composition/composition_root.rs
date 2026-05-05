@@ -1,11 +1,81 @@
+use std::sync::Arc;
+
+use crate::executor::adapters::inbound::Executor;
+use crate::executor::adapters::outbound::{FileSystemWriter, FoundryConfigWriter, SolidityGenerator};
+use crate::executor::use_cases::ExecuteUseCase;
+use crate::fuzzer::adapters::inbound::Fuzzer as FuzzerAdapter;
+use crate::fuzzer::adapters::outbound::{FileSystemFuzzerOutput, ForgeRunner};
+use crate::fuzzer::use_cases::RunFuzzerUseCase;
+use crate::generator::adapters::inbound::Generator;
+use crate::generator::adapters::outbound::{LiteLlmClient, LiteLlmGenerationAdapter};
+use crate::generator::use_cases::GeneratorRunUseCase;
 use crate::orchestrator::adapters::inbound::Orchestrator;
-use crate::shared::models::SessionConfig;
+use crate::orchestrator::use_cases::RunSessionUseCase;
+use crate::reader::adapters::inbound::Reader;
+use crate::reader::adapters::outbound::{FileSystemReader, FoundryCoverageReader, SolidityContractReader};
+use crate::reader::use_cases::ReadUseCase;
+use crate::reporter::adapters::inbound::Reporter;
+use crate::reporter::adapters::outbound::{PrCommentOutput, TerminalOutput};
+use crate::shared::models::{OutputFormat, SessionConfig};
 use crate::shared::ports::OrchestratorPort;
 
 pub struct CompositionRoot;
 
 impl CompositionRoot {
-    pub fn build(_config: SessionConfig) -> Box<dyn OrchestratorPort> {
-        todo!()
+    pub fn build(config: SessionConfig) -> Box<dyn OrchestratorPort> {
+        let workspace = config.workspace_root.clone();
+        let model = config.model.clone();
+        let api_key = config.llm_key.clone();
+
+        // Generator (LLM engine)
+        let llm_client = Box::new(LiteLlmClient::new(&model, Some(0.1), Some(4_096)));
+        let generation_adapter =
+            Box::new(LiteLlmGenerationAdapter::new(&model, &api_key, llm_client));
+        let generator_use_case = Box::new(GeneratorRunUseCase::new(generation_adapter));
+        let generator = Box::new(Generator::new(generator_use_case));
+
+        // Fuzzer engine
+        let forge_runner = Box::new(ForgeRunner::new(workspace.clone()));
+        let fuzzer_output = Box::new(FileSystemFuzzerOutput::new(workspace.clone()));
+        let fuzzer_use_case = Box::new(RunFuzzerUseCase::new(forge_runner, fuzzer_output));
+        let fuzzer = Box::new(FuzzerAdapter::new(fuzzer_use_case));
+
+        // Executor
+        let fs_writer = FileSystemWriter::new(workspace.clone());
+        let code_generator = Arc::new(SolidityGenerator);
+        let config_writer = Arc::new(FoundryConfigWriter);
+        let executor_use_case =
+            Box::new(ExecuteUseCase::new(fs_writer, code_generator, config_writer));
+        let executor = Box::new(Executor::new(executor_use_case));
+
+        // Reader
+        let fs_reader = Arc::new(FileSystemReader::new(workspace.clone()));
+        let contract_reader = Arc::new(SolidityContractReader::new(fs_reader.clone()));
+        let coverage_reader = Arc::new(FoundryCoverageReader::new(fs_reader.clone()));
+        let reader_use_case =
+            Box::new(ReadUseCase::new(contract_reader, coverage_reader, fs_reader));
+        let reader = Box::new(Reader::new(reader_use_case));
+
+        // Reporter — CI mode reads GitHub context from environment variables set by Actions
+        let output: Box<dyn crate::reporter::ports::outbound::OutputPort> =
+            match config.output_format {
+                OutputFormat::Ci => {
+                    let token = std::env::var("GITHUB_TOKEN").unwrap_or_default();
+                    let repo = std::env::var("GITHUB_REPOSITORY").unwrap_or_default();
+                    let pr_number = std::env::var("PR_NUMBER")
+                        .ok()
+                        .and_then(|v| v.parse::<u64>().ok())
+                        .unwrap_or(0);
+                    Box::new(PrCommentOutput::new(token, repo, pr_number))
+                }
+                OutputFormat::Terminal => Box::new(TerminalOutput::new()),
+            };
+        let reporter = Box::new(Reporter::new(output));
+
+        // Orchestrator
+        let run_session = Box::new(RunSessionUseCase::new(
+            generator, fuzzer, executor, reporter, reader,
+        ));
+        Box::new(Orchestrator::new(run_session))
     }
 }

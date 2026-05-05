@@ -30,7 +30,7 @@ pub enum Fuzzer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionConfig {
-    pub llm_url: String,
+    pub model: String,
     pub llm_key: String,
     pub output_format: OutputFormat,
     pub ci_mode: bool,

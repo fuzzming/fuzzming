@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use tracing::info;
 
 use crate::generator::domain::generation_response::GenerationResponse;
 use crate::shared::{
@@ -16,6 +17,7 @@ pub async fn run_round(
     llm_engine: &dyn LlmEnginePort,
     executor: &dyn ExecutorPort,
 ) -> Result<LlmSignal> {
+    info!(contract = %signal.contract_name, round = signal.round, "LLM started");
     let mut llm_signal = llm_engine.run(signal.clone()).await?;
 
     let result = llm_signal
@@ -26,13 +28,19 @@ pub async fn run_round(
     // Option B: deterministically strip confirmed-broken invariants from Full responses
     // so forge never re-runs them and the LLM never sees stale failure signal for them.
     if let GenerationResponse::Full { ref mut bodies, .. } = result.response {
-        for bug in &signal.confirmed_bugs {
-            bodies.invariant_test.invariants.shift_remove(&bug.invariant_name);
+        let stripped: Vec<&str> = signal.confirmed_bugs.iter()
+            .filter(|b| bodies.invariant_test.invariants.shift_remove(&b.invariant_name).is_some())
+            .map(|b| b.invariant_name.as_str())
+            .collect();
+        if !stripped.is_empty() {
+            info!(contract = %signal.contract_name, stripped = ?stripped, "stripped confirmed invariants");
         }
     }
 
+    info!(contract = %signal.contract_name, round = signal.round, "LLM done — executor writing files");
     let executor_input = build_executor_input(&result.response, &signal)?;
     executor.execute(executor_input).await?;
+    info!(contract = %signal.contract_name, round = signal.round, "executor done");
 
     Ok(llm_signal)
 }

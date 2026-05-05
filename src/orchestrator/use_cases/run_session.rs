@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::future::try_join_all;
+use tracing::info;
 
 use crate::orchestrator::ports::inbound::OrchestratorRunPort;
 use crate::orchestrator::use_cases::{
@@ -44,8 +45,15 @@ impl OrchestratorRunPort for RunSessionUseCase {
         let mut active: Vec<String> = request.target_paths.clone();
         let mut last_outcome: Option<SessionOutcome> = None;
 
+        info!(
+            contracts = active.len(),
+            max_rounds = state.rounds_remaining,
+            "session started"
+        );
+
         loop {
             state.current_round += 1;
+            info!(round = state.current_round, contracts = active.len(), "round started");
 
             // 1. Read context for all active contracts in parallel.
             let signals: Vec<RoundSignal> = try_join_all(
@@ -62,7 +70,9 @@ impl OrchestratorRunPort for RunSessionUseCase {
             .await?;
 
             // 3. One forge run for all contracts.
+            info!(round = state.current_round, "forge run started");
             let reports: Vec<FuzzReport> = self.fuzzer_engine.run(signals.clone()).await?;
+            info!(round = state.current_round, "forge run finished");
 
             // Decrement before termination check so the last round triggers Exhausted on Pass.
             state.rounds_remaining = state.rounds_remaining.saturating_sub(1);
@@ -91,6 +101,13 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         .get(&signal.contract_name)
                         .map(Vec::as_slice)
                         .unwrap_or(&[]);
+                    info!(
+                        contract = %signal.contract_name,
+                        reason = ?reason,
+                        total_bugs = all_bugs.len(),
+                        rounds = state.current_round,
+                        "contract session terminated"
+                    );
                     let artifacts =
                         self.read_artifacts(&signal.contract_name, all_bugs, report, &reason)
                             .await?;
@@ -103,6 +120,18 @@ impl OrchestratorRunPort for RunSessionUseCase {
                     self.reporter.emit(outcome.clone()).await?;
                     last_outcome = Some(outcome);
                 } else {
+                    let bug_count = state
+                        .found_bugs
+                        .get(&signal.contract_name)
+                        .map(Vec::len)
+                        .unwrap_or(0);
+                    info!(
+                        contract = %signal.contract_name,
+                        outcome = ?report.outcome,
+                        bugs_so_far = bug_count,
+                        rounds_remaining = state.rounds_remaining,
+                        "round complete — continuing"
+                    );
                     next_active.push(path.clone());
                 }
             }

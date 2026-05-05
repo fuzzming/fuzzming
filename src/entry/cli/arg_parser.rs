@@ -13,9 +13,9 @@ pub struct CliArgs {
     #[arg(short, long, default_value_t = 10)]
     pub max_rounds: u32,
 
-    /// LLM API URL
-    #[arg(long, env = "LLM_URL")]
-    pub llm_url: String,
+    /// LLM model identifier, e.g. groq/llama-3.3-70b-versatile
+    #[arg(long, env = "LLM_MODEL")]
+    pub model: String,
 
     /// LLM API Key
     #[arg(long, env = "LLM_KEY")]

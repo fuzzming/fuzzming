@@ -2,7 +2,7 @@ use anyhow::Result;
 
 #[derive(Debug, Clone)]
 pub struct CicdEnv {
-    pub llm_url: String,
+    pub model: String,
     pub llm_key: String,
     pub target_paths: Vec<String>,
     pub max_rounds: u32,
