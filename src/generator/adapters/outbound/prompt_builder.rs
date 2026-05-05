@@ -17,25 +17,24 @@ pub fn system_prompt_from_request(request: &GenerationRequest) -> String {
 
 pub fn user_prompt_from_request(request: &GenerationRequest) -> String {
     request
-    .prompt
-    .messages
-    .iter()
-    .find(|m| matches!(m.role, Role::User))
-    .map(|m| m.content.clone())
-    .unwrap_or_default()
+        .prompt
+        .messages
+        .iter()
+        .find(|m| matches!(m.role, Role::User))
+        .map(|m| m.content.clone())
+        .unwrap_or_default()
 }
 
 pub fn build_round_one_analysis_prompt() -> String {
-    "Stage 1/3: Security Analysis & Logic Design.\n\
-     Analyze: Ghost borrowing, Inflation attacks, and rounding errors.\n\
-     \n\
-     Return this JSON exactly:\n\
-     {\n\
-       \"vulnerability_analysis\": [\"string\"],\n\
-       \"handler_logic_pseudocode\": \"string describing state tracking\",\n\
-       \"invariant_mathematical_proofs\": [\"string\"],\n\
-       \"critical_invariants\": [\"string\"]\n\
-     }"
+    "Stage 1/3: Analysis.\n\
+         Identify key risks and Foundry invariants from the code.\n\
+         Return JSON only:\n\
+         {\n\
+             \"vulnerability_analysis\": [\"string\"],\n\
+             \"handler_logic_pseudocode\": \"string\",\n\
+             \"invariant_mathematical_proofs\": [\"string\"],\n\
+             \"critical_invariants\": [\"string\"]\n\
+         }"
     .to_string()
 }
 
@@ -43,26 +42,13 @@ pub fn build_round_one_bodies_prompt(analysis: &AnalysisStage) -> Result<String>
     let analysis_summary = serde_json::to_string_pretty(analysis)?;
 
     Ok(format!(
-        "Stage 2/3: Solidity Generation.\n\
-\n\
-Based on your previous security analysis, generate the full implementation of the Handler and Invariant test suite. Your output MUST be a valid JSON object matching the internal Rust schema exactly.\n\
-\n\
-STRICT DESIGN RULES:\n\
-1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract instance (e.g., `vault.deposit{{value: msg.value}}()`). Do NOT reimplement the target contract's internal logic inside the handler.\n\
-2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do not explicitly exist in the provided source code.\n\
-3. NO REDUNDANCIES: Do not write meaningless logic or checks, like `require(myUint >= 0)` (since uint256 cannot be negative).\n\
-\n\
-STRICT SCHEMA RULES:\n\
-\n\
-Case Sensitivity: Use camelCase for all keys (e.g., contractName, setUpBody, invariantTest).\n\
-\n\
-Structural Integrity: Do not combine code into a single field. Break it down into the arrays and objects specified below.\n\
-\n\
-IndexMap Logic: The functions and invariants keys must be JSON Objects (key-value maps) where the value is the full function body as a string.\n\
-\n\
-No for-in loops: Use the actors array pattern in your logic.\n\
-\n\
-REQUIRED JSON STRUCTURE:\n\
+        "Stage 2/3: Bodies.\n\
+    Return JSON only (camelCase).\n\
+        Design rules: external calls only; no hallucinated APIs; no redundant checks; no for-in loops; Solidity must compile under the pragma.\n\
+        Foundry: invariants must be named invariant_* and live in invariantTest; never emit echidna_*.\n\
+            BaseHandler: handler extends BaseHandler and must import it from \"src/base/BaseHandler.sol\".\n\
+            Selector logic must be inside a function (or leave handler.targetSelectors empty); never emit contract-scope statements.\n\
+    REQUIRED JSON STRUCTURE:\n\
 {{\n\
     \"bodies\": {{\n\
         \"meta\": {{\n\
@@ -97,7 +83,7 @@ REQUIRED JSON STRUCTURE:\n\
     }}\n\
 }}\n\
 \n\
-Analysis Context:\n\
+Analysis context:\n\
 {}\n",
         analysis_summary
     ))
@@ -114,8 +100,8 @@ pub fn build_round_one_config_prompt(
         .context("failed to serialize handler function names")?;
 
     Ok(format!(
-        "Stage 3/3: generate Foundry config only.\n\
-         Return this exact JSON shape:\n\
+        "Stage 3/3: Foundry config.\n\
+         Return JSON only:\n\
                      {{\n\
                          \"foundry_config\": {{\n\
              \"depth\": integer,\n\
@@ -126,14 +112,8 @@ pub fn build_round_one_config_prompt(
                              \"call_sequence_weights\": {{\"handlerFunctionName\": float}}\n\
                          }}\n\
                      }}\n\
-         \n\
-         Guidance:\n\
-         - call_sequence_weights keys must match handler function names exactly.\n\
-         - Weights should be realistic and sum near 1.0.\n\
-         - Choose runs/depth for meaningful state exploration.\n\
-         \n\
+         Guidance: weights sum ~1.0; keys must match handler functions.\n\
          Analysis JSON:\n{}\n\
-         \n\
          Handler function names:\n{}",
         analysis_json, functions_json
     ))
@@ -256,29 +236,27 @@ pub fn build_body_schema(
     Ok(serde_json::to_string_pretty(&schema)?)
 }
 
-pub fn build_round_n_analysis_prompt(schema: &str, fuzz_feedback: &Option<String>) -> Result<String> {
+pub fn build_round_n_analysis_prompt(
+    schema: &str,
+    fuzz_feedback: &Option<String>,
+) -> Result<String> {
     let feedback = fuzz_feedback
         .as_deref()
         .unwrap_or("No fuzz feedback provided.");
 
     Ok(format!(
-        "Stage 1/2: Patch Analysis.\n\
-Return JSON only. No markdown or prose.\n\
-\n\
-Analyze the fuzz feedback and compact schema below.\n\
-Identify root cause, affected paths, config adjustments, and which bodies must be included.\n\
-\n\
-REQUIRED JSON SHAPE (camelCase):\n\
+        "Stage 1/2: Patch analysis.\n\
+Return JSON only (camelCase).\n\
+Use fuzz feedback + schema to decide root cause, config tweaks, and bodies needed.\n\
+IMPORTANT: bodiesNeeded MUST only contain names listed in the schema (no new names). Use [] if unsure.\n\
+REQUIRED JSON SHAPE:\n\
 {{\n\
-  \"rootCause\": \"string\",\n\
-  \"affectedPaths\": [\"dot.path\"],\n\
-  \"configAdjustments\": [{{\"path\":\"dot.path\",\"reason\":\"string\"}}],\n\
-  \"bodiesNeeded\": [\"functionOrInvariantName\"],\n\
-  \"noChangeNeeded\": [\"functionOrInvariantName\"]\n\
+    \"rootCause\": \"string\",\n\
+    \"configAdjustments\": [{{\"path\":\"dot.path\",\"reason\":\"string\"}}],\n\
+    \"bodiesNeeded\": [\"functionOrInvariantName\"]\n\
 }}\n\
 \n\
-Compact schema:\n{}\n\
-\n\
+Schema:\n{}\n\
 Fuzz feedback:\n{}",
         schema, feedback
     ))
@@ -294,26 +272,28 @@ pub fn build_round_n_patch_prompt(
     let config_json = serde_json::to_string_pretty(existing_config)?;
 
     Ok(format!(
-        "Stage 2/2: Targeted Patch.\n\
-Return JSON only. No markdown, no prose, no code fences.\n\
-\n\
-STRICT OUTPUT CONTRACT (round > 1):\n\
+        "Stage 2/2: Targeted patch.\n\
+    Return JSON only.\n\
+    OUTPUT (round > 1):\n\
 {{\n\
   \"mode\":\"patch\",\n\
   \"bodies_updates\":[{{\"op\":\"add|modify|remove\",\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}],\n\
   \"foundry_config_updates\":[{{\"op\":\"add|modify|remove\",\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}]\n\
 }}\n\
-\n\
-PATCH RULES:\n\
+    PATCH RULES:\n\
 1. Multiple patches are allowed: each updates array may contain 0..N items.\n\
 2. Each patch item MUST contain exactly 4 keys: op, path, value, reason.\n\
 3. path MUST be a dot-path to the field being replaced.\n\
 4. op MUST be one of add, modify, remove.\n\
 5. add requires target key missing; modify requires existing key replacement; remove deletes existing key.\n\
-6. For remove, set value to null.\n\
-7. Do not include duplicate path entries in the same response.\n\
-8. If no change is required for one artifact, return that artifact updates as [].\n\
-9. Never return nested wrappers like {{\"patch\":{{...}}}} or {{\"full\":{{...}}}}.\n\
+6. For list fields (imports/stateVars/ghostVars/constructorBody/setUpBody), use modify and supply the full updated array.\n\
+7. For handler.functions.* and invariantTest.invariants.*, use modify if the name already exists; use add only for new entries.\n\
+8. For remove, set value to null.\n\
+9. Do not include duplicate path entries in the same response.\n\
+10. If no change is required for one artifact, return that artifact updates as [].\n\
+11. Never return nested wrappers like {{\"patch\":{{...}}}} or {{\"full\":{{...}}}}.\n\
+12. bodies_updates paths are root-relative (no 'bodies.'). foundry_config_updates paths must start with 'Foundry.' (e.g., 'Foundry.call_sequence_weights.withdraw').\n\
+13. Foundry invariants must be named invariant_*.\n\
 \n\
 VALID bodies path prefixes:\n\
 - meta.contract\n\
@@ -337,18 +317,16 @@ VALID bodies path prefixes:\n\
 - invariantTest.invariants.<invariantName>\n\
 \n\
 VALID foundry_config path prefixes:\n\
-- depth\n\
-- runs\n\
-- seed\n\
-- max_test_rejects\n\
-- dictionary_weight\n\
-- call_sequence_weights.<handlerFunctionName>\n\
-- current_toml\n\
+- Foundry.depth\n\
+- Foundry.runs\n\
+- Foundry.seed\n\
+- Foundry.max_test_rejects\n\
+- Foundry.dictionary_weight\n\
+- Foundry.call_sequence_weights.<handlerFunctionName>\n\
+- Foundry.current_toml\n\
 \n\
 Analysis JSON:\n{}\n\
-\n\
 Relevant bodies:\n{}\n\
-\n\
 Existing foundry config:\n{}",
         analysis_json, bodies_json, config_json
     ))

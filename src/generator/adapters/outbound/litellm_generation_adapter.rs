@@ -4,8 +4,8 @@ use serde::de::DeserializeOwned;
 
 use super::prompt_builder::{
     build_body_schema, build_round_n_analysis_prompt, build_round_n_patch_prompt,
-    build_round_one_analysis_prompt, build_round_one_bodies_prompt,
-    build_round_one_config_prompt, system_prompt_from_request, user_prompt_from_request,
+    build_round_one_analysis_prompt, build_round_one_bodies_prompt, build_round_one_config_prompt,
+    system_prompt_from_request, user_prompt_from_request,
 };
 use super::response_parser::{
     build_parse_repair_prompt, extract_json_payload, parse_generation_response,
@@ -14,7 +14,7 @@ use super::stages::{AnalysisStage, BodiesStage, ConfigStage, PatchAnalysisStage}
 use crate::generator::domain::generation_response::{
     GenerationResponse, GenerationResult, GenerationUsage,
 };
-use crate::generator::ports::outbound::{LlmClientPort, GenerationPort, GenerationRequest};
+use crate::generator::ports::outbound::{GenerationPort, GenerationRequest, LlmClientPort};
 use crate::shared::models::BodiesJson;
 
 const MAX_ATTEMPTS: usize = 2;
@@ -26,7 +26,11 @@ pub struct LiteLlmGenerationAdapter {
 }
 
 impl LiteLlmGenerationAdapter {
-    pub fn new(model: impl Into<String>, api_key: impl Into<String>, client: Box<dyn LlmClientPort>) -> Self {
+    pub fn new(
+        model: impl Into<String>,
+        api_key: impl Into<String>,
+        client: Box<dyn LlmClientPort>,
+    ) -> Self {
         Self {
             model: model.into(),
             api_key: api_key.into(),
@@ -52,7 +56,9 @@ impl LiteLlmGenerationAdapter {
             total.cached_prompt_tokens = total
                 .cached_prompt_tokens
                 .saturating_add(usage.cached_prompt_tokens);
-            total.reasoning_tokens = total.reasoning_tokens.saturating_add(usage.reasoning_tokens);
+            total.reasoning_tokens = total
+                .reasoning_tokens
+                .saturating_add(usage.reasoning_tokens);
             total.thinking_tokens = total.thinking_tokens.saturating_add(usage.thinking_tokens);
         }
     }
@@ -91,7 +97,11 @@ impl LiteLlmGenerationAdapter {
             }
         }
 
-        bail!("{stage_name} failed after {} attempts: {}", MAX_ATTEMPTS, last_error)
+        bail!(
+            "{stage_name} failed after {} attempts: {}",
+            MAX_ATTEMPTS,
+            last_error
+        )
     }
 
     async fn request_generation_response(
@@ -111,7 +121,21 @@ impl LiteLlmGenerationAdapter {
             let payload = extract_json_payload(&content)?;
 
             match parse_generation_response(&payload) {
-                Ok(parsed) => return Ok(parsed),
+                Ok(parsed) => match validate_generation_response(&parsed) {
+                    Ok(()) => return Ok(parsed),
+                    Err(err) => {
+                        last_error = err.to_string();
+                        if attempt == MAX_ATTEMPTS {
+                            break;
+                        }
+                        user_prompt = build_parse_repair_prompt(
+                            stage_name,
+                            schema_hint,
+                            &payload,
+                            &last_error,
+                        );
+                    }
+                },
                 Err(err) => {
                     last_error = err.to_string();
                     if attempt == MAX_ATTEMPTS {
@@ -123,13 +147,14 @@ impl LiteLlmGenerationAdapter {
             }
         }
 
-        bail!("{stage_name} failed after {} attempts: {}", MAX_ATTEMPTS, last_error)
+        bail!(
+            "{stage_name} failed after {} attempts: {}",
+            MAX_ATTEMPTS,
+            last_error
+        )
     }
 
-    async fn generate_round_one(
-        &self,
-        request: &GenerationRequest,
-    ) -> Result<GenerationResult> {
+    async fn generate_round_one(&self, request: &GenerationRequest) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
         let mut usage = GenerationUsage::default();
 
@@ -172,10 +197,7 @@ impl LiteLlmGenerationAdapter {
         })
     }
 
-    async fn generate_round_n(
-        &self,
-        request: &GenerationRequest,
-    ) -> Result<GenerationResult> {
+    async fn generate_round_n(&self, request: &GenerationRequest) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
         let mut usage = GenerationUsage::default();
         let user_prompt = user_prompt_from_request(request);
@@ -190,7 +212,7 @@ impl LiteLlmGenerationAdapter {
                 &system_prompt,
                 build_round_n_analysis_prompt(&schema, &Some(user_prompt))?,
                 "patch analysis",
-                "rootCause, affectedPaths, configAdjustments, bodiesNeeded",
+                "rootCause, configAdjustments, bodiesNeeded",
                 &mut usage,
             )
             .await?;
@@ -199,11 +221,9 @@ impl LiteLlmGenerationAdapter {
             .existing_bodies
             .as_ref()
             .context("round N requires existing bodies for patch generation")?;
-        let relevant_bodies = extract_relevant_bodies(
-            Some(existing_bodies),
-            &analysis.bodies_needed,
-        )?
-        .context("round N analysis requested bodies but none could be derived")?;
+        let relevant_bodies =
+            extract_relevant_bodies(Some(existing_bodies), &analysis.bodies_needed)?
+                .context("round N analysis requested bodies but none could be derived")?;
 
         let existing_config = request
             .existing_foundry_config
@@ -227,6 +247,106 @@ impl LiteLlmGenerationAdapter {
     }
 }
 
+fn validate_generation_response(response: &GenerationResponse) -> Result<()> {
+    match response {
+        GenerationResponse::Full {
+            bodies,
+            foundry_config: _,
+        } => validate_full_generation(bodies),
+        GenerationResponse::Patch {
+            bodies_updates,
+            foundry_config_updates,
+        } => validate_patch_updates(bodies_updates, foundry_config_updates),
+    }
+}
+
+fn validate_full_generation(bodies: &BodiesJson) -> Result<()> {
+    let mut issues = Vec::new();
+
+    let has_basehandler_import = bodies
+        .handler
+        .imports
+        .iter()
+        .any(|line| line.contains("BaseHandler") && line.contains("src/base/BaseHandler.sol"));
+    if !has_basehandler_import {
+        issues.push(
+            "handler imports must include BaseHandler from src/base/BaseHandler.sol".to_string(),
+        );
+    }
+    for line in &bodies.handler.imports {
+        if line.contains("foundry-huff/BaseHandler.sol") {
+            issues.push("do not import BaseHandler from foundry-huff".to_string());
+            break;
+        }
+    }
+
+    if !bodies.handler.target_selectors.trim().is_empty()
+        && !bodies
+            .handler
+            .target_selectors
+            .trim_start()
+            .starts_with("function")
+    {
+        issues.push("handler.targetSelectors must be empty or a function definition".to_string());
+    }
+
+    for name in bodies.invariant_test.invariants.keys() {
+        if !name.starts_with("invariant_") {
+            issues.push(format!("invariant name must start with invariant_: {name}"));
+        }
+    }
+
+    if issues.is_empty() {
+        return Ok(());
+    }
+
+    bail!(issues.join("; "))
+}
+
+fn validate_patch_updates(
+    bodies_updates: &[crate::shared::models::JsonBlockUpdate],
+    foundry_config_updates: &[crate::shared::models::JsonBlockUpdate],
+) -> Result<()> {
+    let mut invalid = Vec::new();
+    for update in bodies_updates {
+        if update.path.starts_with("bodies.")
+            || update.path.starts_with("foundry_config.")
+            || update.path.starts_with("Foundry.")
+        {
+            invalid.push(update.path.clone());
+        }
+        if let Some(name) = update.path.strip_prefix("invariantTest.invariants.") {
+            if !name.starts_with("invariant_") {
+                invalid.push(update.path.clone());
+            }
+        }
+        if update.path == "handler.targetSelectors" {
+            if let Some(value) = update.value.as_str() {
+                if !value.trim().is_empty() && !value.trim_start().starts_with("function") {
+                    invalid.push(update.path.clone());
+                }
+            }
+        }
+    }
+    for update in foundry_config_updates {
+        if update.path.starts_with("bodies.")
+            || update.path.starts_with("foundry_config.")
+            || !update.path.starts_with("Foundry.")
+        {
+            invalid.push(update.path.clone());
+        }
+    }
+
+    if invalid.is_empty() {
+        return Ok(());
+    }
+
+    bail!(
+        "invalid patch paths or values (check Foundry prefix, invariant_ names, targetSelectors function): {}",
+        invalid.join(", ")
+    )
+}
+
 fn extract_relevant_bodies(
     existing: Option<&BodiesJson>,
     needed: &[String],
@@ -236,10 +356,12 @@ fn extract_relevant_bodies(
     };
 
     let mut filtered = existing.clone();
-    let needed_set: std::collections::HashSet<String> =
-        needed.iter().cloned().collect();
+    let needed_set: std::collections::HashSet<String> = needed.iter().cloned().collect();
 
-    filtered.handler.functions.retain(|name, _| needed_set.contains(name));
+    filtered
+        .handler
+        .functions
+        .retain(|name, _| needed_set.contains(name));
     filtered
         .invariant_test
         .invariants
@@ -362,11 +484,12 @@ mod tests {
             &self,
             _system_prompt: &str,
             _user_prompt: &str,
-        ) -> anyhow::Result<(String, Option<crate::generator::domain::generation_response::GenerationUsage>)> {
+        ) -> anyhow::Result<(
+            String,
+            Option<crate::generator::domain::generation_response::GenerationUsage>,
+        )> {
             let mut guard = self.responses.lock().expect("lock responses");
-            let response = guard
-                .pop_front()
-                .expect("expected mock response");
+            let response = guard.pop_front().expect("expected mock response");
             Ok((response, None))
         }
     }
@@ -375,10 +498,8 @@ mod tests {
     async fn generates_round_n_patch_via_stages() {
         let analysis_payload = r#"{
             "rootCause": "ghost order",
-            "affectedPaths": ["handler.functions.deposit"],
             "configAdjustments": [],
-            "bodiesNeeded": ["deposit"],
-            "noChangeNeeded": []
+            "bodiesNeeded": ["deposit"]
         }"#;
 
         let patch_payload = r#"{

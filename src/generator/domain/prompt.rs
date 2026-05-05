@@ -1,11 +1,10 @@
 use crate::shared::models::{AssembledPrompt, CoverageContext, GapType, Message, Role};
 
-const RULES: [&str; 5] = [
-    "NO FOR-IN LOOPS: Solidity mappings are not iterable. Use a ghost array `address[] public actors` and push msg.sender to it.",
-    "PHYSICAL VS LOGICAL: Always compare internal state (totalAssets) against physical balances (asset.balanceOf(address(this))).",
-    "NAMESPACING: Handler contract must be named `Handler` or `[Target]Handler`.",
-    "USE INDEXMAP ORDER: Generate JSON keys in the order they should appear in Solidity.",
-    "OUTPUT: Return valid JSON only.",
+const RULES: [&str; 4] = [
+    "JSON ONLY: return valid JSON, no markdown.",
+    "NO FOR-IN LOOPS: Solidity has no for-in; use actors[] for iteration.",
+    "HANDLER NAME: must be Handler or [Target]Handler.",
+    "CONFIG KEYS: call_sequence_weights keys must match handler.functions.",
 ];
 
 pub struct Prompt {
@@ -22,7 +21,12 @@ impl Prompt {
         fuzz_output: Option<String>,
         coverage_context: Option<CoverageContext>,
     ) -> Self {
-        Self { source_code, round, fuzz_output, coverage_context }
+        Self {
+            source_code,
+            round,
+            fuzz_output,
+            coverage_context,
+        }
     }
 
     pub fn system_message(&self) -> String {
@@ -33,9 +37,9 @@ impl Prompt {
             .collect::<Vec<_>>()
             .join("\n");
         format!(
-            "You are a Senior Smart-Contract Security Researcher and Foundry Fuzzing Expert.\n\
-             SOURCE_CODE:\n{}\n\n\
-             STRICT OPERATIONAL RULES:\n{}",
+            "Senior smart-contract security researcher and Foundry fuzzing expert.\n\
+             Source code:\n{}\n\n\
+             Rules:\n{}",
             self.source_code, rules
         )
     }
@@ -44,7 +48,7 @@ impl Prompt {
         let mut sections: Vec<String> = vec![format!("Round: {}", self.round)];
 
         if let Some(output) = &self.fuzz_output {
-            sections.push(format!("FUZZ OUTPUT:\n{}", output));
+            sections.push(format!("Fuzz output:\n{}", output));
         }
 
         if let Some(coverage) = &self.coverage_context {
@@ -52,13 +56,9 @@ impl Prompt {
         }
 
         if self.round == 1 {
-            sections.push(
-                "Generate the full handler and invariant test suite for this contract.".to_string(),
-            );
+            sections.push("Generate full handler + invariants.".to_string());
         } else {
-            sections.push(
-                "Based on the fuzz output and coverage gaps above, patch or rewrite the invariants and handler as needed.".to_string(),
-            );
+            sections.push("Patch handler/invariants using fuzz + coverage.".to_string());
         }
 
         sections.join("\n\n")
@@ -78,8 +78,14 @@ impl Prompt {
 
         AssembledPrompt {
             messages: vec![
-                Message { role: Role::System, content: system },
-                Message { role: Role::User, content: user },
+                Message {
+                    role: Role::System,
+                    content: system,
+                },
+                Message {
+                    role: Role::User,
+                    content: user,
+                },
             ],
             round: self.round,
             context_sections,
