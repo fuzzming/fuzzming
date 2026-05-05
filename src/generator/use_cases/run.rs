@@ -24,11 +24,10 @@ impl GeneratorRunPort for GeneratorRunUseCase {
     async fn run(&self, signal: RoundSignal) -> Result<LlmSignal> {
         let prompt = assemble_prompt(
             signal.round,
-            ContractContext {
-                source_code: signal.source_code.clone(),
-            },
+            ContractContext { source_code: signal.source_code.clone() },
             signal.fuzz_output.clone(),
             signal.coverage_context.clone(),
+            signal.confirmed_bugs.clone(),
         )?;
 
         let request = GenerationRequest {
@@ -43,10 +42,6 @@ impl GeneratorRunPort for GeneratorRunUseCase {
 
         let response = self.gateway.generate(request).await?;
 
-        Ok(LlmSignal {
-            status: LlmStatus::Done,
-            result: Some(response),
-            reason: None,
-        })
+        Ok(LlmSignal { status: LlmStatus::Done, result: Some(response), reason: None })
     }
 }

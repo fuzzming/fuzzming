@@ -36,6 +36,7 @@ fn signal(workspace: PathBuf) -> RoundSignal {
         coverage_context: None,
         existing_bodies: None,
         existing_foundry_config: None,
+        confirmed_bugs: vec![],
     }
 }
 

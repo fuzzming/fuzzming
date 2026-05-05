@@ -16,12 +16,20 @@ pub async fn run_round(
     llm_engine: &dyn LlmEnginePort,
     executor: &dyn ExecutorPort,
 ) -> Result<LlmSignal> {
-    let llm_signal = llm_engine.run(signal.clone()).await?;
+    let mut llm_signal = llm_engine.run(signal.clone()).await?;
 
     let result = llm_signal
         .result
-        .as_ref()
+        .as_mut()
         .ok_or_else(|| anyhow!("LLM returned no result for contract '{}'", signal.contract_name))?;
+
+    // Option B: deterministically strip confirmed-broken invariants from Full responses
+    // so forge never re-runs them and the LLM never sees stale failure signal for them.
+    if let GenerationResponse::Full { ref mut bodies, .. } = result.response {
+        for bug in &signal.confirmed_bugs {
+            bodies.invariant_test.invariants.shift_remove(&bug.invariant_name);
+        }
+    }
 
     let executor_input = build_executor_input(&result.response, &signal)?;
     executor.execute(executor_input).await?;

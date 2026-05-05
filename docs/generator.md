@@ -91,7 +91,35 @@ pub struct GeneratorRunUseCase {
 }
 ```
 
-Contains all the business logic: calls `assemble_prompt`, builds the `GenerationRequest`, calls the outbound port, maps the response into an `LlmSignal`.
+Contains all the business logic: calls `assemble_prompt` (passing `signal.confirmed_bugs`), builds the `GenerationRequest`, calls the outbound port, maps the response into an `LlmSignal`.
+
+### `assemble_prompt` — `use_cases/assemble_prompt.rs`
+
+```rust
+pub fn assemble_prompt(
+    round: u32,
+    contract_context: ContractContext,
+    fuzz_output: Option<String>,
+    coverage_context: Option<CoverageContext>,
+    confirmed_bugs: Vec<BugInfo>,
+) -> Result<AssembledPrompt>
+```
+
+Constructs the `Prompt` domain type and calls `into_assembled()`. `confirmed_bugs` is forwarded from `RoundSignal` — it is empty on round 1.
+
+### `Prompt` — `domain/prompt.rs`
+
+`Prompt` builds the system and user messages:
+
+- **System message** — contract source code + five strict operational rules (no for-in loops, physical vs logical, namespacing, IndexMap order, JSON-only output).
+- **User message** — assembled from up to four sections in order:
+  1. `Round: {n}`
+  2. `CONFIRMED BUGS` — rendered only when `confirmed_bugs` is non-empty; lists invariant names the model must not re-generate.
+  3. `FUZZ OUTPUT` — rendered only on round ≥ 2.
+  4. `COVERAGE GAPS` — rendered only when coverage context is present.
+  5. Instruction: full generation (round 1) or patch/rewrite (round N).
+
+`AssembledPrompt.context_sections` records which optional sections were included (`"confirmed_bugs"`, `"fuzz_output"`, `"coverage"`) — used for observability.
 
 ### Outbound ports — `ports/outbound/`
 
@@ -127,7 +155,7 @@ Orchestrator
              │
              ├─ assemble_prompt()
              │     builds system message: contract source + rules
-             │     builds user message:   round number + fuzz output + coverage gaps
+             │     builds user message:   round number + confirmed bugs + fuzz output + coverage gaps
              │     → AssembledPrompt
              │
              ├─ GenerationRequest {
