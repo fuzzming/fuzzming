@@ -3,17 +3,19 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 
 use super::prompt_builder::{
-    build_round_n_prompt, build_round_one_analysis_prompt, build_round_one_bodies_prompt,
-    build_round_one_config_prompt, system_prompt_from_request,
+    build_body_schema, build_round_n_analysis_prompt, build_round_n_patch_prompt,
+    build_round_one_analysis_prompt, build_round_one_bodies_prompt,
+    build_round_one_config_prompt, system_prompt_from_request, user_prompt_from_request,
 };
 use super::response_parser::{
     build_parse_repair_prompt, extract_json_payload, parse_generation_response,
 };
-use super::stages::{AnalysisStage, BodiesStage, ConfigStage};
+use super::stages::{AnalysisStage, BodiesStage, ConfigStage, PatchAnalysisStage};
 use crate::generator::domain::generation_response::{
     GenerationResponse, GenerationResult, GenerationUsage,
 };
 use crate::generator::ports::outbound::{LlmClientPort, GenerationPort, GenerationRequest};
+use crate::shared::models::BodiesJson;
 
 const MAX_ATTEMPTS: usize = 2;
 
@@ -92,6 +94,38 @@ impl LiteLlmGenerationAdapter {
         bail!("{stage_name} failed after {} attempts: {}", MAX_ATTEMPTS, last_error)
     }
 
+    async fn request_generation_response(
+        &self,
+        system_prompt: &str,
+        initial_prompt: String,
+        stage_name: &str,
+        schema_hint: &str,
+        usage_total: &mut GenerationUsage,
+    ) -> Result<GenerationResponse> {
+        let mut user_prompt = initial_prompt;
+        let mut last_error = String::new();
+
+        for attempt in 1..=MAX_ATTEMPTS {
+            let (content, usage) = self.client.complete(system_prompt, &user_prompt).await?;
+            Self::merge_usage(usage_total, usage);
+            let payload = extract_json_payload(&content)?;
+
+            match parse_generation_response(&payload) {
+                Ok(parsed) => return Ok(parsed),
+                Err(err) => {
+                    last_error = err.to_string();
+                    if attempt == MAX_ATTEMPTS {
+                        break;
+                    }
+                    user_prompt =
+                        build_parse_repair_prompt(stage_name, schema_hint, &payload, &last_error);
+                }
+            }
+        }
+
+        bail!("{stage_name} failed after {} attempts: {}", MAX_ATTEMPTS, last_error)
+    }
+
     async fn generate_round_one(
         &self,
         request: &GenerationRequest,
@@ -143,42 +177,259 @@ impl LiteLlmGenerationAdapter {
         request: &GenerationRequest,
     ) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
-        let mut user_prompt = build_round_n_prompt(request)?;
-        let mut last_error = String::new();
         let mut usage = GenerationUsage::default();
+        let user_prompt = user_prompt_from_request(request);
 
-        for attempt in 1..=MAX_ATTEMPTS {
-            let (content, call_usage) = self.client.complete(&system_prompt, &user_prompt).await?;
-            Self::merge_usage(&mut usage, call_usage);
-            let payload = extract_json_payload(&content)?;
+        let schema = build_body_schema(
+            request.existing_bodies.as_ref(),
+            request.existing_foundry_config.as_ref(),
+        )?;
 
-            match parse_generation_response(&payload) {
-                Ok(parsed) => {
-                    return Ok(GenerationResult {
-                        response: parsed,
-                        usage,
-                    })
-                }
-                Err(err) => {
-                    last_error = err.to_string();
-                    if attempt == MAX_ATTEMPTS {
-                        break;
-                    }
-                    user_prompt = build_parse_repair_prompt(
-                        "round generation",
-                        "mode + canonical full/patch fields",
-                        &payload,
-                        &last_error,
-                    );
-                }
+        let analysis: PatchAnalysisStage = self
+            .request_json(
+                &system_prompt,
+                build_round_n_analysis_prompt(&schema, &Some(user_prompt))?,
+                "patch analysis",
+                "rootCause, affectedPaths, configAdjustments, bodiesNeeded",
+                &mut usage,
+            )
+            .await?;
+
+        let existing_bodies = request
+            .existing_bodies
+            .as_ref()
+            .context("round N requires existing bodies for patch generation")?;
+        let relevant_bodies = extract_relevant_bodies(
+            Some(existing_bodies),
+            &analysis.bodies_needed,
+        )?
+        .context("round N analysis requested bodies but none could be derived")?;
+
+        let existing_config = request
+            .existing_foundry_config
+            .as_ref()
+            .context("round N requires existing foundry config for patch generation")?;
+
+        let patch_prompt =
+            build_round_n_patch_prompt(&analysis, &relevant_bodies, existing_config)?;
+
+        let response = self
+            .request_generation_response(
+                &system_prompt,
+                patch_prompt,
+                "round n patch",
+                "mode=patch with bodies_updates + foundry_config_updates",
+                &mut usage,
+            )
+            .await?;
+
+        Ok(GenerationResult { response, usage })
+    }
+}
+
+fn extract_relevant_bodies(
+    existing: Option<&BodiesJson>,
+    needed: &[String],
+) -> Result<Option<BodiesJson>> {
+    let Some(existing) = existing else {
+        return Ok(None);
+    };
+
+    let mut filtered = existing.clone();
+    let needed_set: std::collections::HashSet<String> =
+        needed.iter().cloned().collect();
+
+    filtered.handler.functions.retain(|name, _| needed_set.contains(name));
+    filtered
+        .invariant_test
+        .invariants
+        .retain(|name, _| needed_set.contains(name));
+
+    if !needed.is_empty() {
+        let missing: Vec<String> = needed
+            .iter()
+            .filter(|name| {
+                !existing.handler.functions.contains_key(*name)
+                    && !existing.invariant_test.invariants.contains_key(*name)
+            })
+            .cloned()
+            .collect();
+
+        if !missing.is_empty() {
+            bail!("requested bodies not found: {}", missing.join(", "));
+        }
+    }
+
+    Ok(Some(filtered))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{HashMap, VecDeque};
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use indexmap::IndexMap;
+
+    use crate::generator::ports::outbound::LlmClientPort;
+    use crate::shared::models::{
+        AssembledPrompt, BodiesJson, BodiesMeta, FoundryConfig, HandlerBodies, InvariantTestBodies,
+        Message, Role,
+    };
+
+    use super::{extract_relevant_bodies, LiteLlmGenerationAdapter};
+    use crate::generator::ports::outbound::{GenerationPort, GenerationRequest};
+
+    fn sample_bodies() -> BodiesJson {
+        let mut functions = IndexMap::new();
+        functions.insert("deposit".to_string(), "// deposit".to_string());
+        functions.insert("withdraw".to_string(), "// withdraw".to_string());
+
+        let mut invariants = IndexMap::new();
+        invariants.insert("invariant_balance".to_string(), "assert(true);".to_string());
+
+        BodiesJson {
+            meta: BodiesMeta {
+                contract: "Vault".to_string(),
+                contract_path: "src/Vault.sol".to_string(),
+                solidity: "^0.8.0".to_string(),
+                generated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+            handler: HandlerBodies {
+                contract_name: "VaultHandler".to_string(),
+                output_path: "test/handlers/VaultHandler.sol".to_string(),
+                imports: vec![],
+                state_vars: vec![],
+                ghost_vars: vec!["uint256 ghost_totalDeposited;".to_string()],
+                constructor_signature: "constructor(address _vault)".to_string(),
+                constructor_body: vec![],
+                functions,
+                target_selectors: "selectors".to_string(),
+            },
+            invariant_test: InvariantTestBodies {
+                contract_name: "VaultInvariantTest".to_string(),
+                output_path: "test/invariants/VaultInvariantTest.sol".to_string(),
+                imports: vec![],
+                state_vars: vec![],
+                set_up_body: vec![],
+                invariants,
+            },
+        }
+    }
+
+    fn sample_config() -> FoundryConfig {
+        let mut weights = HashMap::new();
+        weights.insert("deposit".to_string(), 0.5);
+        weights.insert("withdraw".to_string(), 0.5);
+        FoundryConfig {
+            depth: 10,
+            runs: 100,
+            seed: "0xdeadbeef".to_string(),
+            max_test_rejects: 10,
+            dictionary_weight: 40,
+            call_sequence_weights: weights,
+            current_toml: None,
+        }
+    }
+
+    #[test]
+    fn filters_relevant_bodies() {
+        let bodies = sample_bodies();
+        let filtered = extract_relevant_bodies(Some(&bodies), &["deposit".to_string()])
+            .expect("filter")
+            .expect("some");
+
+        assert!(filtered.handler.functions.contains_key("deposit"));
+        assert!(!filtered.handler.functions.contains_key("withdraw"));
+        assert!(filtered.invariant_test.invariants.is_empty());
+    }
+
+    struct MockClient {
+        responses: Arc<Mutex<VecDeque<String>>>,
+    }
+
+    impl MockClient {
+        fn new(responses: Vec<String>) -> Self {
+            Self {
+                responses: Arc::new(Mutex::new(VecDeque::from(responses))),
             }
         }
+    }
 
-        bail!(
-            "model returned invalid structured output after {} attempts: {}",
-            MAX_ATTEMPTS,
-            last_error
-        )
+    #[async_trait]
+    impl LlmClientPort for MockClient {
+        async fn complete(
+            &self,
+            _system_prompt: &str,
+            _user_prompt: &str,
+        ) -> anyhow::Result<(String, Option<crate::generator::domain::generation_response::GenerationUsage>)> {
+            let mut guard = self.responses.lock().expect("lock responses");
+            let response = guard
+                .pop_front()
+                .expect("expected mock response");
+            Ok((response, None))
+        }
+    }
+
+    #[tokio::test]
+    async fn generates_round_n_patch_via_stages() {
+        let analysis_payload = r#"{
+            "rootCause": "ghost order",
+            "affectedPaths": ["handler.functions.deposit"],
+            "configAdjustments": [],
+            "bodiesNeeded": ["deposit"],
+            "noChangeNeeded": []
+        }"#;
+
+        let patch_payload = r#"{
+            "mode": "patch",
+            "bodies_updates": [
+                {"op": "modify", "path": "handler.functions.deposit", "value": "function deposit(){}", "reason": "fix"}
+            ],
+            "foundry_config_updates": []
+        }"#;
+
+        let client = Box::new(MockClient::new(vec![
+            analysis_payload.to_string(),
+            patch_payload.to_string(),
+        ]));
+
+        let adapter = LiteLlmGenerationAdapter::new("openai/mock", "test", client);
+
+        let assembled = AssembledPrompt {
+            messages: vec![
+                Message {
+                    role: Role::System,
+                    content: "system".to_string(),
+                },
+                Message {
+                    role: Role::User,
+                    content: "Round: 2\n\nFUZZ OUTPUT: test".to_string(),
+                },
+            ],
+            round: 2,
+            context_sections: vec![],
+        };
+
+        let request = GenerationRequest {
+            round: 2,
+            source_code: "contract Vault{}".to_string(),
+            prompt: assembled,
+            existing_bodies: Some(sample_bodies()),
+            existing_foundry_config: Some(sample_config()),
+        };
+
+        let result = adapter.generate(request).await.expect("generate");
+        match result.response {
+            crate::generator::domain::generation_response::GenerationResponse::Patch {
+                bodies_updates,
+                foundry_config_updates,
+            } => {
+                assert_eq!(bodies_updates.len(), 1);
+                assert!(foundry_config_updates.is_empty());
+            }
+            _ => panic!("expected patch response"),
+        }
     }
 }
 

@@ -1,0 +1,390 @@
+FuzzMing
+Three Decisions That Define the Architecture
+Decision 1 — Component split or flat structure
+Decision 2 — Use case granularity
+Decision 3 — Where dependency injection lives
+Context
+FuzzMing is a fuzzing assistant for Solidity smart contracts. It runs a feedback loop: it asks an LLM
+to generate invariants, runs Foundry to fuzz them, reads the results, and loops until it finds a bug,
+achieves full coverage, or exhausts its round budget.
+The system has a single flow — one session, one loop, one outcome. This simplicity is precisely
+what makes the architectural decisions non-trivial: when a system has one flow, it is tempting to
+write it as one flat sequence of calls. Every decision below is about why that temptation was resisted
+and what we chose instead.
+The three decisions: 1 — Split into components or keep flat. 2 — One use case per action or one
+use case for the whole flow. 3 — Where to wire dependencies together.
+Decision 1 — Component Split or Flat
+Structure
+The Question
+FuzzMing has one flow. Should the code be split into self-contained components — Orchestrator,
+LLMEngine, FoundryEngine, Reader, Executor, Reporter — or should it live as a flat set of classes
+in a single layer with no internal boundaries?
+Decision 1 — How to organise the codebase
+✗ Rejected — Flat structure — all classes in one layer, no component boundaries, shared access
+to everything.
+✓ CHOSEN — Component split — seven self-contained components, each owning its data needs,
+communicating only through defined interfaces.
+Why this choice: FuzzMing has one flow but seven distinct responsibilities. Without component
+boundaries, any class can call any other class, read any file, and write any file. A bug in how the LLM
+output is parsed can accidentally corrupt the coverage data. A change to how Foundry is invoked
+requires understanding the entire codebase. The component split enforces that each responsibility
+has one owner, one boundary, and one defined contract with the outside world.
+What the Split Looks Like
+Seven components. Each one is self-sufficient — it pulls its own inputs and pushes its own outputs.
+No component calls another directly. The Orchestrator only sequences; it never sees data artifacts.
+src/
+interfaces/ // All shared I* contracts — owned by no component
+orchestrator/ // Sequences the loop. Termination decisions only.
+llm/ // Pulls context, calls LLM, pushes invariants and config.
+foundry/ // Runs forge, reads output, returns outcome signal.
+reader/ // Read-only gateway. Single source of all file reads.
+executor/ // Write-only gateway. Single source of all file writes.
+reporter/ // Formats terminal and CI output at session end.
+entry/ // CLI and CI/CD entry points — protocol translation only.
+composition/ // Single wiring point. The only file importing concrete types.
+Why Not Flat
+A flat structure collapses two problems onto each other that should be kept separate:
+• Who owns what data. In a flat structure, any class can read any file. Reader and Executor
+exist specifically to make file access explicit and traceable — Reader is the only class that
+calls fs.readFileSync, Executor is the only class that calls fs.writeFileSync. Without them, a
+future developer adds one file read inside what should be a pure decision class and the
+read/write contract is silently broken.
+• What calls what. In a flat structure, LLMEngine can call FoundryEngine directly. The
+architecture document's hard rule — no component calls another component directly — is
+unenforceable without boundaries. The Orchestrator becomes a fat coordinator because
+there is nothing to stop it accumulating data handling alongside its sequencing responsibility.
+The Concrete Consequence
+The component split means each component can be tested in isolation. LLMEngine tests inject a
+mock ILLMGateway and a mock IReaderPort — no real files, no real LLM, no real Foundry.
+FoundryEngine tests inject a mock IForgeRunnerPort — no subprocess. The Orchestrator tests
+inject mock ILLMEnginePort and IFoundryEnginePort — the Orchestrator's sequencing logic is
+verified without any component doing real work.
+Decision 2 — Use Case Granularity
+The Question
+FuzzMing has one flow. How granular should use cases be? Three positions were considered: one
+use case for the entire flow, one use case per component, or one use case per distinct action.
+Decision 2 — Use case granularity
+✗ Rejected — One use case for the whole system — RunFuzzMingSession contains the entire
+flow end to end.
+✗ Rejected — One use case per component — LLMEngine has one use case, FoundryEngine has
+one use case, etc.
+✓ CHOSEN — One use case per distinct action — each named action (AssemblePrompt,
+EvaluateOutcome, CheckTermination, etc.) is its own class with one execute() method.
+Why this choice: One use case for the whole system is untestable and accumulates all reasons to
+change in one place. One use case per component is better but still mixes multiple decisions inside
+one class — LLMEngine would have prompt assembly, LLM calling, and config generation all in one
+execute(), which means changing the prompt strategy requires touching the same class as changing
+the config parser. One use case per action keeps each decision independently testable,
+independently nameable, and independently replaceable.
+The Problem With One Use Case for the Whole Flow
+Because FuzzMing has one flow it is tempting to write:
+class RunFuzzMingSession {
+execute(request: ISessionRequest): void {
+// pull contract context
+// assemble prompt
+// call LLM
+// write invariants
+// run forge
+// parse output
+// check termination
+// loop or stop
+}
+}
+This looks clean but it is a single class with eight reasons to change, zero internal contracts, and no
+way to test prompt assembly without also spawning a Foundry process. It is the flat structure
+problem applied to the use case layer.
+The Problem With One Use Case Per Component
+One step better, but still too coarse. Consider what LLMEngine's single use case would own:
+class RunLLMEngine {
+execute(signal: IRoundSignal): ILLMSignal {
+// AssemblePrompt logic -- changes when context weighting changes
+// GenerateInvariants logic -- changes when LLM parsing changes
+// AdaptFoundryConfig logic -- changes when config format changes
+}
+}
+Three distinct decisions, three independent reasons to change, all in one class. Changing how
+coverage gaps are weighted in the prompt requires reading through the same class as changing
+how the LLM response is parsed. The boundaries between decisions are invisible.
+One Use Case Per Action — The Chosen Approach
+Each distinct decision or action is its own class with a single execute() method. The rule: if you can
+name it in one sentence and a non-technical stakeholder would understand it, it is a use case.
+Component Use Case What It Decides or Does
+Orchestrator InitialiseSession Builds ISessionState from ISessionRequest — once per
+session
+Orchestrator RunRound Sends IRoundSignal to llmPort and foundryPort, awaits
+results
+Orchestrator CheckTermination bug | fullCoverage | exhausted | continue — after every
+round
+LLMEngine AssemblePrompt What context to include, how to weight gaps vs failures
+LLMEngine GenerateInvariants Calls LLM gateway, parses Solidity output into
+IInvariantSet
+LLMEngine AdaptFoundryConfig Calls LLM gateway, parses config output into
+IFoundryConfig
+FoundryEngine RunFuzzer Executes forge test, captures exit code and stdout
+FoundryEngine RunCoverage Executes forge coverage — only on clean fuzzer pass
+FoundryEngine EvaluateOutcome bug | pass | fullCoverage — the most critical decision in
+the system
+Reporter FormatBugReport Formats falsified invariant and shrunk call sequence
+Reporter FormatExhaustedReport Formats remaining uncovered lines with source context
+Reporter FormatCoverageReport Formats full coverage summary
+Reporter FormatDevTestFailure Formats developer test failure name and assertion
+Reader and Executor — No Use Cases
+Reader and Executor are the exception. Neither has a use case layer because neither makes
+decisions. Reader converts bytes into structured types — that is a parser, not a use case. Executor
+materialises structured objects onto disk — that is a writer, not a use case.
+The test: A use case orchestrates a decision. A parser converts. A writer materialises. If a class
+makes no decision and contains no business logic, it does not belong in use_cases/ regardless of
+how important it is.
+Decision 3 — Where Dependency Injection
+Lives
+The Question
+Every component depends on interfaces. Concrete implementations must be injected somewhere.
+The question is where — at the point of use, distributed across multiple files, or in a single dedicated
+place.
+Decision 3 — Where to wire dependencies
+✗ Rejected — Inline instantiation — each class creates its own dependencies with new inside its
+constructor or methods.
+✗ Rejected — Distributed wiring — entry points or component facades each wire their own piece
+of the graph.
+✓ CHOSEN — Single composition root — one file, src/composition/CompositionRoot.ts,
+instantiates all concrete types and wires the entire graph.
+Why this choice: Inline instantiation couples every class to its concrete dependencies — you
+cannot test LLMEngine without a real OpenAI HTTP call. Distributed wiring is better but swapping
+one implementation — changing OpenAIAdapter to AnthropicAdapter — requires finding and
+updating every place that instantiates it. A single composition root means exactly one line changes in
+exactly one file for any infrastructure swap. It also means the full dependency graph is visible and
+inspectable in one place.
+Why Inline Instantiation Fails
+// WRONG — inline instantiation
+class LLMEngine {
+private gateway = new OpenAIAdapter(process.env.LLM_URL, process.env.LLM_KEY)
+// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+// LLMEngine is now permanently coupled to OpenAI.
+// Cannot test without a real HTTP call.
+// Cannot swap providers without modifying LLMEngine.
+}
+Why Distributed Wiring Fails
+// WRONG — wiring spread across multiple files
+// In CLIRunner.ts
+const llmGateway = new OpenAIAdapter(config.url, config.key) // instantiated here
+const llmEngine = new LLMEngine(llmGateway)
+// In CICDAdapter.ts
+const llmGateway = new OpenAIAdapter(config.url, config.key) // also here
+const llmEngine = new LLMEngine(llmGateway)
+// Swap to Anthropic: must update CLIRunner.ts AND CICDAdapter.ts
+// Add a third entry point: must remember to wire it too
+// The graph is not visible in one place
+The Single Composition Root
+One file is the only place concrete types appear. Everything else imports only interfaces. The
+composition root assembles the graph in dependency order: infrastructure first, then gateways, then
+use cases, then facades, then the final orchestrator.
+// src/composition/CompositionRoot.ts
+// The only file in the codebase that imports concrete classes.
+export class CompositionRoot {
+static build(config: ISessionConfig): SessionOrchestrator {
+// 1 — infrastructure (the real world)
+const fsReader = new FileSystemReader()
+const fsWriter = new FileSystemWriter()
+const llmGateway = new OpenAIAdapter(config.llmUrl, config.llmKey)
+const forgeRunner = new ForgeRunner()
+// 2 — component facades (Reader and Executor are pure infrastructure)
+const reader = new Reader(fsReader)
+const executor = new Executor(fsWriter)
+// 3 — use cases (injected with the gateways they need)
+const assemblePrompt = new AssemblePrompt(reader)
+const generateInvariants = new GenerateInvariants(llmGateway)
+const adaptFoundryConfig = new AdaptFoundryConfig(llmGateway)
+const runFuzzer = new RunFuzzer(forgeRunner)
+const runCoverage = new RunCoverage(forgeRunner)
+const evaluateOutcome = new EvaluateOutcome(reader)
+const formatBug = new FormatBugReport()
+const formatExhausted = new FormatExhaustedReport()
+const formatCoverage = new FormatCoverageReport()
+const formatDevTest = new FormatDevTestFailure()
+// 4 — component facades (injected with their use cases)
+const llmEngine = new LLMEngine(executor, assemblePrompt, generateInvariants,
+adaptFoundryConfig)
+const foundryEngine = new FoundryEngine(runFuzzer, runCoverage, evaluateOutcome)
+const reporter = new Reporter(reader, formatBug, formatExhausted,
+formatCoverage, formatDevTest)
+// 5 — orchestrator use cases (injected with component facades as ports)
+const initialiseSession = new InitialiseSession()
+const runRound = new RunRound(llmEngine, foundryEngine)
+const checkTermination = new CheckTermination()
+// 6 — final assembly
+return new SessionOrchestrator(reporter, initialiseSession, runRound,
+checkTermination)
+}
+}
+How Entry Points Use It
+Entry points call CompositionRoot.build() with config parsed from their delivery mechanism. They
+receive a fully assembled SessionOrchestrator and run it. They know nothing about what is inside.
+// entry/cli/CLIRunner.ts
+class CLIRunner {
+run(argv: string[]): void {
+const request = this.argParser.parse(argv) // protocol translation
+const orchestrator = CompositionRoot.build(request.config) // full graph assembled
+orchestrator.run(request) // run the session
+}
+}
+// entry/cicd/CICDAdapter.ts
+class CICDAdapter {
+run(env: NodeJS.ProcessEnv): void {
+const request = this.envReader.parse(env)
+const orchestrator = CompositionRoot.build(request.config)
+orchestrator.run(request)
+}
+}
+The Verification Tests
+Three checks confirm the composition root is working correctly:
+• Swapping OpenAIAdapter for AnthropicAdapter requires changing exactly one line in exactly
+one file. If it requires more, wiring has leaked out of the composition root.
+• Every use case class can be instantiated in a test with mock implementations of its port
+interfaces, with zero imports from infrastructure/. If a test needs a real file or a real HTTP
+call, the dependency rule has been violated.
+• No file outside composition/CompositionRoot.ts imports a concrete infrastructure class. If it
+does, that file has assumed wiring responsibility it should not have.
+Complete File Structure
+The structure below is the direct result of the three decisions above. Every folder and file exists
+because of a specific decision. Nothing is added for convention.
+Top Level
+src/
+interfaces/ // D1 — shared I* contracts, no component owns them
+orchestrator/ // D1 — component boundary for sequencing
+llm/ // D1 — component boundary for LLM interaction
+foundry/ // D1 — component boundary for fuzzer execution
+reader/ // D1 — component boundary for all file reads
+executor/ // D1 — component boundary for all file writes
+reporter/ // D1 — component boundary for output formatting
+entry/ // D1 — delivery mechanism adapters (CLI, CI/CD)
+composition/ // D3 — single wiring point
+interfaces/
+src/interfaces/
+ISessionRequest.ts // Entry point to Orchestrator
+IRoundSignal.ts // Orchestrator to LLMEngine / FoundryEngine
+ILLMSignal.ts // LLMEngine to Orchestrator
+IFuzzReport.ts // FoundryEngine to Orchestrator
+ISessionOutcome.ts // Orchestrator to Reporter
+ITerminationDecision.ts
+ISessionState.ts // Round counter and session config
+ISessionConfig.ts // LLM URL, key, output format, CI flag
+IContractContext.ts
+IFuzzReportContext.ts
+ICoverageContext.ts
+IInvariantFiles.ts
+IReportArtifacts.ts
+IInvariantSet.ts
+IFoundryConfig.ts
+IAssembledPrompt.ts
+orchestrator/
+src/orchestrator/
+SessionOrchestrator.ts // Facade — loop shell, no logic of its own
+use_cases/ // D2 — one class per action
+InitialiseSession.ts // Builds ISessionState from ISessionRequest
+RunRound.ts // Sends IRoundSignal, awaits ILLMSignal + IFuzzReport
+CheckTermination.ts // bug | fullCoverage | exhausted | continue
+ports/ // D3 — Orchestrator defines what it needs
+ILLMEnginePort.ts // run(signal): Promise<ILLMSignal>
+IFoundryEnginePort.ts // run(signal): Promise<IFuzzReport>
+IReporterPort.ts // emit(outcome): void
+llm/
+src/llm/
+LLMEngine.ts // Facade — implements ILLMEnginePort
+use_cases/ // D2 — one class per action
+AssemblePrompt.ts // Context weighting and prompt structure
+GenerateInvariants.ts // LLM call + Solidity parsing
+AdaptFoundryConfig.ts // LLM call + config parsing
+ports/ // D3 — LLMEngine defines what it needs
+IReaderPort.ts // getContractContext, getFuzzReportContext,
+getCoverageContext
+IExecutorPort.ts // writeInvariants, writeFoundryConfig
+ILLMGateway.ts // call(prompt): Promise<string>
+infrastructure/ // D3 — concrete implementations, injected by CompositionRoot
+OpenAIAdapter.ts // Implements ILLMGateway
+AnthropicAdapter.ts // Implements ILLMGateway — swap with one line change
+parsers/
+InvariantParser.ts // Raw LLM string to IInvariantSet
+ConfigParser.ts // Raw LLM string to IFoundryConfig
+foundry/
+src/foundry/
+FoundryEngine.ts // Facade — implements IFoundryEnginePort
+use_cases/ // D2 — one class per action
+RunFuzzer.ts // forge test — captures exit code and stdout
+RunCoverage.ts // forge coverage — only on exit code 0
+EvaluateOutcome.ts // bug | pass | fullCoverage — the critical decision
+ports/ // D3 — FoundryEngine defines what it needs
+IReaderPort.ts // getInvariantFiles, getFuzzOutput, getLcov
+IForgeRunnerPort.ts // runTest(), runCoverage(): Promise<IForgeResult>
+infrastructure/ // D3 — concrete implementations
+ForgeRunner.ts // Implements IForgeRunnerPort — real subprocess
+reader/ and executor/
+src/reader/
+Reader.ts // Facade — single read gateway
+parsers/ // D2 — no use cases, parsers only (no decisions)
+ContractParser.ts // Raw Solidity to IContractContext
+LcovParser.ts // lcov.info to ICoverageContext
+FuzzOutputParser.ts // fuzz_output.txt to IFuzzReportContext
+MemoryParser.ts // .fuzzming/memory.json to RAG memory structure
+infrastructure/ // D3 — concrete implementations
+FileSystemReader.ts // The only class calling fs.readFileSync
+src/executor/
+Executor.ts // Facade — single write gateway
+writers/ // D2 — no use cases, writers only (no decisions)
+InvariantWriter.ts // IInvariantSet to test/fuzzming/*.fuzzming.t.sol
+FoundryConfigWriter.ts // IFoundryConfig to foundry.toml [profile.fuzzming]
+MemoryWriter.ts // Bug findings to .fuzzming/memory.json
+infrastructure/ // D3 — concrete implementations
+FileSystemWriter.ts // The only class calling fs.writeFileSync
+reporter/ | entry/ | composition/
+src/reporter/
+Reporter.ts // Facade — implements IReporterPort
+use_cases/ // D2 — one class per outcome type
+FormatBugReport.ts
+FormatExhaustedReport.ts
+FormatCoverageReport.ts
+FormatDevTestFailure.ts
+ports/
+IReaderPort.ts // getReportArtifacts
+IOutputPort.ts // write(output): void — terminal vs PR comment
+infrastructure/
+TerminalOutput.ts // Implements IOutputPort — stdout
+PRCommentOutput.ts // Implements IOutputPort — GitHub/GitLab PR comment
+src/entry/
+cli/CLIRunner.ts // Controller — argv to ISessionRequest
+cli/ArgParser.ts // Knows --target, --rounds, --llm-url, --llm-key
+cicd/CICDAdapter.ts // Controller — env vars to ISessionRequest
+cicd/EnvReader.ts // Reads process.env — CI env coupling stays here
+src/composition/
+CompositionRoot.ts // D3 — the only file importing concrete types
+Summary — Three Decisions, One Table
+Decision Chosen What It Produces in the Codebase
+D1 — Component split
+Component split — seven self-
+Seven top-level folders each with a
+or flat
+contained components
+defined boundary. No cross-component
+communicating through interfaces
+imports except through ports. Each
+component independently testable.
+D2 — Use case
+One class per distinct action — one
+13 use case classes across four
+granularity
+execute() method, one reason to
+components. Reader and Executor get
+change
+parsers/writers instead — no use cases
+because no decisions.
+D3 — Where DI lives Single composition root —
+One file to change for any infrastructure
+src/composition/CompositionRoot.ts
+swap. Full dependency graph visible in
+is the only file importing concrete
+one place. All other files import interfaces
+types
+only.
+The connection between decisions: D1 creates the component boundaries. D2 decides what lives
+inside each boundary. D3 decides how the boundaries are connected at runtime. Remove any one of
+the three and the architecture degrades: no D1 means no testable isolation, no D2 means
+unmaintainable use case classes, no D3 means wiring leaks everywhere.

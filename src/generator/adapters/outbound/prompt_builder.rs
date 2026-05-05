@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 
 use crate::generator::ports::outbound::GenerationRequest;
-use crate::shared::models::{BodiesJson, Role};
+use crate::shared::models::{BodiesJson, FoundryConfig, Role};
 
-use super::stages::AnalysisStage;
+use super::stages::{AnalysisStage, PatchAnalysisStage};
 
 pub fn system_prompt_from_request(request: &GenerationRequest) -> String {
     request
@@ -13,6 +13,16 @@ pub fn system_prompt_from_request(request: &GenerationRequest) -> String {
         .find(|m| matches!(m.role, Role::System))
         .map(|m| m.content.clone())
         .unwrap_or_default()
+}
+
+pub fn user_prompt_from_request(request: &GenerationRequest) -> String {
+    request
+    .prompt
+    .messages
+    .iter()
+    .find(|m| matches!(m.role, Role::User))
+    .map(|m| m.content.clone())
+    .unwrap_or_default()
 }
 
 pub fn build_round_one_analysis_prompt() -> String {
@@ -203,4 +213,219 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          Existing foundry config:\n{}",
         request.round, existing_bodies_json, existing_config_json
     ))
+}
+
+pub fn build_body_schema(
+    existing_bodies: Option<&BodiesJson>,
+    existing_config: Option<&FoundryConfig>,
+) -> Result<String> {
+    let mut schema = serde_json::Map::new();
+
+    if let Some(bodies) = existing_bodies {
+        let handler_functions: Vec<String> = bodies.handler.functions.keys().cloned().collect();
+        let invariants: Vec<String> = bodies.invariant_test.invariants.keys().cloned().collect();
+
+        schema.insert(
+            "handler".to_string(),
+            serde_json::json!({
+                "contractName": bodies.handler.contract_name,
+                "functions": handler_functions,
+                "ghostVars": bodies.handler.ghost_vars,
+            }),
+        );
+        schema.insert(
+            "invariantTest".to_string(),
+            serde_json::json!({
+                "contractName": bodies.invariant_test.contract_name,
+                "invariants": invariants,
+            }),
+        );
+    }
+
+    if let Some(config) = existing_config {
+        schema.insert(
+            "foundry_config".to_string(),
+            serde_json::json!({
+                "depth": config.depth,
+                "runs": config.runs,
+                "call_sequence_weights": config.call_sequence_weights,
+            }),
+        );
+    }
+
+    Ok(serde_json::to_string_pretty(&schema)?)
+}
+
+pub fn build_round_n_analysis_prompt(schema: &str, fuzz_feedback: &Option<String>) -> Result<String> {
+    let feedback = fuzz_feedback
+        .as_deref()
+        .unwrap_or("No fuzz feedback provided.");
+
+    Ok(format!(
+        "Stage 1/2: Patch Analysis.\n\
+Return JSON only. No markdown or prose.\n\
+\n\
+Analyze the fuzz feedback and compact schema below.\n\
+Identify root cause, affected paths, config adjustments, and which bodies must be included.\n\
+\n\
+REQUIRED JSON SHAPE (camelCase):\n\
+{{\n\
+  \"rootCause\": \"string\",\n\
+  \"affectedPaths\": [\"dot.path\"],\n\
+  \"configAdjustments\": [{{\"path\":\"dot.path\",\"reason\":\"string\"}}],\n\
+  \"bodiesNeeded\": [\"functionOrInvariantName\"],\n\
+  \"noChangeNeeded\": [\"functionOrInvariantName\"]\n\
+}}\n\
+\n\
+Compact schema:\n{}\n\
+\n\
+Fuzz feedback:\n{}",
+        schema, feedback
+    ))
+}
+
+pub fn build_round_n_patch_prompt(
+    analysis: &PatchAnalysisStage,
+    relevant_bodies: &BodiesJson,
+    existing_config: &FoundryConfig,
+) -> Result<String> {
+    let analysis_json = serde_json::to_string_pretty(analysis)?;
+    let bodies_json = serde_json::to_string_pretty(relevant_bodies)?;
+    let config_json = serde_json::to_string_pretty(existing_config)?;
+
+    Ok(format!(
+        "Stage 2/2: Targeted Patch.\n\
+Return JSON only. No markdown, no prose, no code fences.\n\
+\n\
+STRICT OUTPUT CONTRACT (round > 1):\n\
+{{\n\
+  \"mode\":\"patch\",\n\
+  \"bodies_updates\":[{{\"op\":\"add|modify|remove\",\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}],\n\
+  \"foundry_config_updates\":[{{\"op\":\"add|modify|remove\",\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}]\n\
+}}\n\
+\n\
+PATCH RULES:\n\
+1. Multiple patches are allowed: each updates array may contain 0..N items.\n\
+2. Each patch item MUST contain exactly 4 keys: op, path, value, reason.\n\
+3. path MUST be a dot-path to the field being replaced.\n\
+4. op MUST be one of add, modify, remove.\n\
+5. add requires target key missing; modify requires existing key replacement; remove deletes existing key.\n\
+6. For remove, set value to null.\n\
+7. Do not include duplicate path entries in the same response.\n\
+8. If no change is required for one artifact, return that artifact updates as [].\n\
+9. Never return nested wrappers like {{\"patch\":{{...}}}} or {{\"full\":{{...}}}}.\n\
+\n\
+VALID bodies path prefixes:\n\
+- meta.contract\n\
+- meta.contractPath\n\
+- meta.solidity\n\
+- meta.generatedAt\n\
+- handler.contractName\n\
+- handler.outputPath\n\
+- handler.imports\n\
+- handler.stateVars\n\
+- handler.ghostVars\n\
+- handler.constructorSignature\n\
+- handler.constructorBody\n\
+- handler.functions.<functionName>\n\
+- handler.targetSelectors\n\
+- invariantTest.contractName\n\
+- invariantTest.outputPath\n\
+- invariantTest.imports\n\
+- invariantTest.stateVars\n\
+- invariantTest.setUpBody\n\
+- invariantTest.invariants.<invariantName>\n\
+\n\
+VALID foundry_config path prefixes:\n\
+- depth\n\
+- runs\n\
+- seed\n\
+- max_test_rejects\n\
+- dictionary_weight\n\
+- call_sequence_weights.<handlerFunctionName>\n\
+- current_toml\n\
+\n\
+Analysis JSON:\n{}\n\
+\n\
+Relevant bodies:\n{}\n\
+\n\
+Existing foundry config:\n{}",
+        analysis_json, bodies_json, config_json
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use std::collections::HashMap;
+
+    use crate::shared::models::{
+        BodiesJson, BodiesMeta, FoundryConfig, HandlerBodies, InvariantTestBodies,
+    };
+
+    use super::build_body_schema;
+
+    fn sample_bodies() -> BodiesJson {
+        let mut functions = IndexMap::new();
+        functions.insert("deposit".to_string(), "// deposit".to_string());
+        functions.insert("withdraw".to_string(), "// withdraw".to_string());
+
+        let mut invariants = IndexMap::new();
+        invariants.insert("invariant_balance".to_string(), "assert(true);".to_string());
+
+        BodiesJson {
+            meta: BodiesMeta {
+                contract: "Vault".to_string(),
+                contract_path: "src/Vault.sol".to_string(),
+                solidity: "^0.8.0".to_string(),
+                generated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+            handler: HandlerBodies {
+                contract_name: "VaultHandler".to_string(),
+                output_path: "test/handlers/VaultHandler.sol".to_string(),
+                imports: vec![],
+                state_vars: vec![],
+                ghost_vars: vec!["uint256 ghost_totalDeposited;".to_string()],
+                constructor_signature: "constructor(address _vault)".to_string(),
+                constructor_body: vec![],
+                functions,
+                target_selectors: "selectors".to_string(),
+            },
+            invariant_test: InvariantTestBodies {
+                contract_name: "VaultInvariantTest".to_string(),
+                output_path: "test/invariants/VaultInvariantTest.sol".to_string(),
+                imports: vec![],
+                state_vars: vec![],
+                set_up_body: vec![],
+                invariants,
+            },
+        }
+    }
+
+    fn sample_config() -> FoundryConfig {
+        let mut weights = HashMap::new();
+        weights.insert("deposit".to_string(), 0.5);
+        weights.insert("withdraw".to_string(), 0.5);
+        FoundryConfig {
+            depth: 10,
+            runs: 100,
+            seed: "0xdeadbeef".to_string(),
+            max_test_rejects: 10,
+            dictionary_weight: 40,
+            call_sequence_weights: weights,
+            current_toml: None,
+        }
+    }
+
+    #[test]
+    fn builds_compact_schema() {
+        let schema = build_body_schema(Some(&sample_bodies()), Some(&sample_config()))
+            .expect("schema built");
+        let value: serde_json::Value = serde_json::from_str(&schema).expect("schema json");
+
+        assert_eq!(value["handler"]["contractName"], "VaultHandler");
+        assert!(value["handler"]["functions"].as_array().unwrap().len() >= 2);
+        assert_eq!(value["invariantTest"]["contractName"], "VaultInvariantTest");
+        assert!(value["foundry_config"]["call_sequence_weights"].is_object());
+    }
 }
