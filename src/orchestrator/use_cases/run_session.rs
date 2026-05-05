@@ -9,7 +9,7 @@ use crate::orchestrator::use_cases::{
     check_termination::check_termination, initialise_session::initialise_session,
     run_round::run_round,
 };
-use crate::shared::models::{CoverageContext, ReportArtifacts, SessionState};
+use crate::shared::models::{BugInfo, CoverageContext, ReportArtifacts, SessionState};
 use crate::shared::ports::{ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReaderPort, ReporterPort};
 use crate::shared::requests::{round_signal::RoundSignal, session_request::SessionRequest};
 use crate::shared::responses::{
@@ -55,7 +55,9 @@ impl OrchestratorRunPort for RunSessionUseCase {
 
             // 2. LLM + Executor for all contracts in parallel.
             try_join_all(
-                signals.iter().map(|signal| run_round(signal.clone(), self.llm_engine.as_ref(), self.executor.as_ref())),
+                signals.iter().map(|signal| {
+                    run_round(signal.clone(), self.llm_engine.as_ref(), self.executor.as_ref())
+                }),
             )
             .await?;
 
@@ -65,17 +67,33 @@ impl OrchestratorRunPort for RunSessionUseCase {
             // Decrement before termination check so the last round triggers Exhausted on Pass.
             state.rounds_remaining = state.rounds_remaining.saturating_sub(1);
 
-            // 4. Check termination per contract; emit report for those that are done.
+            // 4. Accumulate bugs, check termination, emit reports for contracts that are done.
             let mut next_active: Vec<String> = Vec::new();
 
             for ((path, signal), report) in active.iter().zip(signals.iter()).zip(reports.iter()) {
+                // Accumulate all bugs found this round before deciding termination.
+                if !report.bugs.is_empty() {
+                    state
+                        .found_bugs
+                        .entry(signal.contract_name.clone())
+                        .or_default()
+                        .extend(report.bugs.iter().cloned());
+                }
+
                 let decision = check_termination(report, &state);
 
                 if decision.terminate {
-                    let reason = decision
-                        .reason
-                        .ok_or_else(|| anyhow!("terminate=true but no reason for '{}'", signal.contract_name))?;
-                    let artifacts = self.read_artifacts(&signal.contract_name, report, &reason).await?;
+                    let reason = decision.reason.ok_or_else(|| {
+                        anyhow!("terminate=true but no reason for '{}'", signal.contract_name)
+                    })?;
+                    let all_bugs = state
+                        .found_bugs
+                        .get(&signal.contract_name)
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]);
+                    let artifacts =
+                        self.read_artifacts(&signal.contract_name, all_bugs, report, &reason)
+                            .await?;
                     let outcome = SessionOutcome {
                         reason,
                         contract_name: signal.contract_name.clone(),
@@ -114,6 +132,9 @@ impl RunSessionUseCase {
             self.reader.get_existing_bodies(&bodies_path),
         )?;
 
+        let confirmed_bugs =
+            state.found_bugs.get(&contract_name).cloned().unwrap_or_default();
+
         Ok(RoundSignal {
             round: state.current_round,
             config: state.config.clone(),
@@ -124,17 +145,20 @@ impl RunSessionUseCase {
             coverage_context,
             existing_bodies,
             existing_foundry_config: None,
+            confirmed_bugs,
         })
     }
 
     async fn read_artifacts(
         &self,
         contract_name: &str,
+        all_bugs: &[BugInfo],
         report: &FuzzReport,
         reason: &TerminationReason,
     ) -> Result<ReportArtifacts> {
         let fuzz_output_path = format!(".fuzzming/{}/fuzz_output.txt", contract_name);
-        let fuzz_output = self.reader.get_fuzz_output(&fuzz_output_path).await?.unwrap_or_default();
+        let fuzz_output =
+            self.reader.get_fuzz_output(&fuzz_output_path).await?.unwrap_or_default();
 
         let coverage_summary = match reason {
             TerminationReason::FullCoverage | TerminationReason::Exhausted => {
@@ -150,9 +174,8 @@ impl RunSessionUseCase {
             _ => None,
         };
 
-        // Format each bug as "invariant_name:\n<call_sequence>" for the report.
-        let call_sequences = report
-            .bugs
+        // All bugs accumulated across every round, not just the last one.
+        let call_sequences = all_bugs
             .iter()
             .map(|b| format!("{}:\n{}", b.invariant_name, b.call_sequence))
             .collect();

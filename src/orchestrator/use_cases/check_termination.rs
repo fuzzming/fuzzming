@@ -2,17 +2,15 @@ use crate::shared::{
     models::SessionState,
     responses::{
         fuzz_report::{FuzzOutcome, FuzzReport},
+        session_outcome::TerminationReason,
         termination_decision::TerminationDecision,
     },
 };
-use crate::shared::responses::session_outcome::TerminationReason;
 
 pub fn check_termination(report: &FuzzReport, state: &SessionState) -> TerminationDecision {
     match report.outcome {
-        FuzzOutcome::Bug => TerminationDecision {
-            terminate: true,
-            reason: Some(TerminationReason::Bug),
-        },
+        // Bug is no longer terminal — accumulate and continue hunting.
+        FuzzOutcome::Bug => TerminationDecision { terminate: false, reason: None },
         FuzzOutcome::FullCoverage => TerminationDecision {
             terminate: true,
             reason: Some(TerminationReason::FullCoverage),

@@ -8,6 +8,8 @@ The Orchestrator is the **session controller** of FuzzMing. It drives the round 
 
 One job: given a `SessionRequest`, run rounds until every contract reaches a terminal state, emit a report for each, and return the final `SessionOutcome`.
 
+The session ends on **exhaustion or full coverage** — not on the first bug. When a bug is found, the orchestrator records it, removes the broken invariant from the next round's generated test, and continues hunting for more bugs in the remaining invariants.
+
 ---
 
 ## Directory structure
@@ -22,8 +24,8 @@ src/orchestrator/
 │       └── orchestrator_run_port.rs # OrchestratorRunPort — internal use-case contract
 └── use_cases/
     ├── initialise_session.rs        # Builds SessionState from SessionRequest
-    ├── run_round.rs                 # One round for one contract: LLM → Executor → Fuzzer
-    ├── run_session.rs               # Main loop: manages active contracts, terminates, reports
+    ├── run_round.rs                 # One round for one contract: LLM → strip confirmed bugs → Executor
+    ├── run_session.rs               # Main loop: manages active contracts, accumulates bugs, terminates, reports
     └── check_termination.rs        # Pure decision: should this contract's session end?
 ```
 
@@ -61,6 +63,7 @@ SessionState {
     rounds_remaining: request.max_rounds,
     current_round:    0,
     config:           request.config,
+    found_bugs:       HashMap::new(),
 }
 ```
 
@@ -69,7 +72,8 @@ SessionState {
 Runs the LLM and Executor for a single contract. The fuzzer is intentionally excluded — it is called once for all contracts after all `run_round` calls complete.
 
 1. **LLM** — `llm_engine.run(signal)` → generates invariant bodies and foundry config
-2. **Executor** — writes generated files to disk (invariant test `.sol` + `foundry.toml` patch)
+2. **Strip confirmed bugs** — for `Full` responses, removes already-confirmed invariant functions from `bodies.invariant_test.invariants` before passing to the executor (Option B deterministic removal)
+3. **Executor** — writes generated files to disk (invariant test `.sol` + `foundry.toml` patch)
 
 Returns `LlmSignal`.
 
@@ -90,24 +94,28 @@ The `ExecutorInput` variant is determined by the LLM response:
 | `GenerationResponse::Full` | `ExecutorInput::Full` | Round 1 — write everything from scratch |
 | `GenerationResponse::Patch` | `ExecutorInput::Patch` | Round N — apply diff to previous artifacts |
 
+**Confirmed bug stripping** applies only to `Full` responses. For `Patch` responses the LLM is instructed via the prompt not to re-generate confirmed invariants.
+
 ### `check_termination`
 
 Pure function. Maps a `FuzzReport` outcome to a `TerminationDecision`.
 
 | `FuzzOutcome` | `rounds_remaining` | Decision |
 |---|---|---|
-| `Bug` | any | terminate → `Bug` |
+| `Bug` | any | **continue** — accumulate and keep hunting |
 | `FullCoverage` | any | terminate → `FullCoverage` |
 | `DevTestFailed` | any | terminate → `DevTestFailed` |
 | `Pass` | 0 | terminate → `Exhausted` |
 | `Pass` | > 0 | continue |
 
+`Bug` is no longer a terminal state. The session ends only on `Exhausted` or `FullCoverage`.
+
 ### `run_session` (main loop)
 
-Owns the contract lifecycle. Each round has three parallel stages, followed by a single batched forge run, then per-contract termination checks.
+Owns the contract lifecycle. Each round has three parallel stages, followed by a single batched forge run, then per-contract bug accumulation and termination checks.
 
 ```
-initialise_session(request) → SessionState
+initialise_session(request) → SessionState { found_bugs: {} }
 active = all target contract paths
 
 loop:
@@ -118,11 +126,13 @@ loop:
         for each contract → build_signal()
             tokio::try_join!(get_contract_context, get_fuzz_output,
                              get_coverage_context, get_existing_bodies)
+            confirmed_bugs = state.found_bugs[contract] (empty on round 1)
 
     ── Stage 2: parallel LLM + Executor ─────────────────────────────────
     try_join_all:
         for each contract → run_round(signal, llm, executor)
             llm_engine.run(signal) → LlmSignal
+            strip confirmed invariants from Full response bodies
             executor.execute(input)          (writes .sol + foundry.toml)
 
     ── Stage 3: single forge run ─────────────────────────────────────────
@@ -130,18 +140,22 @@ loop:
 
     rounds_remaining -= 1
 
-    ── Termination check (per contract) ──────────────────────────────────
+    ── Bug accumulation + termination check (per contract) ───────────────
     for each (contract, report):
+        if report.bugs not empty:
+            state.found_bugs[contract].extend(report.bugs)   ← accumulate
         check_termination(report, state) → TerminationDecision
         if terminate:
+            all_bugs = state.found_bugs[contract]            ← all rounds
             read ReportArtifacts from disk
+            build call_sequences from all_bugs (not just last round)
             reporter.emit(SessionOutcome)
             remove contract from active
 
     if active is empty → break
 ```
 
-The last round (`rounds_remaining` reaches 0) causes any still-passing contract to terminate with `Exhausted`.
+The last round (`rounds_remaining` reaches 0) causes any still-passing contract to terminate with `Exhausted`. The final report carries every bug found across all rounds.
 
 ---
 
@@ -166,6 +180,8 @@ pub struct SessionState {
     pub rounds_remaining: u32,
     pub current_round:    u32,
     pub config:           SessionConfig,
+    /// All bugs found so far, keyed by contract name. Grows across rounds; never cleared.
+    pub found_bugs:       HashMap<String, Vec<BugInfo>>,
 }
 ```
 
@@ -177,15 +193,18 @@ Built fresh each round from disk. Carries everything the LLM and fuzzer need.
 pub struct RoundSignal {
     pub round:                   u32,
     pub config:                  SessionConfig,
-    pub contract_name:           String,        // e.g. "Vault"
-    pub contract_path:           String,        // e.g. "src/Vault.sol"
+    pub contract_name:           String,                   // e.g. "Vault"
+    pub contract_path:           String,                   // e.g. "src/Vault.sol"
     pub source_code:             String,
-    pub fuzz_output:             Option<String>, // None on round 1
-    pub coverage_context:        Option<CoverageContext>, // None on round 1
-    pub existing_bodies:         Option<BodiesJson>,      // None on round 1
-    pub existing_foundry_config: Option<FoundryConfig>,   // None (not yet read)
+    pub fuzz_output:             Option<String>,           // None on round 1
+    pub coverage_context:        Option<CoverageContext>,  // None on round 1
+    pub existing_bodies:         Option<BodiesJson>,       // None on round 1
+    pub existing_foundry_config: Option<FoundryConfig>,    // None (not yet read)
+    pub confirmed_bugs:          Vec<BugInfo>,             // empty on round 1
 }
 ```
+
+`confirmed_bugs` is populated from `state.found_bugs[contract]` at the start of each round. It flows to both the LLM prompt (so the model avoids re-generating broken invariants) and `run_round` (so confirmed invariants are stripped from `Full` responses before the executor writes them).
 
 ### `SessionOutcome` (output)
 
@@ -197,6 +216,8 @@ pub struct SessionOutcome {
     pub artifacts:        ReportArtifacts,
 }
 ```
+
+`ReportArtifacts.call_sequences` contains every bug found across all rounds, not just the termination round.
 
 ---
 
@@ -230,4 +251,4 @@ The orchestrator reads and writes artifacts under a `.fuzzming/` directory at th
 
 - **`existing_foundry_config` not forwarded** — `RoundSignal.existing_foundry_config` is always `None`. The reader does not currently expose a method to read `FoundryConfig` from disk. This means the Executor cannot patch only the managed sections of `foundry.toml` on round N — it will overwrite the whole config.
 
-- **No cross-round artifact accumulation in the report** — `ReportArtifacts` carries only the termination round's data. Coverage progression and LLM decisions from earlier rounds are not included in the final report. See `docs/known_issues.md`.
+- **Confirmed bug stripping only for Full responses** — `run_round` removes confirmed invariants from `GenerationResponse::Full` bodies before the executor writes them. For `Patch` responses, the LLM is relied on to follow the `CONFIRMED BUGS` prompt instruction and not re-add them.
