@@ -1,7 +1,7 @@
 use anyhow::Result;
 use fuzzming::{
     fuzzer::{
-        adapters::outbound::ForgeRunner,
+        adapters::outbound::{FileSystemFuzzerOutput, ForgeRunner},
         ports::inbound::FuzzerRunPort,
         use_cases::RunFuzzerUseCase,
     },
@@ -44,7 +44,10 @@ fn signal(workspace: PathBuf) -> RoundSignal {
 async fn correct_vault_invariants_pass() -> Result<()> {
     let workspace = vault_project();
     let runner = ForgeRunner::new(workspace.clone());
-    let use_case = RunFuzzerUseCase::new(Box::new(runner));
+    let use_case = RunFuzzerUseCase::new(
+        Box::new(runner),
+        Box::new(FileSystemFuzzerOutput::new(workspace.clone())),
+    );
 
     let reports = use_case.run(vec![signal(workspace)]).await?;
 
@@ -62,7 +65,10 @@ async fn correct_vault_invariants_pass() -> Result<()> {
 async fn fuzz_output_written_to_workspace() -> Result<()> {
     let workspace = vault_project();
     let runner = ForgeRunner::new(workspace.clone());
-    let use_case = RunFuzzerUseCase::new(Box::new(runner));
+    let use_case = RunFuzzerUseCase::new(
+        Box::new(runner),
+        Box::new(FileSystemFuzzerOutput::new(workspace.clone())),
+    );
 
     use_case.run(vec![signal(workspace.clone())]).await?;
 
