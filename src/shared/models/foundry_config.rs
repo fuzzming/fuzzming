@@ -8,6 +8,7 @@ pub struct FoundryConfig {
     pub seed: String,
     pub max_test_rejects: u32,
     pub dictionary_weight: u32,
+    #[serde(default)]
     pub call_sequence_weights: HashMap<String, f64>,
     /// Current contents of foundry.toml, read by Reader and forwarded here so the
     /// Executor can patch only the managed sections without ever reading the file itself.

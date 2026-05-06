@@ -31,13 +31,25 @@ impl FuzzerRunPort for RunFuzzerUseCase {
         let mut reports: Vec<FuzzReport> = Vec::with_capacity(signals.len());
         let mut any_pass = false;
 
+        let compile_error = is_compile_error(&fuzz_result);
+
         for signal in &signals {
             let contract = &signal.contract_name;
-            let contract_output = self.runner.filter_output(&fuzz_result.stdout, contract);
-            self.output.write_fuzz_output(contract, &contract_output).await?;
 
-            let (outcome, bugs) =
-                evaluate_outcome_for_contract(&*self.runner, &fuzz_result, contract);
+            let (contract_output, outcome, bugs) = if compile_error {
+                let msg = format!(
+                    "COMPILATION ERROR — fix the Solidity before fuzzing can proceed:\n{}",
+                    fuzz_result.stderr
+                );
+                (msg, FuzzOutcome::CompileError, vec![])
+            } else {
+                let output = self.runner.filter_output(&fuzz_result.stdout, contract);
+                let (outcome, bugs) =
+                    evaluate_outcome_for_contract(&*self.runner, &fuzz_result, contract);
+                (output, outcome, bugs)
+            };
+
+            self.output.write_fuzz_output(contract, &contract_output).await?;
             if matches!(outcome, FuzzOutcome::Pass) {
                 any_pass = true;
             }
@@ -61,6 +73,14 @@ impl FuzzerRunPort for RunFuzzerUseCase {
 
         Ok(reports)
     }
+}
+
+fn is_compile_error(result: &crate::shared::models::RunnerResult) -> bool {
+    result.exit_code != 0
+        && (result.stderr.contains("Compiler run failed")
+            || result.stderr.contains("error[")
+            || result.stdout.contains("Compiler run failed")
+            || result.stdout.contains("error["))
 }
 
 fn evaluate_outcome_for_contract(

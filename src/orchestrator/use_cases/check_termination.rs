@@ -11,6 +11,8 @@ pub fn check_termination(report: &FuzzReport, state: &SessionState) -> Terminati
     match report.outcome {
         // Bug is no longer terminal — accumulate and continue hunting.
         FuzzOutcome::Bug => TerminationDecision { terminate: false, reason: None },
+        // Compilation failure — let the LLM repair the code and retry.
+        FuzzOutcome::CompileError => TerminationDecision { terminate: false, reason: None },
         FuzzOutcome::FullCoverage => TerminationDecision {
             terminate: true,
             reason: Some(TerminationReason::FullCoverage),
