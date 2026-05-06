@@ -36,31 +36,26 @@ pub async fn write_foundry_config(config: &FoundryConfig, writer: &FileSystemWri
 }
 
 fn build_fuzzming_section(config: &FoundryConfig) -> String {
-    let mut lines = vec![
+    vec![
         FUZZMING_HEADER.to_string(),
-        format!("depth            = {}", config.depth),
+        String::new(),
+        "[profile.fuzzming.invariant]".to_string(),
         format!("runs             = {}", config.runs),
+        format!("depth            = {}", config.depth),
         format!("seed             = \"{}\"", config.seed),
         format!("max_test_rejects = {}", config.max_test_rejects),
         format!("dictionary_weight = {}", config.dictionary_weight),
-    ];
-
-    if !config.call_sequence_weights.is_empty() {
-        lines.push(String::new());
-        lines.push("[profile.fuzzming.invariant]".to_string());
-        for (selector, weight) in &config.call_sequence_weights {
-            lines.push(format!("\"{}\" = {}", selector, weight));
-        }
-    }
-
-    lines.join("\n")
+    ]
+    .join("\n")
 }
 
 fn build_coverage_section() -> String {
     vec![
         COVERAGE_HEADER.to_string(),
-        "depth = 50".to_string(),
+        String::new(),
+        "[profile.coverage.invariant]".to_string(),
         "runs  = 256".to_string(),
+        "depth = 50".to_string(),
     ]
     .join("\n")
 }
