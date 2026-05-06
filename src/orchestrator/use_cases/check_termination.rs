@@ -28,10 +28,15 @@ pub fn check_termination(report: &FuzzReport, state: &SessionState) -> Terminati
             terminate: true,
             reason: Some(TerminationReason::FullCoverage),
         },
-        FuzzOutcome::DevTestFailed => TerminationDecision {
-            terminate: true,
-            reason: Some(TerminationReason::DevTestFailed),
-        },
+        // DevTestFailed (setUp revert, assertion in test logic, etc.) is just as fixable as
+        // CompileError — feed the output back to the LLM and retry until rounds are exhausted.
+        FuzzOutcome::DevTestFailed => {
+            if state.rounds_remaining == 0 {
+                TerminationDecision { terminate: true, reason: Some(TerminationReason::DevTestFailed) }
+            } else {
+                TerminationDecision { terminate: false, reason: None }
+            }
+        }
         FuzzOutcome::Pass => {
             if state.rounds_remaining == 0 {
                 TerminationDecision {

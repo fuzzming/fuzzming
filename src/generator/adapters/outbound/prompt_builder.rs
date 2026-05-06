@@ -177,6 +177,7 @@ not explicitly exist in the provided source code.\n\
 7. NO RAW BYTECODE: Never embed hex bytecode in setUp. To deploy a contract: use `new ContractName()` if it is imported, `deployCode(\"ContractName.sol:ContractName\")` only for contracts you cannot import.\n\
 8. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. Use `handler.actorsLength()` and `handler.actors(i)` to iterate — never call `handler.getActors()` or any helper that does not exist in the handler source.\n\
 9. ASCII ONLY IN STRINGS: All Solidity string literals (assert/require messages, comments) must use only plain ASCII characters. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character in a string literal. Use a plain hyphen (-) or colon (:) instead.\n\
+10. NO UNUSED VARIABLES: Never declare a local variable that is not used in the function body — Solidity treats unused variables as compilation errors. Only declare variables you actually read.\n\
 \n\
 STRICT SCHEMA RULES:\n\
 - Use camelCase for all keys.\n\

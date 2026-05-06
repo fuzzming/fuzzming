@@ -115,6 +115,7 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         reason,
                         contract_name: signal.contract_name.clone(),
                         rounds_completed: state.current_round,
+                        bugs: all_bugs.to_vec(),
                         artifacts,
                     };
                     self.reporter.emit(outcome.clone()).await?;
