@@ -7,7 +7,7 @@ use crate::reader::adapters::outbound::FileSystemReader;
 use crate::reader::ports::inbound::ReaderRunPort;
 use crate::reader::ports::outbound::{ContractReaderPort, CoverageReaderPort};
 use crate::reader::use_cases::parse_lcov::parse_lcov;
-use crate::shared::models::{BodiesJson, ContractContext, CoverageContext};
+use crate::shared::models::{BodiesJson, ContractContext, CoverageContext, FuzzerConfigArtifact};
 
 pub struct ReadUseCase {
     contract_reader: Arc<dyn ContractReaderPort>,
@@ -81,6 +81,13 @@ impl ReaderRunPort for ReadUseCase {
     }
 
     async fn get_existing_bodies(&self, path: &str) -> Result<Option<BodiesJson>> {
+        match self.fs_reader.read_file_optional(path).await? {
+            Some(json) => Ok(Some(serde_json::from_str(&json)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn get_existing_config(&self, path: &str) -> Result<Option<FuzzerConfigArtifact>> {
         match self.fs_reader.read_file_optional(path).await? {
             Some(json) => Ok(Some(serde_json::from_str(&json)?)),
             None => Ok(None),

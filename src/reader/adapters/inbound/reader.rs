@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::reader::ports::inbound::ReaderRunPort;
-use crate::shared::models::{BodiesJson, ContractContext, CoverageContext};
+use crate::shared::models::{BodiesJson, ContractContext, CoverageContext, FuzzerConfigArtifact};
 use crate::shared::ports::ReaderPort;
 
 pub struct Reader {
@@ -37,5 +37,9 @@ impl ReaderPort for Reader {
 
     async fn get_existing_bodies(&self, path: &str) -> Result<Option<BodiesJson>> {
         self.use_case.get_existing_bodies(path).await
+    }
+
+    async fn get_existing_config(&self, path: &str) -> Result<Option<FuzzerConfigArtifact>> {
+        self.use_case.get_existing_config(path).await
     }
 }

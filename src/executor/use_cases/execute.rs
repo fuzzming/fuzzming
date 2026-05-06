@@ -9,7 +9,7 @@ use crate::executor::ports::outbound::{CodeGeneratorPort, ConfigWriterPort};
 use crate::executor::use_cases::apply_patch::apply_patches;
 use crate::shared::models::{ExecutorInput, FuzzerConfigArtifact};
 
-use super::write_bodies::write_bodies;
+use super::write_bodies::{write_bodies, write_config_json};
 
 pub struct ExecuteUseCase {
     writer: FileSystemWriter,
@@ -37,6 +37,7 @@ impl ExecutorRunPort for ExecuteUseCase {
         let (bodies, fuzzer_config) = resolve_input(input)?;
 
         write_bodies(&bodies, &self.writer).await?;
+        write_config_json(&fuzzer_config, &bodies.meta.contract, &self.writer).await?;
         self.generator.generate(&bodies, &self.writer).await?;
         self.config_writer
             .write(&fuzzer_config, &self.writer)

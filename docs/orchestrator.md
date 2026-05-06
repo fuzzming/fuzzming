@@ -125,7 +125,9 @@ loop:
     try_join_all:
         for each contract → build_signal()
             tokio::try_join!(get_contract_context, get_fuzz_output,
-                             get_coverage_context, get_existing_bodies)
+                             get_coverage_context, get_existing_bodies,
+                             get_existing_config)
+            existing_foundry_config = FuzzerConfigArtifact::Foundry(fc) (None on round 1)
             confirmed_bugs = state.found_bugs[contract] (empty on round 1)
 
     ── Stage 2: parallel LLM + Executor ─────────────────────────────────
@@ -199,7 +201,7 @@ pub struct RoundSignal {
     pub fuzz_output:             Option<String>,           // None on round 1
     pub coverage_context:        Option<CoverageContext>,  // None on round 1
     pub existing_bodies:         Option<BodiesJson>,       // None on round 1
-    pub existing_foundry_config: Option<FoundryConfig>,    // None (not yet read)
+    pub existing_foundry_config: Option<FoundryConfig>,    // None on round 1; read from .fuzzming/{Contract}/{Contract}.config.json on round N
     pub confirmed_bugs:          Vec<BugInfo>,             // empty on round 1
 }
 ```
@@ -228,6 +230,7 @@ The orchestrator reads and writes artifacts under a `.fuzzming/` directory at th
 | Artifact | Path |
 |---|---|
 | LLM-generated bodies | `.fuzzming/{contract}/{contract}.bodies.json` |
+| Fuzzer config (JSON) | `.fuzzming/{contract}/{contract}.config.json` |
 | Forge fuzz output | `.fuzzming/{contract}/fuzz_output.txt` |
 | LCOV coverage | `.fuzzming/{contract}/lcov.info` |
 
@@ -248,7 +251,5 @@ The orchestrator reads and writes artifacts under a `.fuzzming/` directory at th
 ## Known limitations
 
 - **LLM calls are concurrent, not CPU-parallel** — `try_join_all` interleaves LLM and Executor futures on the same async task. For true thread-level parallelism, futures would need to be spawned with `tokio::spawn`, which requires `'static` bounds on all port references.
-
-- **`existing_foundry_config` not forwarded** — `RoundSignal.existing_foundry_config` is always `None`. The reader does not currently expose a method to read `FoundryConfig` from disk. This means the Executor cannot patch only the managed sections of `foundry.toml` on round N — it will overwrite the whole config.
 
 - **Confirmed bug stripping only for Full responses** — `run_round` removes confirmed invariants from `GenerationResponse::Full` bodies before the executor writes them. For `Patch` responses, the LLM is relied on to follow the `CONFIRMED BUGS` prompt instruction and not re-add them.

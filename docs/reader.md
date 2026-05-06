@@ -7,9 +7,11 @@ The Reader is the **read gateway** of FuzzMing. Before every LLM round, the orch
 ## The big picture
 
 ```
-forge coverage  ──► .fuzzming/{Contract}/lcov.info     ─┐
-forge test      ──► .fuzzming/{Contract}/fuzz_output.txt─┤──► Reader ──► Orchestrator ──► Generator
-src/Vault.sol   ──► .sol file                           ─┘
+forge coverage  ──► .fuzzming/{Contract}/lcov.info          ─┐
+forge test      ──► .fuzzming/{Contract}/fuzz_output.txt     ─┤──► Reader ──► Orchestrator ──► Generator
+src/Vault.sol   ──► .sol file                                ─┤
+executor        ──► .fuzzming/{Contract}/{Contract}.bodies.json ─┤
+executor        ──► .fuzzming/{Contract}/{Contract}.config.json ─┘
 ```
 
 The Reader never writes anything. It only reads and transforms.
@@ -76,6 +78,7 @@ pub trait ReaderRunPort: Send + Sync {
     async fn get_fuzz_output(&self, path: &str) -> Result<Option<String>>;
     async fn get_coverage_context(&self, lcov_path: &str) -> Result<Option<CoverageContext>>;
     async fn get_existing_bodies(&self, path: &str) -> Result<Option<BodiesJson>>;
+    async fn get_existing_config(&self, path: &str) -> Result<Option<FuzzerConfigArtifact>>;
 }
 ```
 
@@ -107,7 +110,11 @@ src/Vault.sol
 ContractContext { source_code: "contract Vault { ... }" }
 ```
 
-### 2. `get_coverage_context(lcov_path)` → uncovered locations with source snippets
+### 2. `get_existing_bodies(path)` and `get_existing_config(path)` → previous-round artifacts
+
+On rounds 2+ the orchestrator asks for the last round's `BodiesJson` and `FuzzerConfigArtifact` from `.fuzzming/{Contract}/{Contract}.bodies.json` and `.fuzzming/{Contract}/{Contract}.config.json`. Both return `None` on round 1 (files do not exist yet). When the LLM returns a `Patch` response, the executor uses these as the base to apply diff operations. When it returns a `Full` response, they are ignored.
+
+### 3. `get_coverage_context(lcov_path)` → uncovered locations with source snippets
 
 Reads the per-contract `lcov.info` written by the fuzzer to `.fuzzming/{Contract}/lcov.info` and returns every line, branch, and function that was never executed. Returns `None` if the file does not exist yet (first round).
 
@@ -147,6 +154,14 @@ Orchestrator
              ├─ get_contract_context(path)
              │     SolidityContractReader reads via FileSystemReader
              │     strips comments → ContractContext
+             │
+             ├─ get_existing_bodies(path)
+             │     FileSystemReader reads .fuzzming/{Contract}/{Contract}.bodies.json
+             │     → None (round 1) or BodiesJson (round N)
+             │
+             ├─ get_existing_config(path)
+             │     FileSystemReader reads .fuzzming/{Contract}/{Contract}.config.json
+             │     → None (round 1) or FuzzerConfigArtifact (round N)
              │
              └─ get_coverage_context(lcov_path)
                    FoundryCoverageReader reads .fuzzming/{Contract}/lcov.info

@@ -29,7 +29,7 @@ src/executor/
 │       └── config_writer_port.rs           # ConfigWriterPort — write(config, writer)
 └── use_cases/
     ├── execute.rs                          # ExecuteUseCase — owns outbound ports, implements ExecutorRunPort
-    └── write_bodies.rs                     # Pure function: serialise BodiesJson to disk
+    └── write_bodies.rs                     # write_bodies + write_config_json: persist BodiesJson and FuzzerConfigArtifact to disk
 ```
 
 ---
@@ -82,7 +82,7 @@ pub struct ExecuteUseCase {
 }
 ```
 
-Sequences the three write operations: bodies JSON, generated Solidity files, Foundry config patch.
+Sequences four write operations: bodies JSON, config JSON, generated Solidity files, Foundry config patch.
 
 ### Outbound ports — `ports/outbound/`
 
@@ -122,10 +122,11 @@ The `test/fuzzming/` namespace isolates generated files from the developer's own
 │           └── {ContractName}InvariantTest.sol
 └── .fuzzming/
     └── {ContractName}/
-        └── {ContractName}.bodies.json    ← JSON; forge ignores non-.sol files
+        ├── {ContractName}.bodies.json    ← LLM-generated test bodies; read back each round for Patch diffs
+        └── {ContractName}.config.json   ← FuzzerConfigArtifact JSON; read back each round for Patch diffs
 ```
 
-Bodies JSON goes to `.fuzzming/` (not `test/fuzzming/`) because it is not Solidity and forge would ignore it anyway — keeping it separate makes the directory intent clearer.
+Both `.bodies.json` and `.config.json` go to `.fuzzming/` (not `test/fuzzming/`) because they are not Solidity — forge ignores them, and keeping them separate makes the directory intent clearer. They are also what the Reader loads on rounds 2+ so the LLM can return a `Patch` diff instead of re-generating everything.
 
 ---
 
@@ -138,14 +139,17 @@ Orchestrator
        │
        └─ ExecuteUseCase::execute(input)     ← ExecutorRunPort (use case)
              │
-             ├─ write_bodies(&input.bodies, &writer)
+             ├─ write_bodies(&bodies, &writer)
              │     serialises BodiesJson → .fuzzming/{Contract}/{Contract}.bodies.json
              │
-             ├─ generator.generate(&input.bodies, &writer)   ← CodeGeneratorPort
+             ├─ write_config_json(&fuzzer_config, contract, &writer)
+             │     serialises FuzzerConfigArtifact → .fuzzming/{Contract}/{Contract}.config.json
+             │
+             ├─ generator.generate(&bodies, &writer)   ← CodeGeneratorPort
              │     assembles Handler .sol → test/fuzzming/{Contract}/{ContractName}.sol
              │     assembles InvariantTest .sol → test/fuzzming/{Contract}/{ContractName}.sol
              │
-             └─ config_writer.write(&input.fuzzer_config, &writer)  ← ConfigWriterPort
+             └─ config_writer.write(&fuzzer_config, &writer)  ← ConfigWriterPort
                    patches [profile.fuzzming] in foundry.toml
 ```
 
