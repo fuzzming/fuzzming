@@ -34,6 +34,54 @@ pub fn build_round_one_analysis_prompt() -> String {
     .to_string()
 }
 
+/// Parse `import {Sym} from "./rel.sol";` lines in the source and return
+/// ready-to-use import strings with paths resolved relative to the contract file.
+/// E.g. contract_path="src/EasyBank.sol", source has `import {Token} from "./Token.sol"`
+/// → returns `["import {Token} from \"src/Token.sol\";"]`
+fn extract_dependency_imports(contract_path: &str, source: &str) -> Vec<String> {
+    let dir = contract_path.rfind('/').map_or("", |i| &contract_path[..i]);
+    let mut imports = Vec::new();
+    for line in source.lines() {
+        let t = line.trim();
+        if !t.starts_with("import") {
+            continue;
+        }
+        // Match: import {Sym[, Sym2]} from "./rel.sol";
+        // Also handles import {Sym} from "../path.sol";
+        let from_pos = match t.find("from") {
+            Some(p) => p,
+            None => continue,
+        };
+        let symbols = &t[..from_pos]; // "import {Token}"
+        let rest = t[from_pos + 4..].trim(); // `"./Token.sol";`
+        let path_raw = rest
+            .trim_start_matches('"')
+            .trim_end_matches(';')
+            .trim_end_matches('"');
+        if !path_raw.starts_with('.') {
+            continue; // skip absolute / lib imports
+        }
+        // Resolve relative path against the contract's directory
+        let resolved = if dir.is_empty() {
+            path_raw.trim_start_matches("./").to_string()
+        } else {
+            let combined = format!("{}/{}", dir, path_raw.trim_start_matches("./"));
+            // Normalize simple "../" components
+            let mut parts: Vec<&str> = Vec::new();
+            for seg in combined.split('/') {
+                if seg == ".." {
+                    parts.pop();
+                } else if seg != "." {
+                    parts.push(seg);
+                }
+            }
+            parts.join("/")
+        };
+        imports.push(format!("{}from \"{}\";", symbols, resolved));
+    }
+    imports
+}
+
 fn extract_pragma(source: &str) -> String {
     for line in source.lines() {
         let t = line.trim();
@@ -70,6 +118,22 @@ pub fn build_round_one_bodies_prompt(
     );
     let test_std_import = "import {Test} from \"forge-std/Test.sol\";";
 
+    // Dependency imports derived from the contract's own import lines.
+    let dep_imports = extract_dependency_imports(contract_path, source_code);
+    let dep_imports_block = if dep_imports.is_empty() {
+        String::new()
+    } else {
+        let lines = dep_imports
+            .iter()
+            .map(|i| format!("    \"{i}\""))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "  If the handler or test must interact with a dependency contract (e.g. call approve, \
+transfer, or mint on a token), use EXACTLY these pre-resolved import lines — do not invent paths:\n{lines}\n"
+        )
+    };
+
     Ok(format!(
         "Stage 2/3: Solidity Generation.\n\
 \n\
@@ -91,11 +155,11 @@ REQUIRED IMPORT LINES:\n\
   In {handler_name}.imports, you MUST include:\n\
     \"{handler_target_import}\"\n\
     \"{test_std_import}\"\n\
-  Do NOT import Token, ERC20, or any other dependency — the target contract manages its own imports.\n\
   In {test_name}.imports, you MUST include:\n\
     \"{test_handler_import}\"\n\
     \"{test_std_import}\"\n\
     \"{handler_target_import}\"\n\
+{dep_imports_block}\
 \n\
 CONTRACT INHERITANCE (mandatory):\n\
   {handler_name} must inherit from Test: write `contract {handler_name} is Test {{`\n\
@@ -107,11 +171,12 @@ instance. Do NOT reimplement the target contract's internal logic inside the han
 2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
 not explicitly exist in the provided source code.\n\
 3. NO REDUNDANCIES: Do not write meaningless checks like `require(myUint >= 0)`.\n\
-4. IMPORTS: Use only the import lines listed in REQUIRED IMPORT LINES above — except when the handler must call a method on a dependency of the target (e.g. approve or mint on a token the vault interacts with). In that case add the import for that dependency and call it with typed syntax. Never use low-level .call() for a contract whose interface you know.
+4. IMPORTS: Use only the import lines listed in REQUIRED IMPORT LINES above. If you need to interact with a dependency (e.g. call approve or transfer on a token), use the pre-resolved import line provided in the dependency imports block — do not invent paths. Never use low-level .call() for a contract whose interface you know.
 5. targetSelectors: Always set to empty string \"\". Target selector setup (targetSelector, targetContract) belongs ONLY in the invariant test's setUpBody — never in the handler.\n\
 6. NO REDEFINING TEST HELPERS: Do not define functions already provided by inheriting Test — never write your own `bound`, `vm`, `makeAddr`, `deal`, or similar.\n\
 7. NO RAW BYTECODE: Never embed hex bytecode in setUp. To deploy a contract: use `new ContractName()` if it is imported, `deployCode(\"ContractName.sol:ContractName\")` only for contracts you cannot import.\n\
 8. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. Use `handler.actorsLength()` and `handler.actors(i)` to iterate — never call `handler.getActors()` or any helper that does not exist in the handler source.\n\
+9. ASCII ONLY IN STRINGS: All Solidity string literals (assert/require messages, comments) must use only plain ASCII characters. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character in a string literal. Use a plain hyphen (-) or colon (:) instead.\n\
 \n\
 STRICT SCHEMA RULES:\n\
 - Use camelCase for all keys.\n\
@@ -160,6 +225,7 @@ Analysis Context:\n\
         test_name = test_name,
         handler_target_import = handler_target_import,
         test_handler_import = test_handler_import,
+        dep_imports_block = dep_imports_block,
         analysis_summary = analysis_summary,
         pragma = pragma,
     ))
@@ -235,6 +301,8 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          - Never redefine functions provided by Test (bound, vm, makeAddr, deal)\n\
          - Never embed raw bytecode — use deployCode(\"Name.sol:Name\") for dependencies\n\
          - To iterate actors in an invariant, use handler.actorsLength() and handler.actors(i) — never call handler.getActors() or any method not declared in the handler\n\
+         - ASCII ONLY IN STRINGS: All string literals must use only plain ASCII. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character. Use plain hyphen (-) or colon (:) instead.\n\
+         - IMPORT PATHS: Import dependencies (e.g. Token) from their own source file (e.g. \"src/Token.sol\") — never re-export them from the target contract file.\n\
          \n\
          VALID bodies path prefixes:\n\
          - meta.contract / meta.contractPath / meta.solidity / meta.generatedAt\n\
