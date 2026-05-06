@@ -144,10 +144,24 @@ A complete Foundry project with no external dependencies beyond forge-std:
 | File | Description |
 |---|---|
 | `src/Token.sol` | Minimal ERC20 token with a `mint` function |
-| `src/Vault.sol` | Single-asset vault — 1:1 shares, deposit cap of 1,000,000 tokens |
-| `test/handlers/VaultHandler.sol` | Invariant handler — 3 actors, ghost vars tracking deposits and withdrawals |
+| `src/Vault.sol` | Single-asset vault — 1:1 shares, deposit cap of 1,000,000 tokens (no bug) |
+| `src/EasyBank.sol` | Simple bank — **bug**: `unchecked { totalDeposits -= amount + 1 }` off-by-one per withdrawal |
+| `src/MediumVault.sol` | Share-based vault with 1% fee — **bug**: fee not subtracted from `totalAssets`, causing accounting drift |
+| `src/HardStaking.sol` | Proportional reward staking — **bug**: `stake()` missing `_updateReward()`, new stakers receive retroactive rewards |
+| `test/handlers/VaultHandler.sol` | Invariant handler for Vault — 3 actors, ghost vars tracking deposits and withdrawals |
 | `test/invariants/VaultInvariantTest.sol` | Two invariants: `totalAssets == deposits - withdrawals` and `totalAssets <= depositCap` |
-| `foundry.toml` | `fuzzming` profile (512 runs, depth 200 under `[profile.fuzzming.invariant]`) and `coverage` profile |
+| `test/fuzzming/EasyBank/` | LLM-generated handler and invariant test for EasyBank |
+| `test/fuzzming/MediumVault/` | LLM-generated handler and invariant test for MediumVault |
+| `test/fuzzming/HardStaking/` | LLM-generated handler and invariant test for HardStaking |
+| `foundry.toml` | `fuzzming` profile (1000 runs, depth 400) and `coverage` profile |
+
+The three buggy contracts (`EasyBank`, `MediumVault`, `HardStaking`) serve as difficulty-graded regression targets to verify the system can autonomously find bugs of increasing complexity:
+
+| Contract | Difficulty | Minimum sequence to trigger |
+|---|---|---|
+| `EasyBank` | Easy | deposit → withdraw (1 withdrawal) |
+| `MediumVault` | Medium | deposit → withdraw (fee accounting checked) |
+| `HardStaking` | Hard | stake → addRewards → stake (multi-actor, 3 steps) |
 
 ### Tests
 

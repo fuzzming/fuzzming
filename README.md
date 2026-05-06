@@ -46,9 +46,9 @@ The session ends on **exhaustion or full coverage**, not on the first bug. When 
 |---|---|
 | Bug confirmed (invariant falsified) | Record bug, strip that invariant, continue next round, terminate if round budget exhausted |
 | Compilation error | Write compiler output as fuzz feedback, let LLM repair and retry next round, terminate if round budget exhausted |
-| Developer test failed | Report immediately — fuzzing environment is broken |
+| Developer test failed | Write full forge output as fuzz feedback, let LLM repair and retry next round, terminate if round budget exhausted |
 | Full coverage reached | Report — no point continuing |
-| Rounds exhausted | Report everything found across all rounds |
+| Rounds exhausted | Report everything found across all rounds, including all bugs accumulated |
 
 The final report always carries **every bug found across all rounds**, not just the last round's result. Exit code 1 is set whenever any bugs were found or developer tests failed — CI pipelines treat this as a build failure.
 

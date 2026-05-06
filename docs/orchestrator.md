@@ -106,12 +106,13 @@ Pure function. Maps a `FuzzReport` outcome to a `TerminationDecision`.
 | `Bug` | > 0 | **continue**: accumulate and keep hunting |
 | `CompileError` | 0 | terminate → `Exhausted` |
 | `CompileError` | > 0 | **continue**: let LLM repair and retry |
+| `DevTestFailed` | 0 | terminate → `DevTestFailed` |
+| `DevTestFailed` | > 0 | **continue**: let LLM repair and retry |
 | `FullCoverage` | any | terminate → `FullCoverage` |
-| `DevTestFailed` | any | terminate → `DevTestFailed` |
 | `Pass` | 0 | terminate → `Exhausted` |
 | `Pass` | > 0 | continue |
 
-`Bug` and `CompileError` are not immediate terminal states — the session continues hunting while rounds remain. Both terminate with `Exhausted` when the round budget is used up.
+`Bug`, `CompileError`, and `DevTestFailed` are not immediate terminal states — the session continues while rounds remain. All three terminate when the round budget is used up.
 
 ### `run_session` (main loop)
 
@@ -218,11 +219,12 @@ pub struct SessionOutcome {
     pub reason:           TerminationReason,
     pub contract_name:    String,
     pub rounds_completed: u32,
+    pub bugs:             Vec<BugInfo>,      // all bugs found across all rounds
     pub artifacts:        ReportArtifacts,
 }
 ```
 
-`ReportArtifacts.call_sequences` contains every bug found across all rounds, not just the termination round.
+`bugs` carries every `BugInfo` accumulated across all rounds. `ReportArtifacts.call_sequences` contains the same data formatted as strings for the report. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination.
 
 ---
 

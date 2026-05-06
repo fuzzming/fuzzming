@@ -213,10 +213,11 @@ Prompt: given stage 1 analysis, generate the full `BodiesJson` — Handler contr
 The prompt tells the LLM exactly:
 - The contract names to use (`{Contract}Handler`, `{Contract}InvariantTest`)
 - The required import lines (derived by FuzzMing from `contract_name` and `contract_path`)
+- **Pre-resolved dependency imports** — FuzzMing parses the target contract's own `import` statements, resolves relative paths (`./Token.sol` → `src/Token.sol`), and provides the exact import lines the LLM must use if it needs to interact with a dependency. This prevents the LLM from guessing paths and re-exporting symbols from the wrong file.
 - That both Handler and InvariantTest **must inherit from `Test`** — providing `vm`, `bound`, `deal`, etc.
 - The `pragma solidity` version extracted from the source contract — the LLM must not choose its own
 - The file layout (`test/fuzzming/{Contract}/`)
-- Seven design rules: external calls only, no hallucinations, no redundancies, no extra imports, no redefining Test helpers, no raw bytecode, `targetSelectors` always empty string
+- Eleven design rules: external calls only, no hallucinations, no redundancies, use pre-resolved imports only, `targetSelectors` always empty string, no redefining Test helpers, no raw bytecode, iterate actors via `actorsLength()`/`actors(i)`, ASCII-only string literals (no Unicode dashes or smart quotes), no unused variable declarations, bound all amounts to `type(uint128).max` to prevent overflow masking real bugs
 
 Returns `BodiesStage { bodies: BodiesJson }`.
 

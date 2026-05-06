@@ -204,7 +204,9 @@ Otherwise `evaluate_outcome_for_contract` delegates bug collection to the runner
 | Exit code non-zero, `runner.collect_bugs()` returns non-empty | `Bug` | one `BugInfo` per failing invariant |
 | Exit code non-zero, `runner.collect_bugs()` returns empty | `DevTestFailed` | `[]` |
 
-`CompileError` does **not** terminate the session — the orchestrator continues to the next round so the LLM can fix the generated Solidity.
+`CompileError` and `DevTestFailed` do **not** terminate the session — the orchestrator continues to the next round so the LLM can fix the generated Solidity.
+
+**`DevTestFailed` output capture**: `filter_output` looks for the `{Contract}InvariantTest` section header in forge stdout. For `DevTestFailed` (setUp revert, runtime panic, unused variable error), the error appears outside that section and `filter_output` returns an empty string. In that case the fuzzer falls back to writing the full `stderr + stdout` with a `"TEST FAILED — fix the handler/invariant test:"` header, so the LLM receives the actual error rather than an empty feedback.
 
 Coverage (`forge coverage`) is only triggered when at least one contract's outcome is `Pass`.
 
@@ -312,8 +314,9 @@ let fuzzer   = Fuzzer::new(use_case);
 - `ForgeRunner` is the only struct that knows forge's output format.
 - `FileSystemFuzzerOutput` is the only struct that performs filesystem writes for the fuzzer.
 - The use case contains no forge-specific parsing and no direct filesystem I/O.
-- Coverage is only run when at least one contract outcome is `Pass`.
+- Coverage is only run when at least one contract outcome is `Pass` — not on Bug, DevTestFailed, or CompileError rounds.
 - Missing `lcov.info` after coverage is silently tolerated — `CoverageResult.lcov_content` is `None`, `lcov_path` stays `None`.
+- For `DevTestFailed` with empty filtered output, the fuzzer writes full `stderr + stdout` so the LLM always receives actionable error context.
 
 ---
 

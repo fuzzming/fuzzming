@@ -178,6 +178,7 @@ not explicitly exist in the provided source code.\n\
 8. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. Use `handler.actorsLength()` and `handler.actors(i)` to iterate — never call `handler.getActors()` or any helper that does not exist in the handler source.\n\
 9. ASCII ONLY IN STRINGS: All Solidity string literals (assert/require messages, comments) must use only plain ASCII characters. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character in a string literal. Use a plain hyphen (-) or colon (:) instead.\n\
 10. NO UNUSED VARIABLES: Never declare a local variable that is not used in the function body — Solidity treats unused variables as compilation errors. Only declare variables you actually read.\n\
+11. BOUND AMOUNTS TO PREVENT OVERFLOW: When dealing tokens or bounding amounts, always cap at `type(uint128).max` (about 3.4e38) as the upper bound — never `type(uint256).max`. Unbounded uint256 amounts cause multiplication overflow inside the target contract's arithmetic (e.g. shares * price / 1e18), which triggers an arithmetic panic instead of exposing the real logic bug.\n\
 \n\
 STRICT SCHEMA RULES:\n\
 - Use camelCase for all keys.\n\

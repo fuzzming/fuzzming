@@ -30,7 +30,6 @@ impl FuzzerRunPort for RunFuzzerUseCase {
 
         let mut reports: Vec<FuzzReport> = Vec::with_capacity(signals.len());
         let mut any_pass = false;
-
         let compile_error = is_compile_error(&fuzz_result);
 
         for signal in &signals {
@@ -43,9 +42,25 @@ impl FuzzerRunPort for RunFuzzerUseCase {
                 );
                 (msg, FuzzOutcome::CompileError, vec![])
             } else {
-                let output = self.runner.filter_output(&fuzz_result.stdout, contract);
+                let filtered = self.runner.filter_output(&fuzz_result.stdout, contract);
                 let (outcome, bugs) =
                     evaluate_outcome_for_contract(&*self.runner, &fuzz_result, contract);
+                // For DevTestFailed the error is outside the section markers so filter_output
+                // returns empty. Fall back to stderr + full stdout so the LLM sees the error.
+                let output = if matches!(outcome, FuzzOutcome::DevTestFailed) && filtered.is_empty()
+                {
+                    let mut msg = String::from("TEST FAILED — fix the handler/invariant test:\n");
+                    if !fuzz_result.stderr.is_empty() {
+                        msg.push_str(&fuzz_result.stderr);
+                    }
+                    if !fuzz_result.stdout.is_empty() {
+                        msg.push('\n');
+                        msg.push_str(&fuzz_result.stdout);
+                    }
+                    msg
+                } else {
+                    filtered
+                };
                 (output, outcome, bugs)
             };
 

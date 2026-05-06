@@ -80,13 +80,15 @@ Each formatter is a pure function `fn(&SessionOutcome) -> String`. No I/O, no si
 | `format_bug_report` | `TerminationReason::Bug` | `## FuzzMing: N bug(s) found in \`{contract}\` (round {n})` |
 | `format_coverage_report` | `TerminationReason::FullCoverage` | `## FuzzMing: Full Coverage Achieved for \`{contract}\` (round {n})` |
 | `format_dev_test_failure` | `TerminationReason::DevTestFailed` | `## FuzzMing: Forge Tests Failed for \`{contract}\` (round {n})` |
-| `format_exhausted_report` | `TerminationReason::Exhausted` | `## FuzzMing: Rounds Exhausted for \`{contract}\` ({n} rounds, no bugs found)` |
+| `format_exhausted_report` | `TerminationReason::Exhausted` | `## FuzzMing: Rounds Exhausted for \`{contract}\` ({n} rounds, X bugs found)` |
 
 **Bug report** renders one numbered block per failing invariant (`**Bug 1:**`, `**Bug 2:**`, …), each showing the invariant's call sequence from `outcome.artifacts.call_sequences`. If no bugs were captured, the block reads `(no call sequences captured)`. The raw forge output follows (truncated to 3 000 chars).
 
 `call_sequences` is populated by the orchestrator from `FuzzReport.bugs`: each `BugInfo` becomes `"{invariant_name}:\n{call_sequence}"` — structured data from the fuzzer's state machine parser, not raw stdout.
 
-**Coverage / Exhausted reports** include a coverage summary from `outcome.artifacts.coverage_summary`.
+**Exhausted report** uses `outcome.bugs` to show a count and bulleted list of every bug found across all rounds. If no bugs were found the summary reads "no bugs found"; otherwise it reads "X bugs found" with one `- \`invariant_name\`: call_sequence` line per bug. A coverage summary follows from `outcome.artifacts.coverage_summary`.
+
+**Coverage report** includes a coverage summary from `outcome.artifacts.coverage_summary`.
 
 **DevTestFailed report** includes the raw forge output (truncated to 3 000 chars).
 
@@ -120,6 +122,7 @@ pub struct SessionOutcome {
     pub reason: TerminationReason,   // Bug | FullCoverage | DevTestFailed | Exhausted
     pub contract_name: String,
     pub rounds_completed: u32,
+    pub bugs: Vec<BugInfo>,          // all bugs found across all rounds
     pub artifacts: ReportArtifacts,
 }
 ```
