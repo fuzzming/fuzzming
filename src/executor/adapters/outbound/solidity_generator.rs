@@ -28,7 +28,7 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     }
     out.push(String::new());
 
-    out.push(format!("contract {} is BaseHandler {{", h.contract_name));
+    out.push(format!("contract {} {{", h.contract_name));
     out.push(String::new());
 
     for var in &h.state_vars {

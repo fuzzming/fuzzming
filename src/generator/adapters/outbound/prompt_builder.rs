@@ -47,6 +47,7 @@ pub fn build_round_one_bodies_prompt(
         "import {{{{{}}}}} from \"./{}.sol\";",
         handler_name, handler_name
     );
+    let test_std_import = "import {Test} from \"forge-std/Test.sol\";";
 
     Ok(format!(
         "Stage 2/3: Solidity Generation.\n\
@@ -66,10 +67,16 @@ CONTRACT NAMES (use exactly these — do not vary capitalisation or suffixes):\n
   meta.contractPath:          \"{contract_path}\"\n\
 \n\
 REQUIRED IMPORT LINES:\n\
-  In {handler_name}.imports, you MUST include:\n\
+  In {handler_name}.imports, you MUST include ONLY:\n\
     \"{handler_target_import}\"\n\
+  Do NOT import Token, ERC20, or any other dependency — the target contract manages its own imports.\n\
   In {test_name}.imports, you MUST include:\n\
     \"{test_handler_import}\"\n\
+    \"{test_std_import}\"\n\
+\n\
+CONTRACT INHERITANCE (mandatory):\n\
+  {handler_name} must be a plain contract — no inheritance: write `contract {handler_name} {{`\n\
+  {test_name} must inherit from Test: write `contract {test_name} is Test {{`\n\
 \n\
 STRICT DESIGN RULES:\n\
 1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract \
@@ -77,6 +84,7 @@ instance. Do NOT reimplement the target contract's internal logic inside the han
 2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
 not explicitly exist in the provided source code.\n\
 3. NO REDUNDANCIES: Do not write meaningless checks like `require(myUint >= 0)`.\n\
+4. NO EXTRA IMPORTS: Only import what is listed in REQUIRED IMPORT LINES above. Never add imports for Token, IERC20, or any dependency of the target.\n\
 \n\
 STRICT SCHEMA RULES:\n\
 - Use camelCase for all keys.\n\
