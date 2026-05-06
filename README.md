@@ -45,6 +45,7 @@ The session ends on **exhaustion or full coverage**, not on the first bug. When 
 | Condition | Action |
 |---|---|
 | Bug confirmed (invariant falsified) | Record bug, strip that invariant, continue next round |
+| Compilation error | Write compiler output as fuzz feedback, let LLM repair and retry next round |
 | Developer test failed | Report immediately — fuzzing environment is broken |
 | Full coverage reached | Report — no point continuing |
 | Rounds exhausted | Report everything found across all rounds |

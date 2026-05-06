@@ -104,7 +104,9 @@ Sequences the three write operations: bodies JSON, generated Solidity files, Fou
 
 The `test/fuzzming/` namespace isolates generated files from the developer's own `test/` code.
 
-`FoundryConfigWriter` implements `ConfigWriterPort`. Builds the `[profile.fuzzming]` TOML section from `FoundryConfig` fields, then patches `foundry.toml` using replace-or-append logic.
+`FoundryConfigWriter` implements `ConfigWriterPort`. Builds the `[profile.fuzzming]` and `[profile.fuzzming.invariant]` TOML sections from `FoundryConfig` fields — all fuzzing parameters (`runs`, `depth`, `seed`, `max_test_rejects`, `dictionary_weight`) are placed under the `invariant` subsection where Foundry expects them. Patches `foundry.toml` using replace-or-append logic.
+
+`SolidityGenerator` strips any trailing `{` from `constructorSignature` before appending its own opening brace, preventing double-brace errors when the LLM includes the brace in the signature string.
 
 ---
 

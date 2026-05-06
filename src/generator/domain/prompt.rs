@@ -1,11 +1,10 @@
 use crate::shared::models::{AssembledPrompt, BugInfo, CoverageContext, GapType, Message, Role};
 
-const RULES: [&str; 5] = [
-    "NO FOR-IN LOOPS: Solidity mappings are not iterable. Use a ghost array `address[] public actors` and push msg.sender to it.",
-    "PHYSICAL VS LOGICAL: Always compare internal state (totalAssets) against physical balances (asset.balanceOf(address(this))).",
-    "NAMESPACING: Handler contract must be named `Handler` or `[Target]Handler`.",
-    "USE INDEXMAP ORDER: Generate JSON keys in the order they should appear in Solidity.",
-    "OUTPUT: Return valid JSON only.",
+const RULES: [&str; 4] = [
+    "NO FOR-IN LOOPS: Solidity mappings are not iterable. Track actors with `address[] public actors` and push new callers into it.",
+    "GHOST STATE: Every external call that mutates target state must update the corresponding ghost variable to mirror it exactly.",
+    "NO HALLUCINATIONS: Only call functions and access public variables that are present in SOURCE_CODE. Verify each reference against the source before writing it.",
+    "HANDLERS ARE WRAPPERS: Handler functions call the target contract externally — never reimplement its internal logic.",
 ];
 
 pub struct Prompt {

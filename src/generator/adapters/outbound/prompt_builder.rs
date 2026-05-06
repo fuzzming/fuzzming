@@ -17,24 +17,45 @@ pub fn system_prompt_from_request(request: &GenerationRequest) -> String {
 
 pub fn build_round_one_analysis_prompt() -> String {
     "Stage 1/3: Security Analysis & Logic Design.\n\
-     Analyze: Ghost borrowing, Inflation attacks, and rounding errors.\n\
+     Analyze the contract for ALL invariant-breaking vulnerability classes:\n\
+     - State corruption: unauthorized state transitions, missing access control\n\
+     - Arithmetic: overflow, underflow, rounding and truncation errors\n\
+     - Asset accounting: balance tracking, share/asset ratio drift, ghost state divergence\n\
+     - Access control: privileged functions reachable by unauthorized callers\n\
+     - Business logic: properties that must hold across all valid state transitions\n\
      \n\
      Return this JSON exactly:\n\
      {\n\
-       \"vulnerability_analysis\": [\"string\"],\n\
-       \"handler_logic_pseudocode\": \"string describing state tracking\",\n\
-       \"invariant_mathematical_proofs\": [\"string\"],\n\
+       \"vulnerability_analysis\": [\"string — one entry per finding\"],\n\
+       \"handler_logic_pseudocode\": \"string describing what state the handler must track\",\n\
+       \"invariant_mathematical_proofs\": [\"string — one entry per invariant\"],\n\
        \"critical_invariants\": [\"string\"]\n\
      }"
     .to_string()
+}
+
+fn extract_pragma(source: &str) -> String {
+    for line in source.lines() {
+        let t = line.trim();
+        if t.starts_with("pragma solidity") {
+            return t
+                .trim_end_matches(';')
+                .trim_start_matches("pragma solidity")
+                .trim()
+                .to_string();
+        }
+    }
+    "^0.8.20".to_string()
 }
 
 pub fn build_round_one_bodies_prompt(
     analysis: &AnalysisStage,
     contract_name: &str,
     contract_path: &str,
+    source_code: &str,
 ) -> Result<String> {
     let analysis_summary = serde_json::to_string_pretty(analysis)?;
+    let pragma = extract_pragma(source_code);
     let handler_name = format!("{}Handler", contract_name);
     let test_name = format!("{}InvariantTest", contract_name);
 
@@ -103,7 +124,7 @@ REQUIRED JSON STRUCTURE:\n\
         \"meta\": {{\n\
             \"contract\": \"{contract_name}\",\n\
             \"contractPath\": \"{contract_path}\",\n\
-            \"solidity\": \"solidity_version_string\",\n\
+            \"solidity\": \"{pragma}\",\n\
             \"generatedAt\": \"timestamp\"\n\
         }},\n\
         \"handler\": {{\n\
@@ -139,6 +160,7 @@ Analysis Context:\n\
         handler_target_import = handler_target_import,
         test_handler_import = test_handler_import,
         analysis_summary = analysis_summary,
+        pragma = pragma,
     ))
 }
 
@@ -155,21 +177,19 @@ pub fn build_round_one_config_prompt(
     Ok(format!(
         "Stage 3/3: generate Foundry config only.\n\
          Return this exact JSON shape:\n\
-                     {{\n\
-                         \"foundry_config\": {{\n\
-             \"depth\": integer,\n\
-             \"runs\": integer,\n\
-             \"seed\": \"0x...\",\n\
-             \"max_test_rejects\": integer,\n\
-             \"dictionary_weight\": integer,\n\
-                             \"call_sequence_weights\": {{\"handlerFunctionName\": float}}\n\
-                         }}\n\
-                     }}\n\
+         {{\n\
+             \"foundry_config\": {{\n\
+                 \"depth\": integer,\n\
+                 \"runs\": integer,\n\
+                 \"seed\": \"0x...\",\n\
+                 \"max_test_rejects\": integer,\n\
+                 \"dictionary_weight\": integer\n\
+             }}\n\
+         }}\n\
          \n\
          Guidance:\n\
-         - call_sequence_weights keys must match handler function names exactly.\n\
-         - Weights should be realistic and sum near 1.0.\n\
-         - Choose runs/depth for meaningful state exploration.\n\
+         - Choose runs/depth for meaningful state exploration of this contract.\n\
+         - seed must be a hex string like \"0xdeadbeef\".\n\
          \n\
          Analysis JSON:\n{}\n\
          \n\
@@ -183,72 +203,51 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
         .context("failed to serialize existing bodies")?;
     let existing_config_json = serde_json::to_string_pretty(&request.existing_foundry_config)
         .context("failed to serialize existing foundry config")?;
+    let handler_name = format!("{}Handler", request.contract_name);
+    let test_name = format!("{}InvariantTest", request.contract_name);
 
     Ok(format!(
         "Round: {round}\n\
          Return JSON only. No markdown, no prose, no code fences.\n\
          \n\
-         STRICT OUTPUT CONTRACT:\n\
-         - If round == 1, return exactly:\n\
-                     {{\n\
-           \"mode\":\"full\",\n\
-           \"bodies\": {{...}},\n\
-           \"foundry_config\": {{...}}\n\
-                     }}\n\
-         - If round > 1, you MUST return exactly:\n\
-                     {{\n\
-           \"mode\":\"patch\",\n\
-               \"bodies_updates\":[{{\"op\":\"add|modify|remove\",\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}],\n\
-               \"foundry_config_updates\":[{{\"op\":\"add|modify|remove\",\"path\":\"string\",\"value\":any,\"reason\":\"string\"}}]\n\
-                     }}\n\
+         REQUIRED OUTPUT FORMAT:\n\
+         {{\n\
+           \"mode\": \"patch\",\n\
+           \"bodies_updates\": [{{\"op\": \"add|replace|remove\", \"path\": \"string\", \"value\": any, \"reason\": \"string\"}}],\n\
+           \"foundry_config_updates\": [{{\"op\": \"add|replace|remove\", \"path\": \"string\", \"value\": any, \"reason\": \"string\"}}]\n\
+         }}\n\
          \n\
-         PATCH RULES (round > 1):\n\
-         1. Multiple patches are allowed: each updates array may contain 0..N items.\n\
-         2. Each patch item MUST contain exactly 4 keys: op, path, value, reason.\n\
-         3. path MUST be a dot-path to the field being replaced.\n\
-         4. op MUST be one of add, modify, remove.\n\
-         5. add requires target key missing; modify requires existing key replacement; remove deletes existing key.\n\
-         6. For remove, set value to null.\n\
-         7. Do not include duplicate path entries in the same response.\n\
-         8. If no change is required for one artifact, return that artifact updates as [].\n\
-         9. Never return nested wrappers like {{\"patch\":{{...}}}} or {{\"full\":{{...}}}}.\n\
+         PATCH RULES:\n\
+         1. Each update item MUST have exactly 4 keys: op, path, value, reason.\n\
+         2. path is a dot-path: \"handler.functions.deposit\", \"meta.solidity\", \"depth\".\n\
+         3. op must be one of: add (key must not exist), replace (key must exist), remove (set value to null).\n\
+         4. No duplicate paths in one response.\n\
+         5. If nothing needs changing for one artifact, return its updates array as [].\n\
+         \n\
+         SOLIDITY CONSTRAINTS (must hold after every patch):\n\
+         - contract {handler_name} is Test {{  — do not change this declaration or remove Test inheritance\n\
+         - contract {test_name} is Test {{  — do not change this declaration or remove Test inheritance\n\
+         - Never redefine functions provided by Test (bound, vm, makeAddr, deal)\n\
+         - Never embed raw bytecode — use deployCode(\"Name.sol:Name\") for dependencies\n\
          \n\
          VALID bodies path prefixes:\n\
-         - meta.contract\n\
-         - meta.contractPath\n\
-         - meta.solidity\n\
-         - meta.generatedAt\n\
-         - handler.contractName\n\
-         - handler.imports\n\
-         - handler.stateVars\n\
-         - handler.ghostVars\n\
-         - handler.constructorSignature\n\
-         - handler.constructorBody\n\
+         - meta.contract / meta.contractPath / meta.solidity / meta.generatedAt\n\
+         - handler.contractName / handler.imports / handler.stateVars / handler.ghostVars\n\
+         - handler.constructorSignature / handler.constructorBody\n\
          - handler.functions.<functionName>\n\
-         - handler.targetSelectors\n\
-         - invariantTest.contractName\n\
-         - invariantTest.imports\n\
-         - invariantTest.stateVars\n\
+         - invariantTest.contractName / invariantTest.imports / invariantTest.stateVars\n\
          - invariantTest.setUpBody\n\
          - invariantTest.invariants.<invariantName>\n\
          \n\
          VALID foundry_config path prefixes:\n\
-         - depth\n\
-         - runs\n\
-         - seed\n\
-         - max_test_rejects\n\
-         - dictionary_weight\n\
-         - call_sequence_weights.<handlerFunctionName>\n\
-         - current_toml\n\
-         \n\
-         Examples:\n\
-         - bodies update path: \"handler.functions.deposit\"\n\
-         - config update path: \"call_sequence_weights.withdraw\"\n\
+         - depth / runs / seed / max_test_rejects / dictionary_weight\n\
          \n\
          Existing bodies:\n{existing_bodies}\n\
          \n\
          Existing foundry config:\n{existing_config}",
         round = request.round,
+        handler_name = handler_name,
+        test_name = test_name,
         existing_bodies = existing_bodies_json,
         existing_config = existing_config_json,
     ))

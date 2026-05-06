@@ -9,6 +9,8 @@ pub enum FuzzOutcome {
     Bug,
     Pass,
     FullCoverage,
+    /// Forge could not compile the generated files. The LLM should repair them.
+    CompileError,
     DevTestFailed,
 }
 

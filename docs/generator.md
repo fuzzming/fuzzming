@@ -111,7 +111,7 @@ Constructs the `Prompt` domain type and calls `into_assembled()`. `confirmed_bug
 
 `Prompt` builds the system and user messages:
 
-- **System message** — contract source code + five strict operational rules (no for-in loops, physical vs logical, namespacing, IndexMap order, JSON-only output).
+- **System message** — contract source code + four strict operational rules: no for-in loops (use ghost actor array), ghost state must mirror every external mutation, no hallucinated function calls, handlers are wrappers not re-implementations.
 - **User message** — assembled from up to four sections in order:
   1. `Round: {n}`
   2. `CONFIRMED BUGS` — rendered only when `confirmed_bugs` is non-empty; lists invariant names the model must not re-generate.
@@ -194,14 +194,14 @@ A single prompt asking for security analysis + Solidity generation + Foundry con
 
 **Stage 1 — Security analysis**
 
-Prompt: analyze the contract for ghost borrowing, inflation attacks, and rounding errors.
+Prompt: analyze the contract for all invariant-breaking vulnerability classes — state corruption, arithmetic errors, asset accounting drift, access control violations, and business logic properties.
 
 Returns `AnalysisStage`:
 ```json
 {
-  "vulnerability_analysis": ["..."],
-  "handler_logic_pseudocode": "...",
-  "invariant_mathematical_proofs": ["..."],
+  "vulnerability_analysis": ["one entry per finding"],
+  "handler_logic_pseudocode": "what state the handler must track",
+  "invariant_mathematical_proofs": ["one entry per invariant"],
   "critical_invariants": ["..."]
 }
 ```
@@ -213,14 +213,16 @@ Prompt: given stage 1 analysis, generate the full `BodiesJson` — Handler contr
 The prompt tells the LLM exactly:
 - The contract names to use (`{Contract}Handler`, `{Contract}InvariantTest`)
 - The required import lines (derived by FuzzMing from `contract_name` and `contract_path`)
+- That both Handler and InvariantTest **must inherit from `Test`** — providing `vm`, `bound`, `deal`, etc.
+- The `pragma solidity` version extracted from the source contract — the LLM must not choose its own
 - The file layout (`test/fuzzming/{Contract}/`)
-- That `outputPath` must NOT be included — paths are managed by the tool
+- Seven design rules: external calls only, no hallucinations, no redundancies, no extra imports, no redefining Test helpers, no raw bytecode, `targetSelectors` always empty string
 
 Returns `BodiesStage { bodies: BodiesJson }`.
 
 **Stage 3 — Foundry config**
 
-Prompt: given stage 1 analysis and stage 2 function names, generate `FoundryConfig` — runs, depth, seed, call sequence weights.
+Prompt: given stage 1 analysis and stage 2 function names, generate `FoundryConfig` — runs, depth, seed, max_test_rejects, dictionary_weight.
 
 Returns `ConfigStage { foundry_config: FoundryConfig }`.
 
@@ -233,13 +235,13 @@ From round 2 onwards, the model receives the assembled prompt (fuzz output + cov
 - `Full` — complete replacement of bodies and config
 - `Patch` — a list of `JsonBlockUpdate` operations
 
-`Patch` is preferred when only specific functions need to change. Valid patch paths do not include `handler.outputPath` or `invariantTest.outputPath` — those fields no longer exist.
+`Patch` is preferred when only specific functions need to change. The round-N prompt also carries compact Solidity constraints (required inheritance, no redefining Test helpers, no raw bytecode) so patches cannot regress the code structure established in round 1.
 
 ---
 
 ## Retry and repair
 
-Each stage uses `MAX_ATTEMPTS = 2`. If the model returns invalid JSON:
+Each stage uses `MAX_ATTEMPTS = 3`. If the model returns invalid JSON:
 
 1. The parse error and the invalid payload are sent back to the model in a repair prompt
 2. The model is asked to fix only the JSON, nothing else

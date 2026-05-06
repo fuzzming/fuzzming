@@ -15,7 +15,7 @@ use crate::generator::domain::generation_response::{
 };
 use crate::generator::ports::outbound::{LlmClientPort, GenerationPort, GenerationRequest};
 
-const MAX_ATTEMPTS: usize = 2;
+const MAX_ATTEMPTS: usize = 3;
 
 pub struct LiteLlmGenerationAdapter {
     model: String,
@@ -112,7 +112,7 @@ impl LiteLlmGenerationAdapter {
         let bodies_stage: BodiesStage = self
             .request_json(
                 &system_prompt,
-                build_round_one_bodies_prompt(&analysis, &request.contract_name, &request.contract_path)?,
+                build_round_one_bodies_prompt(&analysis, &request.contract_name, &request.contract_path, &request.source_code)?,
                 "bodies",
                 "bodies object with valid Solidity syntax",
                 &mut usage,

@@ -193,13 +193,18 @@ Both methods create the per-contract directory if it does not exist before writi
 
 ## Outcome evaluation
 
-`evaluate_outcome_for_contract` lives in `run_fuzzer_session.rs` and delegates bug collection to the runner port:
+`RunFuzzerUseCase` first checks whether forge's output indicates a **compilation error** (exit code non-zero and stderr/stdout contains `Compiler run failed` or `error[`). If so, every contract in the batch receives `CompileError` and the compiler output is written directly as their `fuzz_output.txt` — the LLM repairs the code next round.
+
+Otherwise `evaluate_outcome_for_contract` delegates bug collection to the runner port:
 
 | Condition | Outcome | Bugs |
 |---|---|---|
+| Compilation error detected | `CompileError` | `[]` |
 | Exit code 0 | `Pass` | `[]` |
 | Exit code non-zero, `runner.collect_bugs()` returns non-empty | `Bug` | one `BugInfo` per failing invariant |
 | Exit code non-zero, `runner.collect_bugs()` returns empty | `DevTestFailed` | `[]` |
+
+`CompileError` does **not** terminate the session — the orchestrator continues to the next round so the LLM can fix the generated Solidity.
 
 Coverage (`forge coverage`) is only triggered when at least one contract's outcome is `Pass`.
 
@@ -270,6 +275,7 @@ pub enum FuzzOutcome {
     Pass,
     Bug,
     FullCoverage,   // reserved — not yet returned
+    CompileError,   // forge could not compile; LLM repairs next round
     DevTestFailed,
 }
 

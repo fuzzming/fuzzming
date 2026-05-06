@@ -41,7 +41,8 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     }
     out.push(String::new());
 
-    out.push(format!("    {} {{", h.constructor_signature));
+    let sig = h.constructor_signature.trim().trim_end_matches('{').trim_end();
+    out.push(format!("    {} {{", sig));
     for stmt in &h.constructor_body {
         out.push(format!("        {}", stmt));
     }
