@@ -102,13 +102,16 @@ Pure function. Maps a `FuzzReport` outcome to a `TerminationDecision`.
 
 | `FuzzOutcome` | `rounds_remaining` | Decision |
 |---|---|---|
-| `Bug` | any | **continue** — accumulate and keep hunting |
+| `Bug` | 0 | terminate → `Exhausted` |
+| `Bug` | > 0 | **continue**: accumulate and keep hunting |
+| `CompileError` | 0 | terminate → `Exhausted` |
+| `CompileError` | > 0 | **continue**: let LLM repair and retry |
 | `FullCoverage` | any | terminate → `FullCoverage` |
 | `DevTestFailed` | any | terminate → `DevTestFailed` |
 | `Pass` | 0 | terminate → `Exhausted` |
 | `Pass` | > 0 | continue |
 
-`Bug` is no longer a terminal state. The session ends only on `Exhausted` or `FullCoverage`.
+`Bug` and `CompileError` are not immediate terminal states — the session continues hunting while rounds remain. Both terminate with `Exhausted` when the round budget is used up.
 
 ### `run_session` (main loop)
 

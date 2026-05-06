@@ -28,7 +28,7 @@ Uses real `FileSystemWriter` and `SolidityGenerator` writing to `tests/output/`.
 | Assertion | What is checked |
 |---|---|
 | `test/Vault.bodies.json` exists and round-trips through serde | bodies JSON is written correctly |
-| `VaultHandler.sol` contains the contract declaration and all handler function signatures | Solidity handler is generated from `BodiesJson` |
+| `VaultHandler.sol` contains `contract VaultHandler is Test {` and all handler function signatures | Solidity handler inherits from `Test` and is generated from `BodiesJson` |
 | `VaultInvariantTest.sol` contains the contract declaration, `setUp`, and the correct function count | Solidity invariant test is generated from `BodiesJson` |
 
 After the test passes, inspect the generated files:
@@ -147,7 +147,7 @@ A complete Foundry project with no external dependencies beyond forge-std:
 | `src/Vault.sol` | Single-asset vault — 1:1 shares, deposit cap of 1,000,000 tokens |
 | `test/handlers/VaultHandler.sol` | Invariant handler — 3 actors, ghost vars tracking deposits and withdrawals |
 | `test/invariants/VaultInvariantTest.sol` | Two invariants: `totalAssets == deposits - withdrawals` and `totalAssets <= depositCap` |
-| `foundry.toml` | `fuzzming` profile (100 fuzz runs, 50 invariant runs) and `coverage` profile |
+| `foundry.toml` | `fuzzming` profile (512 runs, depth 200 under `[profile.fuzzming.invariant]`) and `coverage` profile |
 
 ### Tests
 
