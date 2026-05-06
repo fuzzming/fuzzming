@@ -9,8 +9,13 @@ use crate::shared::{
 
 pub fn check_termination(report: &FuzzReport, state: &SessionState) -> TerminationDecision {
     match report.outcome {
-        // Bug is no longer terminal — accumulate and continue hunting.
-        FuzzOutcome::Bug => TerminationDecision { terminate: false, reason: None },
+        FuzzOutcome::Bug => {
+            if state.rounds_remaining == 0 {
+                TerminationDecision { terminate: true, reason: Some(TerminationReason::Exhausted) }
+            } else {
+                TerminationDecision { terminate: false, reason: None }
+            }
+        }
         // Compilation failure — let the LLM repair the code and retry, but stop if budget exhausted.
         FuzzOutcome::CompileError => {
             if state.rounds_remaining == 0 {
