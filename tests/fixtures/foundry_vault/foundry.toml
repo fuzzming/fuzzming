@@ -1,12 +1,14 @@
-[profile.default]
-src = "src"
-out = "out"
-libs = ["lib"]
-
 [profile.fuzzming]
-fuzz = { runs = 100 }
-invariant = { runs = 50, depth = 100 }
+
+[profile.fuzzming.invariant]
+runs             = 1000
+depth            = 300
+seed             = "0xdeadbeef"
+max_test_rejects = 65536
+dictionary_weight = 80
 
 [profile.coverage]
-fuzz = { runs = 50 }
-invariant = { runs = 20, depth = 50 }
+
+[profile.coverage.invariant]
+runs  = 256
+depth = 50

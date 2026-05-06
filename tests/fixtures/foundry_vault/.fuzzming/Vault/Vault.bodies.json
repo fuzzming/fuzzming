@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "contract": "Vault",
+    "contractPath": "src/Vault.sol",
+    "solidity": "^0.8.20",
+    "generatedAt": "2024-01-01T00:00:00Z"
+  },
+  "handler": {
+    "contractName": "VaultHandler",
+    "imports": [
+      "import {Vault} from \"src/Vault.sol\";",
+      "import {Test} from \"forge-std/Test.sol\";",
+      "import {Token} from \"src/Vault.sol\";"
+    ],
+    "stateVars": [
+      "Vault public vault;",
+      "Token public token;",
+      "address[] public actors;"
+    ],
+    "ghostVars": [
+      "uint256 public ghost_total_deposited;",
+      "uint256 public ghost_total_withdrawn;",
+      "mapping(address => uint256) public ghost_user_deposited;",
+      "mapping(address => uint256) public ghost_user_withdrawn;",
+      "mapping(address => bool) internal _isActor;"
+    ],
+    "constructorSignature": "constructor(address _vault, address _token)",
+    "constructorBody": [
+      "vault = Vault(_vault);",
+      "token = Token(_token);"
+    ],
+    "functions": {
+      "_selectOrCreateActor": "function _selectOrCreateActor(uint256 seed) internal returns (address actor) {\n    if (actors.length == 0 || seed % 3 == 0) {\n        actor = makeAddr(string(abi.encodePacked(\"actor\", seed)));\n    } else {\n        actor = actors[seed % actors.length];\n    }\n}",
+      "actorsLength": "function actorsLength() external view returns (uint256) {\n    return actors.length;\n}",
+      "handler_deposit": "function handler_deposit(uint256 amount, uint256 actorSeed) external {\n    address actor = _selectOrCreateActor(actorSeed);\n    if (!_isActor[actor]) {\n        _isActor[actor] = true;\n        actors.push(actor);\n    }\n    uint256 remaining = vault.depositCap() - vault.totalAssets();\n    if (remaining == 0) return;\n    amount = bound(amount, 1, remaining);\n    deal(address(token), actor, token.balanceOf(actor) + amount);\n    vm.startPrank(actor);\n    token.approve(address(vault), amount);\n    vault.deposit(amount);\n    vm.stopPrank();\n    ghost_total_deposited += amount;\n    ghost_user_deposited[actor] += amount;\n}",
+      "handler_withdraw": "function handler_withdraw(uint256 shares, uint256 actorSeed) external {\n    if (actors.length == 0) return;\n    address actor = actors[actorSeed % actors.length];\n    uint256 userShares = vault.balanceOf(actor);\n    if (userShares == 0) return;\n    shares = bound(shares, 1, userShares);\n    vm.prank(actor);\n    vault.withdraw(shares);\n    ghost_total_withdrawn += shares;\n    ghost_user_withdrawn[actor] += shares;\n}"
+    },
+    "targetSelectors": ""
+  },
+  "invariantTest": {
+    "contractName": "VaultInvariantTest",
+    "imports": [
+      "import {VaultHandler} from \"./VaultHandler.sol\";",
+      "import {Test} from \"forge-std/Test.sol\";",
+      "import {Vault} from \"src/Vault.sol\";",
+      "import {Token} from \"src/Vault.sol\";"
+    ],
+    "stateVars": [
+      "Vault public vault;",
+      "Token public token;",
+      "VaultHandler public handler;"
+    ],
+    "setUpBody": [
+      "token = new Token();",
+      "vault = new Vault(address(token));",
+      "handler = new VaultHandler(address(vault), address(token));",
+      "bytes4[] memory selectors = new bytes4[](2);",
+      "selectors[0] = VaultHandler.handler_deposit.selector;",
+      "selectors[1] = VaultHandler.handler_withdraw.selector;",
+      "targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));",
+      "targetContract(address(handler));"
+    ],
+    "invariants": {
+      "invariant_deposit_cap_not_exceeded": "function invariant_deposit_cap_not_exceeded() external view {\n    assertLe(\n        vault.totalAssets(),\n        vault.depositCap(),\n        \"totalAssets exceeds depositCap\"\n    );\n}",
+      "invariant_per_user_balance_equals_ghost": "function invariant_per_user_balance_equals_ghost() external view {\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        assertEq(\n            vault.balanceOf(actor),\n            handler.ghost_user_deposited(actor) - handler.ghost_user_withdrawn(actor),\n            \"balanceOf(actor) != ghost_user_deposited - ghost_user_withdrawn\"\n        );\n    }\n}",
+      "invariant_token_solvency": "function invariant_token_solvency() external view {\n    assertGe(\n        vault.token().balanceOf(address(vault)),\n        vault.totalAssets(),\n        \"vault token balance < totalAssets\"\n    );\n}",
+      "invariant_totalAssets_equals_ghost": "function invariant_totalAssets_equals_ghost() external view {\n    assertEq(\n        vault.totalAssets(),\n        handler.ghost_total_deposited() - handler.ghost_total_withdrawn(),\n        \"totalAssets != ghost_total_deposited - ghost_total_withdrawn\"\n    );\n}",
+      "invariant_totalAssets_equals_sum_of_balances": "function invariant_totalAssets_equals_sum_of_balances() external view {\n    uint256 len = handler.actorsLength();\n    uint256 sumBalances = 0;\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        sumBalances += vault.balanceOf(actor);\n    }\n    assertEq(\n        vault.totalAssets(),\n        sumBalances,\n        \"totalAssets != sum of all actor balances\"\n    );\n}",
+      "invariant_user_withdrawn_le_deposited": "function invariant_user_withdrawn_le_deposited() external view {\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        assertLe(\n            handler.ghost_user_withdrawn(actor),\n            handler.ghost_user_deposited(actor),\n            \"ghost_user_withdrawn > ghost_user_deposited for actor\"\n        );\n    }\n}"
+    }
+  }
+}

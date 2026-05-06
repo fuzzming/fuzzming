@@ -1,0 +1,87 @@
+{
+  "meta": {
+    "contract": "MediumVault",
+    "contractPath": "src/MediumVault.sol",
+    "solidity": "^0.8.20",
+    "generatedAt": "2024-01-01T00:00:00Z"
+  },
+  "handler": {
+    "contractName": "MediumVaultHandler",
+    "imports": [
+      "import {MediumVault} from \"src/MediumVault.sol\";",
+      "import {Test} from \"forge-std/Test.sol\";",
+      "import {Token} from \"src/Token.sol\";"
+    ],
+    "stateVars": [
+      "MediumVault public vault;",
+      "Token public token;",
+      "address public feeCollector;",
+      "address[] public actors;",
+      "mapping(address => bool) public isActor;"
+    ],
+    "ghostVars": [
+      "uint256 public ghost_total_deposited;",
+      "mapping(address => uint256) public ghost_actor_deposits;"
+    ],
+    "constructorSignature": "constructor(address _vault, address _token, address _feeCollector)",
+    "constructorBody": [
+      "vault = MediumVault(_vault);",
+      "token = Token(_token);",
+      "feeCollector = _feeCollector;"
+    ],
+    "functions": {
+      "actorsLength": "function actorsLength() external view returns (uint256) {\n    return actors.length;\n}",
+      "deposit": "function deposit(uint256 amount) external {\n    address actor = msg.sender;\n    uint256 actorBalance = token.balanceOf(actor);\n    if (actorBalance == 0) return;\n    amount = bound(amount, 1, actorBalance > type(uint128).max ? type(uint128).max : actorBalance);\n    vm.startPrank(actor);\n    token.approve(address(vault), amount);\n    vault.deposit(amount);\n    vm.stopPrank();\n    ghost_total_deposited += amount;\n    ghost_actor_deposits[actor] += amount;\n    if (!isActor[actor]) {\n        isActor[actor] = true;\n        actors.push(actor);\n    }\n}",
+      "withdraw": "function withdraw(uint256 shares) external {\n    address actor = msg.sender;\n    uint256 actorShares = vault.sharesOf(actor);\n    if (actorShares == 0) return;\n    shares = bound(shares, 1, actorShares);\n    vm.startPrank(actor);\n    vault.withdraw(shares);\n    vm.stopPrank();\n    if (!isActor[actor]) {\n        isActor[actor] = true;\n        actors.push(actor);\n    }\n}"
+    },
+    "targetSelectors": ""
+  },
+  "invariantTest": {
+    "contractName": "MediumVaultInvariantTest",
+    "imports": [
+      "import {MediumVaultHandler} from \"./MediumVaultHandler.sol\";",
+      "import {Test} from \"forge-std/Test.sol\";",
+      "import {MediumVault} from \"src/MediumVault.sol\";",
+      "import {Token} from \"src/Token.sol\";"
+    ],
+    "stateVars": [
+      "MediumVault public vault;",
+      "Token public token;",
+      "address public feeCollector;",
+      "MediumVaultHandler public handler;",
+      "address[] internal actorAddresses;",
+      "uint256 internal constant INITIAL_ACTOR_BALANCE = 1_000_000e18;"
+    ],
+    "setUpBody": [
+      "feeCollector = makeAddr(\"feeCollector\");",
+      "token = new Token();",
+      "vault = new MediumVault(address(token), feeCollector);",
+      "handler = new MediumVaultHandler(address(vault), address(token), feeCollector);",
+      "actorAddresses = new address[](5);",
+      "actorAddresses[0] = makeAddr(\"actor0\");",
+      "actorAddresses[1] = makeAddr(\"actor1\");",
+      "actorAddresses[2] = makeAddr(\"actor2\");",
+      "actorAddresses[3] = makeAddr(\"actor3\");",
+      "actorAddresses[4] = makeAddr(\"actor4\");",
+      "for (uint256 i = 0; i < actorAddresses.length; i++) {",
+      "    deal(address(token), actorAddresses[i], INITIAL_ACTOR_BALANCE);",
+      "}",
+      "bytes4[] memory selectors = new bytes4[](2);",
+      "selectors[0] = MediumVaultHandler.deposit.selector;",
+      "selectors[1] = MediumVaultHandler.withdraw.selector;",
+      "targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));",
+      "targetContract(address(handler));",
+      "for (uint256 i = 0; i < actorAddresses.length; i++) {",
+      "    targetSender(actorAddresses[i]);",
+      "}"
+    ],
+    "invariants": {
+      "invariant_actualBalanceVsTotalAssets": "function invariant_actualBalanceVsTotalAssets() external view {\n    uint256 actualBalance = token.balanceOf(address(vault));\n    uint256 reportedAssets = vault.totalAssets();\n    // The fee bug: withdraw reduces totalAssets by (amount - fee) instead of amount,\n    // so reportedAssets grows above actualBalance after each withdrawal.\n    assert(actualBalance == reportedAssets);\n}",
+      "invariant_emptyVaultConsistency": "function invariant_emptyVaultConsistency() external view {\n    if (vault.totalShares() == 0) {\n        // If no shares exist, totalAssets should also be zero.\n        // The fee bug can leave totalAssets > 0 when totalShares == 0.\n        assert(vault.totalAssets() == 0);\n    }\n}",
+      "invariant_noActorOwnsMoreThanTotal": "function invariant_noActorOwnsMoreThanTotal() external view {\n    uint256 len = handler.actorsLength();\n    uint256 total = vault.totalShares();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        assert(vault.sharesOf(actor) <= total);\n    }\n}",
+      "invariant_tokenConservation": "function invariant_tokenConservation() external view {\n    uint256 vaultBalance = token.balanceOf(address(vault));\n    uint256 feeCollectorBalance = token.balanceOf(feeCollector);\n    // All deposited tokens must be accounted for: either in vault or collected as fees.\n    // The fee bug causes totalAssets to drift above actual vault balance.\n    assert(vaultBalance + feeCollectorBalance == handler.ghost_total_deposited());\n}",
+      "invariant_totalSharesConsistency": "function invariant_totalSharesConsistency() external view {\n    uint256 sumShares = 0;\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        sumShares += vault.sharesOf(actor);\n    }\n    assert(sumShares == vault.totalShares());\n}",
+      "invariant_vaultSolvency": "function invariant_vaultSolvency() external view {\n    // If there are outstanding shares, the vault must hold enough tokens to cover totalAssets.\n    // Due to the fee bug, totalAssets > actual balance, so the vault is insolvent.\n    if (vault.totalShares() > 0) {\n        uint256 actualBalance = token.balanceOf(address(vault));\n        uint256 reportedAssets = vault.totalAssets();\n        // Vault must be able to cover what it claims to hold.\n        assert(actualBalance >= reportedAssets);\n    }\n}"
+    }
+  }
+}

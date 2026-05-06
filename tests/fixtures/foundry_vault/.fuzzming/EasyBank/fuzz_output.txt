@@ -1,0 +1,66 @@
+Ran 5 tests for test/fuzzming/EasyBank/EasyBankInvariantTest.sol:EasyBankInvariantTest
+[PASS] invariant_individualGhostBalancesMatch() (runs: 1000, calls: 300000, reverts: 431)
+
+╭-----------------+----------+--------+---------+----------╮
+| Contract        | Selector | Calls  | Reverts | Discards |
++==========================================================+
+| EasyBankHandler | deposit  | 149907 | 431     | 0        |
+|-----------------+----------+--------+---------+----------|
+| EasyBankHandler | withdraw | 150093 | 0       | 0        |
+╰-----------------+----------+--------+---------+----------╯
+
+[FAIL: token.balanceOf(bank) != bank.totalDeposits(): 4092754210608927538 != 4092754210608927537]
+	[Sequence] (original: 13, shrunk: 2)
+		sender=0x0000000000000000000000000000000000000852 addr=[test/fuzzming/EasyBank/EasyBankHandler.sol:EasyBankHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=deposit(address,uint256) args=[0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 14403 [1.44e4]]
+		sender=0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f addr=[test/fuzzming/EasyBank/EasyBankHandler.sol:EasyBankHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=withdraw(address,uint256) args=[0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 773487949 [7.734e8]]
+ invariant_tokenBalanceEqualsTotalDeposits() (runs: 0, calls: 0, reverts: 0)
+
+╭-----------------+----------+-------+---------+----------╮
+| Contract        | Selector | Calls | Reverts | Discards |
++=========================================================+
+| EasyBankHandler | deposit  | 8     | 0       | 0        |
+|-----------------+----------+-------+---------+----------|
+| EasyBankHandler | withdraw | 5     | 0       | 0        |
+╰-----------------+----------+-------+---------+----------╯
+
+[FAIL: totalDeposits != ghost_total_deposited - ghost_total_withdrawn: 106046390425203926 != 106046390425203927]
+	[Sequence] (original: 6, shrunk: 2)
+		sender=0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f addr=[test/fuzzming/EasyBank/EasyBankHandler.sol:EasyBankHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=deposit(address,uint256) args=[0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 1000000000000000000 [1e18]]
+		sender=0x0000000000000000000000000000000000000026 addr=[test/fuzzming/EasyBank/EasyBankHandler.sol:EasyBankHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=withdraw(address,uint256) args=[0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 13701 [1.37e4]]
+ invariant_totalDepositsEqualsGhostNet() (runs: 0, calls: 0, reverts: 0)
+
+╭-----------------+----------+-------+---------+----------╮
+| Contract        | Selector | Calls | Reverts | Discards |
++=========================================================+
+| EasyBankHandler | deposit  | 3     | 0       | 0        |
+|-----------------+----------+-------+---------+----------|
+| EasyBankHandler | withdraw | 3     | 0       | 0        |
+╰-----------------+----------+-------+---------+----------╯
+
+[FAIL: totalDeposits != sum of all actor balances: 5683090599897693613 != 5683090599897693614]
+	[Sequence] (original: 32, shrunk: 2)
+		sender=0x89d9bCe07A2dca622da8f559B2Ac5E67dF45e1E4 addr=[test/fuzzming/EasyBank/EasyBankHandler.sol:EasyBankHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=deposit(address,uint256) args=[0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 66736962898410894920614530160794666732959323492193235036029231374805846439745 [6.673e76]]
+		sender=0x00000000000000000000000021A76b205cB80711 addr=[test/fuzzming/EasyBank/EasyBankHandler.sol:EasyBankHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=withdraw(address,uint256) args=[0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f, 100]
+ invariant_totalDepositsEqualsSumOfBalances() (runs: 0, calls: 0, reverts: 0)
+
+╭-----------------+----------+-------+---------+----------╮
+| Contract        | Selector | Calls | Reverts | Discards |
++=========================================================+
+| EasyBankHandler | deposit  | 17    | 0       | 0        |
+|-----------------+----------+-------+---------+----------|
+| EasyBankHandler | withdraw | 15    | 0       | 0        |
+╰-----------------+----------+-------+---------+----------╯
+
+[PASS] invariant_totalDepositsNoUnderflow() (runs: 1000, calls: 300000, reverts: 0)
+
+╭-----------------+----------+--------+---------+----------╮
+| Contract        | Selector | Calls  | Reverts | Discards |
++==========================================================+
+| EasyBankHandler | deposit  | 150147 | 0       | 0        |
+|-----------------+----------+--------+---------+----------|
+| EasyBankHandler | withdraw | 149853 | 0       | 0        |
+╰-----------------+----------+--------+---------+----------╯
+
+Suite result: FAILED. 2 passed; 3 failed; 0 skipped; finished in 447.65s (1293.23s CPU time)
+
+Ran 4 test suites in 447.65s (1331.45s CPU time): 14 tests passed, 8 failed, 0 skipped (22 total tests)

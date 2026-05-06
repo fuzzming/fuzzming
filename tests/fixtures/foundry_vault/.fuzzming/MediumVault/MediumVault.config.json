@@ -1,0 +1,11 @@
+{
+  "Foundry": {
+    "depth": 200,
+    "runs": 512,
+    "seed": "0xdeadbeef",
+    "max_test_rejects": 131072,
+    "dictionary_weight": 80,
+    "call_sequence_weights": {},
+    "current_toml": null
+  }
+}

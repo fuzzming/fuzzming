@@ -1,0 +1,78 @@
+Ran 6 tests for test/fuzzming/MediumVault/MediumVaultInvariantTest.sol:MediumVaultInvariantTest
+[FAIL: panic: assertion failed (0x01)]
+	[Sequence] (original: 10, shrunk: 2)
+		sender=0x60bEfC8253d94a89C64af897FB068e0875ff0472 addr=[test/fuzzming/MediumVault/MediumVaultHandler.sol:MediumVaultHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=deposit(uint256) args=[10430 [1.043e4]]
+		sender=0x60bEfC8253d94a89C64af897FB068e0875ff0472 addr=[test/fuzzming/MediumVault/MediumVaultHandler.sol:MediumVaultHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=withdraw(uint256) args=[7905886564073743163844564322618013424 [7.905e36]]
+ invariant_actualBalanceVsTotalAssets() (runs: 0, calls: 0, reverts: 0)
+
+╭--------------------+----------+-------+---------+----------╮
+| Contract           | Selector | Calls | Reverts | Discards |
++============================================================+
+| MediumVaultHandler | deposit  | 6     | 0       | 0        |
+|--------------------+----------+-------+---------+----------|
+| MediumVaultHandler | withdraw | 4     | 0       | 0        |
+╰--------------------+----------+-------+---------+----------╯
+
+[FAIL: panic: assertion failed (0x01)]
+	[Sequence] (original: 2, shrunk: 2)
+		sender=0xA9674Afe1aD71c7c0F8aCCA17191A9eF641cb857 addr=[test/fuzzming/MediumVault/MediumVaultHandler.sol:MediumVaultHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=deposit(uint256) args=[100]
+		sender=0xA9674Afe1aD71c7c0F8aCCA17191A9eF641cb857 addr=[test/fuzzming/MediumVault/MediumVaultHandler.sol:MediumVaultHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=withdraw(uint256) args=[1000000000000000000000000 [1e24]]
+ invariant_emptyVaultConsistency() (runs: 166, calls: 49800, reverts: 1871)
+
+╭--------------------+----------+-------+---------+----------╮
+| Contract           | Selector | Calls | Reverts | Discards |
++============================================================+
+| MediumVaultHandler | deposit  | 24889 | 1865    | 0        |
+|--------------------+----------+-------+---------+----------|
+| MediumVaultHandler | withdraw | 24913 | 6       | 0        |
+╰--------------------+----------+-------+---------+----------╯
+
+[PASS] invariant_noActorOwnsMoreThanTotal() (runs: 1000, calls: 300000, reverts: 11030)
+
+╭--------------------+----------+--------+---------+----------╮
+| Contract           | Selector | Calls  | Reverts | Discards |
++=============================================================+
+| MediumVaultHandler | deposit  | 150035 | 11000   | 0        |
+|--------------------+----------+--------+---------+----------|
+| MediumVaultHandler | withdraw | 149965 | 30      | 0        |
+╰--------------------+----------+--------+---------+----------╯
+
+[FAIL: panic: assertion failed (0x01)]
+	[Sequence] (original: 7, shrunk: 2)
+		sender=0x34b494CE3AC6F65Fc6B409A9dFB2DC4B2e0441D9 addr=[test/fuzzming/MediumVault/MediumVaultHandler.sol:MediumVaultHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=deposit(uint256) args=[0]
+		sender=0x34b494CE3AC6F65Fc6B409A9dFB2DC4B2e0441D9 addr=[test/fuzzming/MediumVault/MediumVaultHandler.sol:MediumVaultHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=withdraw(uint256) args=[6356927144508776942077080173418805664871805555 [6.356e45]]
+ invariant_tokenConservation() (runs: 0, calls: 0, reverts: 0)
+
+╭--------------------+----------+-------+---------+----------╮
+| Contract           | Selector | Calls | Reverts | Discards |
++============================================================+
+| MediumVaultHandler | deposit  | 3     | 0       | 0        |
+|--------------------+----------+-------+---------+----------|
+| MediumVaultHandler | withdraw | 4     | 0       | 0        |
+╰--------------------+----------+-------+---------+----------╯
+
+[PASS] invariant_totalSharesConsistency() (runs: 1000, calls: 300000, reverts: 11338)
+
+╭--------------------+----------+--------+---------+----------╮
+| Contract           | Selector | Calls  | Reverts | Discards |
++=============================================================+
+| MediumVaultHandler | deposit  | 150100 | 11293   | 0        |
+|--------------------+----------+--------+---------+----------|
+| MediumVaultHandler | withdraw | 149900 | 45      | 0        |
+╰--------------------+----------+--------+---------+----------╯
+
+[FAIL: panic: assertion failed (0x01)]
+	[Sequence] (original: 5, shrunk: 2)
+		sender=0xA9674Afe1aD71c7c0F8aCCA17191A9eF641cb857 addr=[test/fuzzming/MediumVault/MediumVaultHandler.sol:MediumVaultHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=deposit(uint256) args=[7750957389527620893862287329053490195 [7.75e36]]
+		sender=0xA9674Afe1aD71c7c0F8aCCA17191A9eF641cb857 addr=[test/fuzzming/MediumVault/MediumVaultHandler.sol:MediumVaultHandler]0xF62849F9A0B5Bf2913b396098F7c7019b51A820a calldata=withdraw(uint256) args=[42701237821 [4.27e10]]
+ invariant_vaultSolvency() (runs: 0, calls: 0, reverts: 0)
+
+╭--------------------+----------+-------+---------+----------╮
+| Contract           | Selector | Calls | Reverts | Discards |
++============================================================+
+| MediumVaultHandler | deposit  | 3     | 0       | 0        |
+|--------------------+----------+-------+---------+----------|
+| MediumVaultHandler | withdraw | 2     | 0       | 0        |
+╰--------------------+----------+-------+---------+----------╯
+
+Suite result: FAILED. 2 passed; 4 failed; 0 skipped; finished in 143.26s (371.25s CPU time)

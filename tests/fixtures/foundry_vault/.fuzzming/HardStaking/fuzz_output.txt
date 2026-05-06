@@ -1,0 +1,151 @@
+Ran 9 tests for test/fuzzming/HardStaking/HardStakingInvariantTest.sol:HardStakingInvariantTest
+[FAIL: sum of earned() > reward token balance in contract: 239068027115167783279244858864 > 2885807866062835822049629]
+	[Sequence] (original: 38, shrunk: 3)
+		sender=0xa7Fb0bba79D3f60f59aCBd00081ecD2D602E46EE addr=[test/fuzzming/HardStaking/HardStakingHandler.sol:HardStakingHandler]0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9 calldata=handler_stake(uint256,uint256) args=[20106 [2.01e4], 57]
+		sender=0x00000000000000000000000000000000000047D0 addr=[test/fuzzming/HardStaking/HardStakingHandler.sol:HardStakingHandler]0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9 calldata=handler_addRewards(uint256,uint256) args=[18200 [1.82e4], 0]
+		sender=0x760Ad3D0Ef47208B8Ee114F93E902cCc0fb71B02 addr=[test/fuzzming/HardStaking/HardStakingHandler.sol:HardStakingHandler]0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9 calldata=handler_stake(uint256,uint256) args=[67171865518479082549485804388256306409944 [6.717e40], 1756758270359486373268888728680379052947786099458494034802394 [1.756e60]]
+ invariant_earnedNeverExceedsAvailableRewards() (runs: 0, calls: 0, reverts: 0)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 9     | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 11    | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 8     | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 4     | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 6     | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+[PASS] invariant_ghostRewardClaimedNeverExceedsAdded() (runs: 1000, calls: 300000, reverts: 7983)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 60288 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 60095 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 59872 | 7983    | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 59759 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 59986 | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+[PASS] invariant_ghostTotalStaked() (runs: 1000, calls: 300000, reverts: 8264)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 59870 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 60097 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 60185 | 8264    | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 59835 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 60013 | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+[PASS] invariant_perActorStakingAccounting() (runs: 1000, calls: 300000, reverts: 8407)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 60094 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 60218 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 59746 | 8407    | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 60189 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 59753 | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+[PASS] invariant_rewardClaimedNeverExceedsAdded() (runs: 1000, calls: 300000, reverts: 8120)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 59945 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 59739 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 59854 | 8120    | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 60267 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 60195 | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+[PASS] invariant_rewardTokenSolvency() (runs: 1000, calls: 300000, reverts: 8093)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 59992 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 60366 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 59569 | 8093    | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 59820 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 60253 | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+[PASS] invariant_stakingTokenBalance() (runs: 1000, calls: 300000, reverts: 8271)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 60191 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 60277 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 59908 | 8271    | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 59822 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 59802 | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+[PASS] invariant_totalStakedConsistency() (runs: 1000, calls: 300000, reverts: 8202)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 60126 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 60085 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 59720 | 8202    | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 59879 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 60190 | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+[PASS] invariant_userRewardPerTokenPaidNeverExceedsStored() (runs: 1000, calls: 300000, reverts: 8658)
+
+╭--------------------+----------------------+-------+---------+----------╮
+| Contract           | Selector             | Calls | Reverts | Discards |
++========================================================================+
+| HardStakingHandler | handler_addNewActor  | 59978 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_addRewards   | 59920 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_claimRewards | 59981 | 8658    | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_stake        | 60258 | 0       | 0        |
+|--------------------+----------------------+-------+---------+----------|
+| HardStakingHandler | handler_unstake      | 59863 | 0       | 0        |
+╰--------------------+----------------------+-------+---------+----------╯
+
+Suite result: FAILED. 8 passed; 1 failed; 0 skipped; finished in 359.86s (1759.15s CPU time)

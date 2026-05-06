@@ -5,7 +5,6 @@ tests/output/
 # Foundry fixture artifacts
 tests/fixtures/foundry_vault/out/
 tests/fixtures/foundry_vault/cache/
-tests/fixtures/foundry_vault/.fuzzming/
 tests/fixtures/foundry_vault/lcov.info
 
 # Local examples (generated during development)

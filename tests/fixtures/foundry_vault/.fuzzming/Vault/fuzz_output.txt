@@ -1,0 +1,87 @@
+Ran 2 tests for test/invariants/VaultInvariantTest.sol:VaultInvariantTest
+[PASS] invariant_depositCapRespected() (runs: 512, calls: 153600, reverts: 0)
+
+╭--------------+------------------+-------+---------+----------╮
+| Contract     | Selector         | Calls | Reverts | Discards |
++==============================================================+
+| VaultHandler | handler_deposit  | 76804 | 0       | 0        |
+|--------------+------------------+-------+---------+----------|
+| VaultHandler | handler_withdraw | 76796 | 0       | 0        |
+╰--------------+------------------+-------+---------+----------╯
+
+[PASS] invariant_totalAssetsMatch() (runs: 512, calls: 153600, reverts: 0)
+
+╭--------------+------------------+-------+---------+----------╮
+| Contract     | Selector         | Calls | Reverts | Discards |
++==============================================================+
+| VaultHandler | handler_deposit  | 76832 | 0       | 0        |
+|--------------+------------------+-------+---------+----------|
+| VaultHandler | handler_withdraw | 76768 | 0       | 0        |
+╰--------------+------------------+-------+---------+----------╯
+
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 15.44s (30.17s CPU time)
+
+Ran 6 tests for test/fuzzming/Vault/VaultInvariantTest.sol:VaultInvariantTest
+[PASS] invariant_deposit_cap_not_exceeded() (runs: 512, calls: 153600, reverts: 0)
+
+╭--------------+------------------+-------+---------+----------╮
+| Contract     | Selector         | Calls | Reverts | Discards |
++==============================================================+
+| VaultHandler | handler_deposit  | 76697 | 0       | 0        |
+|--------------+------------------+-------+---------+----------|
+| VaultHandler | handler_withdraw | 76903 | 0       | 0        |
+╰--------------+------------------+-------+---------+----------╯
+
+[PASS] invariant_per_user_balance_equals_ghost() (runs: 512, calls: 153600, reverts: 0)
+
+╭--------------+------------------+-------+---------+----------╮
+| Contract     | Selector         | Calls | Reverts | Discards |
++==============================================================+
+| VaultHandler | handler_deposit  | 77066 | 0       | 0        |
+|--------------+------------------+-------+---------+----------|
+| VaultHandler | handler_withdraw | 76534 | 0       | 0        |
+╰--------------+------------------+-------+---------+----------╯
+
+[PASS] invariant_token_solvency() (runs: 512, calls: 153600, reverts: 0)
+
+╭--------------+------------------+-------+---------+----------╮
+| Contract     | Selector         | Calls | Reverts | Discards |
++==============================================================+
+| VaultHandler | handler_deposit  | 76656 | 0       | 0        |
+|--------------+------------------+-------+---------+----------|
+| VaultHandler | handler_withdraw | 76944 | 0       | 0        |
+╰--------------+------------------+-------+---------+----------╯
+
+[PASS] invariant_totalAssets_equals_ghost() (runs: 512, calls: 153600, reverts: 0)
+
+╭--------------+------------------+-------+---------+----------╮
+| Contract     | Selector         | Calls | Reverts | Discards |
++==============================================================+
+| VaultHandler | handler_deposit  | 77289 | 0       | 0        |
+|--------------+------------------+-------+---------+----------|
+| VaultHandler | handler_withdraw | 76311 | 0       | 0        |
+╰--------------+------------------+-------+---------+----------╯
+
+[PASS] invariant_totalAssets_equals_sum_of_balances() (runs: 512, calls: 153600, reverts: 0)
+
+╭--------------+------------------+-------+---------+----------╮
+| Contract     | Selector         | Calls | Reverts | Discards |
++==============================================================+
+| VaultHandler | handler_deposit  | 77090 | 0       | 0        |
+|--------------+------------------+-------+---------+----------|
+| VaultHandler | handler_withdraw | 76510 | 0       | 0        |
+╰--------------+------------------+-------+---------+----------╯
+
+[PASS] invariant_user_withdrawn_le_deposited() (runs: 512, calls: 153600, reverts: 0)
+
+╭--------------+------------------+-------+---------+----------╮
+| Contract     | Selector         | Calls | Reverts | Discards |
++==============================================================+
+| VaultHandler | handler_deposit  | 77169 | 0       | 0        |
+|--------------+------------------+-------+---------+----------|
+| VaultHandler | handler_withdraw | 76431 | 0       | 0        |
+╰--------------+------------------+-------+---------+----------╯
+
+Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 140.59s (483.28s CPU time)
+
+Ran 2 test suites in 140.59s (156.03s CPU time): 8 tests passed, 0 failed, 0 skipped (8 total tests)

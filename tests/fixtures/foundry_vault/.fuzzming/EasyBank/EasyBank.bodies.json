@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "contract": "EasyBank",
+    "contractPath": "src/EasyBank.sol",
+    "solidity": "^0.8.20",
+    "generatedAt": "2024-01-01T00:00:00Z"
+  },
+  "handler": {
+    "contractName": "EasyBankHandler",
+    "imports": [
+      "import {EasyBank} from \"src/EasyBank.sol\";",
+      "import {Test} from \"forge-std/Test.sol\";",
+      "import {Token} from \"src/Token.sol\";"
+    ],
+    "stateVars": [
+      "EasyBank public bank;",
+      "Token public token;",
+      "address[] public actors;"
+    ],
+    "ghostVars": [
+      "uint256 public ghost_total_deposited;",
+      "uint256 public ghost_total_withdrawn;",
+      "uint256 public ghost_withdrawal_count;",
+      "mapping(address => uint256) public ghost_balance;",
+      "mapping(address => bool) internal _isActor;"
+    ],
+    "constructorSignature": "constructor(address _bank, address _token)",
+    "constructorBody": [
+      "bank = EasyBank(_bank);",
+      "token = Token(_token);"
+    ],
+    "functions": {
+      "actorsLength": "function actorsLength() external view returns (uint256) {\n    return actors.length;\n}",
+      "deposit": "function deposit(address actorSeed, uint256 amount) external {\n    address actor = address(uint160(uint256(keccak256(abi.encodePacked(actorSeed)))));\n    if (actor == address(0)) actor = address(0x1);\n    uint256 actorTokenBalance = token.balanceOf(actor);\n    if (actorTokenBalance == 0) {\n        deal(address(token), actor, 1e18);\n        actorTokenBalance = 1e18;\n    }\n    amount = bound(amount, 1, actorTokenBalance > type(uint128).max ? type(uint128).max : actorTokenBalance);\n    vm.startPrank(actor);\n    token.approve(address(bank), amount);\n    bank.deposit(amount);\n    vm.stopPrank();\n    ghost_total_deposited += amount;\n    ghost_balance[actor] += amount;\n    if (!_isActor[actor]) {\n        _isActor[actor] = true;\n        actors.push(actor);\n    }\n}",
+      "withdraw": "function withdraw(address actorSeed, uint256 amount) external {\n    address actor = address(uint160(uint256(keccak256(abi.encodePacked(actorSeed)))));\n    if (actor == address(0)) actor = address(0x1);\n    if (ghost_balance[actor] == 0) return;\n    amount = bound(amount, 1, ghost_balance[actor]);\n    vm.startPrank(actor);\n    bank.withdraw(amount);\n    vm.stopPrank();\n    ghost_total_withdrawn += amount;\n    ghost_withdrawal_count += 1;\n    ghost_balance[actor] -= amount;\n}"
+    },
+    "targetSelectors": ""
+  },
+  "invariantTest": {
+    "contractName": "EasyBankInvariantTest",
+    "imports": [
+      "import {EasyBankHandler} from \"./EasyBankHandler.sol\";",
+      "import {Test} from \"forge-std/Test.sol\";",
+      "import {EasyBank} from \"src/EasyBank.sol\";",
+      "import {Token} from \"src/Token.sol\";"
+    ],
+    "stateVars": [
+      "EasyBank public bank;",
+      "Token public token;",
+      "EasyBankHandler public handler;"
+    ],
+    "setUpBody": [
+      "token = new Token();",
+      "bank = new EasyBank(address(token));",
+      "handler = new EasyBankHandler(address(bank), address(token));",
+      "bytes4[] memory selectors = new bytes4[](2);",
+      "selectors[0] = EasyBankHandler.deposit.selector;",
+      "selectors[1] = EasyBankHandler.withdraw.selector;",
+      "targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));",
+      "targetContract(address(handler));"
+    ],
+    "invariants": {
+      "invariant_individualGhostBalancesMatch": "function invariant_individualGhostBalancesMatch() external view {\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        assertEq(\n            bank.balanceOf(actor),\n            handler.ghost_balance(actor),\n            \"bank.balanceOf(actor) != ghost_balance[actor]\"\n        );\n    }\n}",
+      "invariant_tokenBalanceEqualsTotalDeposits": "function invariant_tokenBalanceEqualsTotalDeposits() external view {\n    assertEq(\n        token.balanceOf(address(bank)),\n        bank.totalDeposits(),\n        \"token.balanceOf(bank) != bank.totalDeposits()\"\n    );\n}",
+      "invariant_totalDepositsEqualsGhostNet": "function invariant_totalDepositsEqualsGhostNet() external view {\n    uint256 ghostNet = handler.ghost_total_deposited() - handler.ghost_total_withdrawn();\n    assertEq(\n        bank.totalDeposits(),\n        ghostNet,\n        \"totalDeposits != ghost_total_deposited - ghost_total_withdrawn\"\n    );\n}",
+      "invariant_totalDepositsEqualsSumOfBalances": "function invariant_totalDepositsEqualsSumOfBalances() external view {\n    uint256 sumBalances = 0;\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        sumBalances += bank.balanceOf(actor);\n    }\n    assertEq(\n        bank.totalDeposits(),\n        sumBalances,\n        \"totalDeposits != sum of all actor balances\"\n    );\n}",
+      "invariant_totalDepositsNoUnderflow": "function invariant_totalDepositsNoUnderflow() external view {\n    assertLe(\n        bank.totalDeposits(),\n        handler.ghost_total_deposited(),\n        \"totalDeposits overflowed above total deposited\"\n    );\n}"
+    }
+  }
+}

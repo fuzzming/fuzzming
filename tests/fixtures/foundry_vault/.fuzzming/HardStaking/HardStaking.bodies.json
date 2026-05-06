@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "contract": "HardStaking",
+    "contractPath": "src/HardStaking.sol",
+    "solidity": "^0.8.20",
+    "generatedAt": "2024-01-01T00:00:00Z"
+  },
+  "handler": {
+    "contractName": "HardStakingHandler",
+    "imports": [
+      "import {HardStaking} from \"src/HardStaking.sol\";",
+      "import {Test} from \"forge-std/Test.sol\";",
+      "import {Token} from \"src/Token.sol\";"
+    ],
+    "stateVars": [
+      "HardStaking public staking;",
+      "Token public stakingToken;",
+      "Token public rewardToken;",
+      "address[] public actors;",
+      "address public currentActor;",
+      "uint256 public constant INITIAL_BALANCE = 1_000_000e18;"
+    ],
+    "ghostVars": [
+      "uint256 public ghost_rewards_added;",
+      "uint256 public ghost_rewards_claimed;",
+      "uint256 public ghost_total_staked;",
+      "mapping(address => uint256) public ghost_staked;",
+      "mapping(address => uint256) public ghost_staking_deposited;",
+      "mapping(address => uint256) public ghost_staking_withdrawn;",
+      "mapping(address => bool) internal _isActor;"
+    ],
+    "constructorSignature": "constructor(HardStaking _staking, Token _stakingToken, Token _rewardToken)",
+    "constructorBody": [
+      "staking = _staking;",
+      "stakingToken = _stakingToken;",
+      "rewardToken = _rewardToken;"
+    ],
+    "functions": {
+      "_addActorIfNew": "function _addActorIfNew(address actor) internal {\n    if (!_isActor[actor]) {\n        _isActor[actor] = true;\n        actors.push(actor);\n        deal(address(stakingToken), actor, INITIAL_BALANCE);\n        deal(address(rewardToken), actor, INITIAL_BALANCE);\n    }\n}",
+      "_selectActor": "function _selectActor(uint256 seed) internal returns (address) {\n    if (actors.length == 0) {\n        address newActor = makeAddr(\"actor0\");\n        _isActor[newActor] = true;\n        actors.push(newActor);\n        deal(address(stakingToken), newActor, INITIAL_BALANCE);\n        deal(address(rewardToken), newActor, INITIAL_BALANCE);\n    }\n    uint256 idx = bound(seed, 0, actors.length - 1);\n    return actors[idx];\n}",
+      "actorsLength": "function actorsLength() external view returns (uint256) {\n    return actors.length;\n}",
+      "handler_addNewActor": "function handler_addNewActor(uint256 seed) external {\n    address newActor = makeAddr(string(abi.encodePacked(\"actor_new\", seed, block.timestamp)));\n    if (!_isActor[newActor]) {\n        _isActor[newActor] = true;\n        actors.push(newActor);\n        deal(address(stakingToken), newActor, INITIAL_BALANCE);\n        deal(address(rewardToken), newActor, INITIAL_BALANCE);\n    }\n}",
+      "handler_addRewards": "function handler_addRewards(uint256 seed, uint256 amount) external {\n    address actor = _selectActor(seed);\n    _addActorIfNew(actor);\n    uint256 balance = rewardToken.balanceOf(actor);\n    if (balance == 0) return;\n    amount = bound(amount, 1, balance > type(uint128).max ? type(uint128).max : balance);\n    vm.startPrank(actor);\n    rewardToken.approve(address(staking), amount);\n    staking.addRewards(amount);\n    vm.stopPrank();\n    ghost_rewards_added += amount;\n}",
+      "handler_claimRewards": "function handler_claimRewards(uint256 seed) external {\n    address actor = _selectActor(seed);\n    _addActorIfNew(actor);\n    uint256 balanceBefore = rewardToken.balanceOf(actor);\n    vm.startPrank(actor);\n    staking.claimRewards();\n    vm.stopPrank();\n    uint256 balanceAfter = rewardToken.balanceOf(actor);\n    uint256 actualClaimed = balanceAfter - balanceBefore;\n    ghost_rewards_claimed += actualClaimed;\n}",
+      "handler_stake": "function handler_stake(uint256 seed, uint256 amount) external {\n    address actor = _selectActor(seed);\n    _addActorIfNew(actor);\n    uint256 balance = stakingToken.balanceOf(actor);\n    if (balance == 0) return;\n    amount = bound(amount, 1, balance > type(uint128).max ? type(uint128).max : balance);\n    vm.startPrank(actor);\n    stakingToken.approve(address(staking), amount);\n    staking.stake(amount);\n    vm.stopPrank();\n    ghost_staked[actor] += amount;\n    ghost_total_staked += amount;\n    ghost_staking_deposited[actor] += amount;\n}",
+      "handler_unstake": "function handler_unstake(uint256 seed, uint256 amount) external {\n    address actor = _selectActor(seed);\n    _addActorIfNew(actor);\n    uint256 staked = staking.stakedOf(actor);\n    if (staked == 0) return;\n    amount = bound(amount, 1, staked);\n    vm.startPrank(actor);\n    staking.unstake(amount);\n    vm.stopPrank();\n    ghost_staked[actor] -= amount;\n    ghost_total_staked -= amount;\n    ghost_staking_withdrawn[actor] += amount;\n}"
+    },
+    "targetSelectors": ""
+  },
+  "invariantTest": {
+    "contractName": "HardStakingInvariantTest",
+    "imports": [
+      "import {HardStakingHandler} from \"./HardStakingHandler.sol\";",
+      "import {Test} from \"forge-std/Test.sol\";",
+      "import {HardStaking} from \"src/HardStaking.sol\";",
+      "import {Token} from \"src/Token.sol\";"
+    ],
+    "stateVars": [
+      "HardStaking public staking;",
+      "Token public stakingToken;",
+      "Token public rewardToken;",
+      "HardStakingHandler public handler;"
+    ],
+    "setUpBody": [
+      "stakingToken = new Token();",
+      "rewardToken = new Token();",
+      "staking = new HardStaking(address(stakingToken), address(rewardToken));",
+      "handler = new HardStakingHandler(staking, stakingToken, rewardToken);",
+      "bytes4[] memory selectors = new bytes4[](5);",
+      "selectors[0] = HardStakingHandler.handler_addRewards.selector;",
+      "selectors[1] = HardStakingHandler.handler_stake.selector;",
+      "selectors[2] = HardStakingHandler.handler_unstake.selector;",
+      "selectors[3] = HardStakingHandler.handler_claimRewards.selector;",
+      "selectors[4] = HardStakingHandler.handler_addNewActor.selector;",
+      "targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));",
+      "targetContract(address(handler));"
+    ],
+    "invariants": {
+      "invariant_earnedNeverExceedsAvailableRewards": "function invariant_earnedNeverExceedsAvailableRewards() external view {\n    uint256 totalEarned = 0;\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        totalEarned += staking.earned(actor);\n    }\n    uint256 available = rewardToken.balanceOf(address(staking));\n    assertLe(\n        totalEarned,\n        available,\n        \"sum of earned() > reward token balance in contract\"\n    );\n}",
+      "invariant_ghostRewardClaimedNeverExceedsAdded": "function invariant_ghostRewardClaimedNeverExceedsAdded() external view {\n    assertLe(\n        handler.ghost_rewards_claimed(),\n        handler.ghost_rewards_added(),\n        \"ghost: actual tokens claimed > tokens added as rewards\"\n    );\n}",
+      "invariant_ghostTotalStaked": "function invariant_ghostTotalStaked() external view {\n    assertEq(\n        staking.totalStaked(),\n        handler.ghost_total_staked(),\n        \"totalStaked != ghost_total_staked\"\n    );\n}",
+      "invariant_perActorStakingAccounting": "function invariant_perActorStakingAccounting() external view {\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        uint256 deposited = handler.ghost_staking_deposited(actor);\n        uint256 withdrawn = handler.ghost_staking_withdrawn(actor);\n        assertEq(\n            staking.stakedOf(actor),\n            deposited - withdrawn,\n            \"stakedOf actor != deposited - withdrawn\"\n        );\n    }\n}",
+      "invariant_rewardClaimedNeverExceedsAdded": "function invariant_rewardClaimedNeverExceedsAdded() external view {\n    assertLe(\n        staking.totalRewardsClaimed(),\n        staking.totalRewardsAdded(),\n        \"totalRewardsClaimed > totalRewardsAdded\"\n    );\n}",
+      "invariant_rewardTokenSolvency": "function invariant_rewardTokenSolvency() external view {\n    uint256 contractBalance = rewardToken.balanceOf(address(staking));\n    uint256 added = handler.ghost_rewards_added();\n    uint256 claimed = handler.ghost_rewards_claimed();\n    assertGe(\n        contractBalance,\n        added - claimed,\n        \"reward token balance < (ghost_added - ghost_claimed)\"\n    );\n}",
+      "invariant_stakingTokenBalance": "function invariant_stakingTokenBalance() external view {\n    assertEq(\n        stakingToken.balanceOf(address(staking)),\n        staking.totalStaked(),\n        \"staking token balance != totalStaked\"\n    );\n}",
+      "invariant_totalStakedConsistency": "function invariant_totalStakedConsistency() external view {\n    uint256 sumStaked = 0;\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        sumStaked += staking.stakedOf(actor);\n    }\n    assertEq(\n        staking.totalStaked(),\n        sumStaked,\n        \"totalStaked != sum of stakedOf actors\"\n    );\n}",
+      "invariant_userRewardPerTokenPaidNeverExceedsStored": "function invariant_userRewardPerTokenPaidNeverExceedsStored() external view {\n    uint256 stored = staking.rewardPerTokenStored();\n    uint256 len = handler.actorsLength();\n    for (uint256 i = 0; i < len; i++) {\n        address actor = handler.actors(i);\n        assertLe(\n            staking.userRewardPerTokenPaid(actor),\n            stored,\n            \"userRewardPerTokenPaid > rewardPerTokenStored\"\n        );\n    }\n}"
+    }
+  }
+}
