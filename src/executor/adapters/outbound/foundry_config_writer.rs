@@ -35,13 +35,16 @@ pub async fn write_foundry_config(config: &FoundryConfig, writer: &FileSystemWri
     writer.write_file(FOUNDRY_TOML_PATH, &toml).await
 }
 
+const MAX_RUNS: u32 = 1000;
+const MAX_DEPTH: u32 = 500;
+
 fn build_fuzzming_section(config: &FoundryConfig) -> String {
     vec![
         FUZZMING_HEADER.to_string(),
         String::new(),
         "[profile.fuzzming.invariant]".to_string(),
-        format!("runs             = {}", config.runs),
-        format!("depth            = {}", config.depth),
+        format!("runs             = {}", config.runs.min(MAX_RUNS)),
+        format!("depth            = {}", config.depth.min(MAX_DEPTH)),
         format!("seed             = \"{}\"", config.seed),
         format!("max_test_rejects = {}", config.max_test_rejects),
         format!("dictionary_weight = {}", config.dictionary_weight),

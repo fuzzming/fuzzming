@@ -189,7 +189,8 @@ pub fn build_round_one_config_prompt(
          }}\n\
          \n\
          Guidance:\n\
-         - Choose runs/depth for meaningful state exploration of this contract.\n\
+         - runs: 256–1000 (start conservative; the tool scales up across rounds).\n\
+         - depth: 50–500.\n\
          - seed must be a hex string like \"0xdeadbeef\".\n\
          \n\
          Analysis JSON:\n{}\n\
@@ -245,7 +246,7 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          - invariantTest.invariants.<invariantName>\n\
          \n\
          VALID foundry_config path prefixes:\n\
-         - depth / runs / seed / max_test_rejects / dictionary_weight\n\
+         - depth (50–500) / runs (256–1000) / seed / max_test_rejects / dictionary_weight\n\
          \n\
          Existing bodies:\n{existing_bodies}\n\
          \n\

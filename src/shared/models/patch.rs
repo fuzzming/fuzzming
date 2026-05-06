@@ -11,6 +11,7 @@ pub struct JsonBlockUpdate {
     /// New value (ignored for `Remove`).
     pub value: Value,
     /// LLM-provided justification for this change.
+    #[serde(default)]
     pub reason: String,
 }
 
