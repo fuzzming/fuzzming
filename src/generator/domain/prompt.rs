@@ -1,10 +1,11 @@
 use crate::shared::models::{AssembledPrompt, BugInfo, CoverageContext, GapType, Message, Role};
 
-const RULES: [&str; 4] = [
+const RULES: [&str; 5] = [
     "NO FOR-IN LOOPS: Solidity mappings are not iterable. Track actors with `address[] public actors` and push new callers into it.",
-    "GHOST STATE: Every external call that mutates target state must update the corresponding ghost variable to mirror it exactly.",
+    "GHOST STATE: Ghost variables must track the raw INPUTS you send to the target (amounts deposited, shares withdrawn) — never the contract's own return values. Invariants then assert that the contract's reported state equals what the ghost says it should be. Example: ghost_deposits += amount; ghost_withdrawals += shares; invariant checks vault.totalAssets() == ghost_deposits - ghost_withdrawals. Tracking the contract's return value as ghost state is circular — if the contract reports a wrong value, the ghost mirrors the bug and the invariant is blind to it.",
     "NO HALLUCINATIONS: Only call functions and access public variables that are present in SOURCE_CODE. Verify each reference against the source before writing it.",
     "HANDLERS ARE WRAPPERS: Handler functions call the target contract externally — never reimplement its internal logic.",
+    "NO TRY/CATCH: Never wrap target contract calls in try/catch. Pre-check conditions before calling (e.g. if (balance == 0) return; amount = bound(amount, 1, remaining);) so expected reverts are avoided up front. Unexpected reverts from the target must propagate — they signal bugs.",
 ];
 
 pub struct Prompt {

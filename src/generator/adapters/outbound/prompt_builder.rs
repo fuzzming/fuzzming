@@ -107,10 +107,10 @@ instance. Do NOT reimplement the target contract's internal logic inside the han
 2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
 not explicitly exist in the provided source code.\n\
 3. NO REDUNDANCIES: Do not write meaningless checks like `require(myUint >= 0)`.\n\
-4. NO EXTRA IMPORTS: Only import what is listed in REQUIRED IMPORT LINES above. Never add imports for Token, IERC20, or any dependency of the target.
+4. IMPORTS: Use only the import lines listed in REQUIRED IMPORT LINES above — except when the handler must call a method on a dependency of the target (e.g. approve or mint on a token the vault interacts with). In that case add the import for that dependency and call it with typed syntax. Never use low-level .call() for a contract whose interface you know.
 5. targetSelectors: Always set to empty string \"\". Target selector setup (targetSelector, targetContract) belongs ONLY in the invariant test's setUpBody — never in the handler.\n\
 6. NO REDEFINING TEST HELPERS: Do not define functions already provided by inheriting Test — never write your own `bound`, `vm`, `makeAddr`, `deal`, or similar.\n\
-7. NO RAW BYTECODE: Never embed hex bytecode in setUp. To deploy a dependency, use `deployCode(\"ContractName.sol:ContractName\")` — nothing else.\n\
+7. NO RAW BYTECODE: Never embed hex bytecode in setUp. To deploy a contract: use `new ContractName()` if it is imported, `deployCode(\"ContractName.sol:ContractName\")` only for contracts you cannot import.\n\
 8. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. Use `handler.actorsLength()` and `handler.actors(i)` to iterate — never call `handler.getActors()` or any helper that does not exist in the handler source.\n\
 \n\
 STRICT SCHEMA RULES:\n\
