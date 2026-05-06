@@ -53,8 +53,6 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
         out.push(String::new());
     }
 
-    out.push(h.target_selectors.clone());
-    out.push(String::new());
     out.push("}".into());
 
     let path = format!("test/fuzzming/{}/{}.sol", bodies.meta.contract, h.contract_name);
