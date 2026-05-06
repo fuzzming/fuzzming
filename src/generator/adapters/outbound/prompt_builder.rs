@@ -111,6 +111,7 @@ not explicitly exist in the provided source code.\n\
 5. targetSelectors: Always set to empty string \"\". Target selector setup (targetSelector, targetContract) belongs ONLY in the invariant test's setUpBody — never in the handler.\n\
 6. NO REDEFINING TEST HELPERS: Do not define functions already provided by inheriting Test — never write your own `bound`, `vm`, `makeAddr`, `deal`, or similar.\n\
 7. NO RAW BYTECODE: Never embed hex bytecode in setUp. To deploy a dependency, use `deployCode(\"ContractName.sol:ContractName\")` — nothing else.\n\
+8. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. Use `handler.actorsLength()` and `handler.actors(i)` to iterate — never call `handler.getActors()` or any helper that does not exist in the handler source.\n\
 \n\
 STRICT SCHEMA RULES:\n\
 - Use camelCase for all keys.\n\
@@ -210,12 +211,15 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
         "Round: {round}\n\
          Return JSON only. No markdown, no prose, no code fences.\n\
          \n\
-         REQUIRED OUTPUT FORMAT:\n\
+         REQUIRED OUTPUT FORMAT — YOU MUST USE EXACTLY THIS SHAPE:\n\
          {{\n\
            \"mode\": \"patch\",\n\
            \"bodies_updates\": [{{\"op\": \"add|replace|remove\", \"path\": \"string\", \"value\": any, \"reason\": \"string\"}}],\n\
            \"foundry_config_updates\": [{{\"op\": \"add|replace|remove\", \"path\": \"string\", \"value\": any, \"reason\": \"string\"}}]\n\
          }}\n\
+         \n\
+         CRITICAL: mode MUST be \"patch\". NEVER return \"mode\": \"full\" in round N — it will fail to parse.\n\
+         CRITICAL: The top-level keys must be exactly: mode, bodies_updates, foundry_config_updates. No other keys.\n\
          \n\
          PATCH RULES:\n\
          1. Each update item MUST have exactly 4 keys: op, path, value, reason.\n\
@@ -229,6 +233,7 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          - contract {test_name} is Test {{  — do not change this declaration or remove Test inheritance\n\
          - Never redefine functions provided by Test (bound, vm, makeAddr, deal)\n\
          - Never embed raw bytecode — use deployCode(\"Name.sol:Name\") for dependencies\n\
+         - To iterate actors in an invariant, use handler.actorsLength() and handler.actors(i) — never call handler.getActors() or any method not declared in the handler\n\
          \n\
          VALID bodies path prefixes:\n\
          - meta.contract / meta.contractPath / meta.solidity / meta.generatedAt\n\

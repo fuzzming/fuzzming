@@ -9,7 +9,7 @@ use crate::executor::ports::outbound::{CodeGeneratorPort, ConfigWriterPort};
 use crate::executor::use_cases::apply_patch::apply_patches;
 use crate::shared::models::{ExecutorInput, FuzzerConfigArtifact};
 
-use super::write_bodies::write_bodies;
+use super::write_bodies::{write_bodies, write_config_json};
 
 pub struct ExecuteUseCase {
     writer: FileSystemWriter,
@@ -37,6 +37,7 @@ impl ExecutorRunPort for ExecuteUseCase {
         let (bodies, fuzzer_config) = resolve_input(input)?;
 
         write_bodies(&bodies, &self.writer).await?;
+        write_config_json(&fuzzer_config, &bodies.meta.contract, &self.writer).await?;
         self.generator.generate(&bodies, &self.writer).await?;
         self.config_writer
             .write(&fuzzer_config, &self.writer)
@@ -61,7 +62,13 @@ fn resolve_input(input: ExecutorInput) -> Result<(crate::shared::models::BodiesJ
             config_updates,
         } => {
             let patched_bodies = apply_patches(existing_bodies, &bodies_updates)?;
-            let patched_config = apply_patches(existing_config, &config_updates)?;
+            // Unwrap the enum so paths like "depth"/"runs" work directly on the
+            // inner FoundryConfig, matching what the prompt shows the LLM.
+            let patched_config = match existing_config {
+                FuzzerConfigArtifact::Foundry(inner) => {
+                    FuzzerConfigArtifact::Foundry(apply_patches(inner, &config_updates)?)
+                }
+            };
             Ok((patched_bodies, patched_config))
         }
     }

@@ -10,7 +10,7 @@ use crate::orchestrator::use_cases::{
     check_termination::check_termination, initialise_session::initialise_session,
     run_round::run_round,
 };
-use crate::shared::models::{BugInfo, CoverageContext, ReportArtifacts, SessionState};
+use crate::shared::models::{BugInfo, CoverageContext, FuzzerConfigArtifact, ReportArtifacts, SessionState};
 use crate::shared::ports::{ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReaderPort, ReporterPort};
 use crate::shared::requests::{round_signal::RoundSignal, session_request::SessionRequest};
 use crate::shared::responses::{
@@ -153,13 +153,20 @@ impl RunSessionUseCase {
         let fuzz_output_path = format!(".fuzzming/{}/fuzz_output.txt", contract_name);
         let lcov_path = format!(".fuzzming/{}/lcov.info", contract_name);
         let bodies_path = format!(".fuzzming/{}/{}.bodies.json", contract_name, contract_name);
+        let config_path = format!(".fuzzming/{}/{}.config.json", contract_name, contract_name);
 
-        let (contract_context, fuzz_output, coverage_context, existing_bodies) = tokio::try_join!(
-            self.reader.get_contract_context(contract_path, false),
-            self.reader.get_fuzz_output(&fuzz_output_path),
-            self.reader.get_coverage_context(&lcov_path),
-            self.reader.get_existing_bodies(&bodies_path),
-        )?;
+        let (contract_context, fuzz_output, coverage_context, existing_bodies, existing_config) =
+            tokio::try_join!(
+                self.reader.get_contract_context(contract_path, false),
+                self.reader.get_fuzz_output(&fuzz_output_path),
+                self.reader.get_coverage_context(&lcov_path),
+                self.reader.get_existing_bodies(&bodies_path),
+                self.reader.get_existing_config(&config_path),
+            )?;
+
+        let existing_foundry_config = existing_config.and_then(|c| match c {
+            FuzzerConfigArtifact::Foundry(fc) => Some(fc),
+        });
 
         let confirmed_bugs =
             state.found_bugs.get(&contract_name).cloned().unwrap_or_default();
@@ -173,7 +180,7 @@ impl RunSessionUseCase {
             fuzz_output,
             coverage_context,
             existing_bodies,
-            existing_foundry_config: None,
+            existing_foundry_config,
             confirmed_bugs,
         })
     }

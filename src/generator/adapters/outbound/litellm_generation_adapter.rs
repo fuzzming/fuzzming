@@ -166,7 +166,7 @@ impl LiteLlmGenerationAdapter {
                     }
                     user_prompt = build_parse_repair_prompt(
                         "round generation",
-                        "mode + canonical full/patch fields",
+                        "{\"mode\":\"patch\",\"bodies_updates\":[...],\"foundry_config_updates\":[...]} — mode MUST be \"patch\", NO other top-level keys",
                         &payload,
                         &last_error,
                     );
