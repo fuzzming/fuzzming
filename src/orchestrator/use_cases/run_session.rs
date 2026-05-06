@@ -189,23 +189,20 @@ impl RunSessionUseCase {
         &self,
         contract_name: &str,
         all_bugs: &[BugInfo],
-        report: &FuzzReport,
+        _report: &FuzzReport,
         reason: &TerminationReason,
     ) -> Result<ReportArtifacts> {
         let fuzz_output_path = format!(".fuzzming/{}/fuzz_output.txt", contract_name);
+        let lcov_path = format!(".fuzzming/{}/lcov.info", contract_name);
         let fuzz_output =
             self.reader.get_fuzz_output(&fuzz_output_path).await?.unwrap_or_default();
 
         let coverage_summary = match reason {
             TerminationReason::FullCoverage | TerminationReason::Exhausted => {
-                if let Some(lcov_path) = &report.lcov_path {
-                    self.reader
-                        .get_coverage_context(&lcov_path.to_string_lossy())
-                        .await?
-                        .map(format_coverage_summary)
-                } else {
-                    None
-                }
+                self.reader
+                    .get_coverage_context(&lcov_path)
+                    .await?
+                    .map(format_coverage_summary)
             }
             _ => None,
         };
