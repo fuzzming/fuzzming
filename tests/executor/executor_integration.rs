@@ -30,7 +30,7 @@ async fn executor_generates_vault_files() -> Result<()> {
     // Solidity files go to test/fuzzming/{Contract}/ — isolated from user's test code
     let handler_src =
         std::fs::read_to_string(output_dir().join("test/fuzzming/Vault/VaultHandler.sol"))?;
-    assert!(handler_src.contains(&format!("contract {} {{", bodies.handler.contract_name)));
+    assert!(handler_src.contains(&format!("contract {} is Test {{", bodies.handler.contract_name)));
     for fn_name in bodies.handler.functions.keys() {
         assert!(handler_src.contains(&format!("function {fn_name}")));
     }
