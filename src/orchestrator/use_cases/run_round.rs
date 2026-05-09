@@ -4,9 +4,12 @@ use tracing::info;
 use crate::generator::domain::generation_response::GenerationResponse;
 use crate::shared::{
     models::{ExecutorInput, FuzzerConfigArtifact},
-    ports::{ExecutorPort, LlmEnginePort},
+    ports::{ExecutorPort, LlmEnginePort, ReporterPort},
     requests::round_signal::RoundSignal,
-    responses::llm_signal::LlmSignal,
+    responses::{
+        llm_signal::LlmSignal,
+        stage_event::{StageEvent, StageKind, StageStatus},
+    },
 };
 
 /// Runs the LLM and Executor for a single contract within a round.
@@ -16,9 +19,27 @@ pub async fn run_round(
     signal: RoundSignal,
     llm_engine: &dyn LlmEnginePort,
     executor: &dyn ExecutorPort,
+    reporter: &dyn ReporterPort,
 ) -> Result<LlmSignal> {
+    reporter
+        .emit_stage_event(StageEvent {
+            contract_name: Some(signal.contract_name.clone()),
+            round: signal.round,
+            stage: StageKind::Llm,
+            status: StageStatus::Started,
+        })
+        .await?;
     info!(contract = %signal.contract_name, round = signal.round, "LLM started");
     let mut llm_signal = llm_engine.run(signal.clone()).await?;
+
+    reporter
+        .emit_stage_event(StageEvent {
+            contract_name: Some(signal.contract_name.clone()),
+            round: signal.round,
+            stage: StageKind::Llm,
+            status: StageStatus::Finished,
+        })
+        .await?;
 
     let result = llm_signal
         .result
@@ -38,9 +59,26 @@ pub async fn run_round(
     }
 
     info!(contract = %signal.contract_name, round = signal.round, "LLM done — executor writing files");
+    reporter
+        .emit_stage_event(StageEvent {
+            contract_name: Some(signal.contract_name.clone()),
+            round: signal.round,
+            stage: StageKind::Executor,
+            status: StageStatus::Started,
+        })
+        .await?;
     let executor_input = build_executor_input(&result.response, &signal)?;
     executor.execute(executor_input).await?;
     info!(contract = %signal.contract_name, round = signal.round, "executor done");
+
+    reporter
+        .emit_stage_event(StageEvent {
+            contract_name: Some(signal.contract_name.clone()),
+            round: signal.round,
+            stage: StageKind::Executor,
+            status: StageStatus::Finished,
+        })
+        .await?;
 
     Ok(llm_signal)
 }

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 
 use crate::reporter::ports::outbound::OutputPort;
+use crate::shared::responses::stage_event::StageEvent;
 
 pub struct PrCommentOutput {
     pub github_token: String,
@@ -35,6 +36,14 @@ impl OutputPort for PrCommentOutput {
             .error_for_status()
             .context("GitHub API returned an error")?;
 
+        Ok(())
+    }
+
+    async fn write_progress(&self, _output: &str) -> Result<()> {
+        Ok(())
+    }
+
+    async fn handle_stage_event(&self, _event: StageEvent) -> Result<()> {
         Ok(())
     }
 }

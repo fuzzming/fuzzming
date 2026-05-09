@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use litellm_rs::{completion, system_message, user_message, CompletionOptions};
 use serde_json::json;
 
-use crate::generator::domain::generation_response::GenerationUsage;
+use crate::shared::models::GenerationUsage;
 use crate::generator::ports::outbound::LlmClientPort;
 
 pub struct LiteLlmClient {

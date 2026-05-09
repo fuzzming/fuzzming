@@ -1,4 +1,4 @@
-use crate::generator::domain::generation_response::GenerationUsage;
+use crate::shared::models::GenerationUsage;
 use anyhow::Result;
 use async_trait::async_trait;
 
