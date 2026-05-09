@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -10,10 +11,27 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use crate::reporter::ports::outbound::OutputPort;
 use crate::shared::responses::stage_event::{StageEvent, StageKind, StageStatus};
 
+/// Verbs that cycle on the LLM spinner — Claude-code style.
+const THINKING_VERBS: &[&str] = &[
+    "Thinking",
+    "Investigating",
+    "Analysing",
+    "Crafting",
+    "Refining",
+    "Verifying",
+];
+
+/// Per-contract spinner state.
+struct ContractProgress {
+    bar: ProgressBar,
+    /// Set to `true` to stop the background verb-rotation task.
+    cancel: Arc<AtomicBool>,
+}
+
 struct ProgressState {
-    bars: HashMap<String, ProgressBar>,
+    contracts: HashMap<String, ContractProgress>,
+    fuzzer_bar: Option<ProgressBar>,
     multi: MultiProgress,
-    header_printed: bool,
 }
 
 pub struct TerminalOutput;
@@ -30,121 +48,279 @@ impl Default for TerminalOutput {
     }
 }
 
-#[async_trait]
-impl OutputPort for TerminalOutput {
-    async fn write(&self, output: &str) -> Result<()> {
-        println!("{}", output);
-        Ok(())
-    }
-
-    async fn write_progress(&self, output: &str) -> Result<()> {
-        println!("{}", output);
-        Ok(())
-    }
-
-    async fn handle_stage_event(&self, event: StageEvent) -> Result<()> {
-        let state = progress_state();
-        let mut guard = state.lock().expect("progress lock");
-        let key = stage_key(&event);
-
-        match event.status {
-            StageStatus::Started => {
-                if !guard.header_printed {
-                    print_progress_header(&guard.multi);
-                    guard.header_printed = true;
-                }
-                let spinner = guard.multi.add(ProgressBar::new_spinner());
-                spinner.set_style(
-                    ProgressStyle::with_template("{msg}{spinner}")
-                        .unwrap()
-                        .tick_strings(&["", ".", "..", "..."]),
-                );
-                spinner.enable_steady_tick(Duration::from_millis(250));
-                spinner.set_message(stage_message(&event, false));
-                guard.bars.insert(key, spinner);
-            }
-            StageStatus::Finished => {
-                if let Some(bar) = guard.bars.remove(&key) {
-                    bar.finish_with_message(stage_message(&event, true));
-                }
-            }
-            StageStatus::Failed => {
-                if let Some(bar) = guard.bars.remove(&key) {
-                    bar.abandon_with_message(stage_message(&event, true));
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
+// ── global singleton ──────────────────────────────────────────────────────────
 
 fn progress_state() -> Arc<Mutex<ProgressState>> {
     static STATE: std::sync::OnceLock<Arc<Mutex<ProgressState>>> = std::sync::OnceLock::new();
     STATE
         .get_or_init(|| {
             Arc::new(Mutex::new(ProgressState {
-                bars: HashMap::new(),
+                contracts: HashMap::new(),
+                fuzzer_bar: None,
                 multi: MultiProgress::new(),
-                header_printed: false,
             }))
         })
         .clone()
 }
 
-fn stage_key(event: &StageEvent) -> String {
-    let contract = event.contract_name.as_deref().unwrap_or("all");
-    format!("{}:{}:{:?}", event.round, contract, event.stage)
+// ── message helpers ───────────────────────────────────────────────────────────
+
+fn contract_label(name: &str) -> String {
+    // Truncate long names, then left-pad to a fixed width for alignment.
+    let s = if name.len() > 20 { &name[..20] } else { name };
+    format!("{:<22}", s)
 }
 
-fn stage_message(event: &StageEvent, finished: bool) -> String {
-    let contract_style = Style::new().fg(Color::Color256(99)).bold();
-    let stage_style = Style::new().fg(Color::Color256(75)).bold();
-    let ok_style = Style::new().fg(Color::Green).bold();
-    let failed_style = Style::new().fg(Color::Red).bold();
-    let running_style = Style::new().fg(Color::Color256(245));
+fn spinner_style() -> ProgressStyle {
+    ProgressStyle::with_template("{msg}{spinner}")
+        .unwrap()
+        .tick_strings(&["", ".", "..", "..."])
+}
 
-    let stage = match event.stage {
-        StageKind::Llm => "LLM is thinking",
-        StageKind::Executor => "Executor is running",
-        StageKind::Fuzzer => "Fuzzer is running",
-    };
-    let contract = event.contract_name.as_deref().unwrap_or("all");
-    let contract_cell = format!("{:<24}", contract);
-    let stage_cell = format!("{:<18}", stage);
+/// Plain style used when finishing a bar — no trailing spinner dots.
+fn finish_style() -> ProgressStyle {
+    ProgressStyle::with_template("{msg}").unwrap()
+}
 
-    let status = if finished {
-        ok_style.apply_to("OK")
-    } else {
-        running_style.apply_to("RUNNING")
-    };
-
-    if matches!(event.status, StageStatus::Failed) {
-        return format!(
-            "{} | {} | {}",
-            contract_style.apply_to(contract_cell),
-            stage_style.apply_to(stage_cell),
-            failed_style.apply_to("FAILED")
-        );
-    }
-
+fn msg_active(label: &str, verb: &str) -> String {
+    let diamond = Style::new().fg(Color::Color256(99)).bold();
+    let name_st = Style::new().fg(Color::Color256(147)).bold();
+    let verb_st = Style::new().fg(Color::Color256(75));
     format!(
-        "{} | {} | {}",
-        contract_style.apply_to(contract_cell),
-        stage_style.apply_to(stage_cell),
-        status
+        "  {}  {}  {}",
+        diamond.apply_to("◆"),
+        name_st.apply_to(label),
+        verb_st.apply_to(verb),
     )
 }
 
-fn print_progress_header(multi: &MultiProgress) {
-    let header_style = Style::new().fg(Color::Color256(63)).bold();
-    let muted = Style::new().fg(Color::Color256(245));
-    let header = format!("{:<24} | {:<18} | STATUS", "CONTRACT", "STAGE");
-    let divider = "----------------------------------------------";
+fn msg_writing(label: &str) -> String {
+    let diamond = Style::new().fg(Color::Color256(99)).bold();
+    let name_st = Style::new().fg(Color::Color256(147)).bold();
+    let verb_st = Style::new().fg(Color::Color256(244));
+    format!(
+        "  {}  {}  {}",
+        diamond.apply_to("◆"),
+        name_st.apply_to(label),
+        verb_st.apply_to("Writing files"),
+    )
+}
 
-    multi.println("").ok();
-    multi
-        .println(header_style.apply_to(header).to_string())
-        .ok();
-    multi.println(muted.apply_to(divider).to_string()).ok();
+fn msg_done(label: &str, ok: bool) -> String {
+    let (icon, icon_st, text_st, text) = if ok {
+        (
+            "✓",
+            Style::new().fg(Color::Green).bold(),
+            Style::new().fg(Color::Color256(245)),
+            "Done",
+        )
+    } else {
+        (
+            "✗",
+            Style::new().fg(Color::Red).bold(),
+            Style::new().fg(Color::Red),
+            "Failed",
+        )
+    };
+    let name_st = Style::new().fg(Color::Color256(147)).bold();
+    format!(
+        "  {}  {}  {}",
+        icon_st.apply_to(icon),
+        name_st.apply_to(label),
+        text_st.apply_to(text),
+    )
+}
+
+fn msg_fuzzer_active() -> String {
+    let bolt = Style::new().fg(Color::Color256(220)).bold();
+    let txt = Style::new().fg(Color::Color256(75));
+    format!("  {}  {}", bolt.apply_to("⚡"), txt.apply_to("Fuzzing all contracts"))
+}
+
+fn msg_fuzzer_done(ok: bool) -> String {
+    if ok {
+        let st = Style::new().fg(Color::Green).bold();
+        format!("  {}  Fuzzer complete", st.apply_to("✓"))
+    } else {
+        let st = Style::new().fg(Color::Red).bold();
+        format!("  {}  Fuzzer failed", st.apply_to("✗"))
+    }
+}
+
+// ── OutputPort impl ───────────────────────────────────────────────────────────
+
+#[async_trait]
+impl OutputPort for TerminalOutput {
+    async fn write(&self, output: &str) -> Result<()> {
+        let state = progress_state();
+        let guard = state.lock().expect("progress lock");
+        // Use multi.println so spinners are not disturbed.
+        guard.multi.println(output).ok();
+        Ok(())
+    }
+
+    async fn write_progress(&self, output: &str) -> Result<()> {
+        let state = progress_state();
+        let guard = state.lock().expect("progress lock");
+        guard.multi.println(output).ok();
+        Ok(())
+    }
+
+    async fn handle_stage_event(&self, event: StageEvent) -> Result<()> {
+        let state = progress_state();
+
+        match (&event.stage, &event.status) {
+            // ── LLM Started → new per-contract spinner + verb rotation ──────
+            (StageKind::Llm, StageStatus::Started) => {
+                let contract = match &event.contract_name {
+                    Some(c) => c.clone(),
+                    None => return Ok(()),
+                };
+
+                let multi = {
+                    let g = state.lock().expect("progress lock");
+                    g.multi.clone()
+                };
+
+                let spinner = multi.add(ProgressBar::new_spinner());
+                spinner.set_style(spinner_style());
+                // Slow tick: each dot frame lasts 600 ms → full cycle ≈ 2.4 s
+                spinner.enable_steady_tick(Duration::from_millis(600));
+
+                let label = contract_label(&contract);
+                spinner.set_message(msg_active(&label, THINKING_VERBS[0]));
+
+                // Background task: rotate verbs every 2.2 s
+                let cancel = Arc::new(AtomicBool::new(false));
+                let cancel_bg = cancel.clone();
+                let bar_bg = spinner.clone();
+                let label_bg = label.clone();
+                tokio::spawn(async move {
+                    let mut i = 0usize;
+                    loop {
+                        tokio::time::sleep(Duration::from_millis(2200)).await;
+                        if cancel_bg.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        i += 1;
+                        let verb = THINKING_VERBS[i % THINKING_VERBS.len()];
+                        bar_bg.set_message(msg_active(&label_bg, verb));
+                    }
+                });
+
+                let mut g = state.lock().expect("progress lock");
+                g.contracts.insert(contract, ContractProgress { bar: spinner, cancel });
+            }
+
+            // ── LLM Done → stop verb rotation, show "Writing files" ─────────
+            (StageKind::Llm, StageStatus::Finished) | (StageKind::Llm, StageStatus::Failed) => {
+                let contract = match &event.contract_name {
+                    Some(c) => c.clone(),
+                    None => return Ok(()),
+                };
+                let mut g = state.lock().expect("progress lock");
+                if let Some(cp) = g.contracts.get_mut(&contract) {
+                    cp.cancel.store(true, Ordering::Relaxed);
+                    let label = contract_label(&contract);
+                    cp.bar.set_message(msg_writing(&label));
+                }
+            }
+
+            // ── Executor Started → spinner already shows "Writing files" ────
+            (StageKind::Executor, StageStatus::Started) => {}
+
+            // ── Executor Done → finish the spinner ──────────────────────────
+            (StageKind::Executor, StageStatus::Finished) => {
+                let contract = match &event.contract_name {
+                    Some(c) => c.clone(),
+                    None => return Ok(()),
+                };
+                let mut g = state.lock().expect("progress lock");
+                if let Some(cp) = g.contracts.remove(&contract) {
+                    let label = contract_label(&contract);
+                    cp.bar.set_style(finish_style());
+                    cp.bar.finish_with_message(msg_done(&label, true));
+                }
+            }
+
+            (StageKind::Executor, StageStatus::Failed) => {
+                let contract = match &event.contract_name {
+                    Some(c) => c.clone(),
+                    None => return Ok(()),
+                };
+                let mut g = state.lock().expect("progress lock");
+                if let Some(cp) = g.contracts.remove(&contract) {
+                    let label = contract_label(&contract);
+                    cp.bar.set_style(finish_style());
+                    cp.bar.abandon_with_message(msg_done(&label, false));
+                }
+            }
+
+            // ── Fuzzer Started → separator + single spinner at the bottom ────
+            (StageKind::Fuzzer, StageStatus::Started) => {
+                let multi = {
+                    let g = state.lock().expect("progress lock");
+                    g.multi.clone()
+                };
+
+                // Clear visual boundary between per-contract work and fuzzer phase.
+                let sep_st = Style::new().fg(Color::Color256(240));
+                let phase_st = Style::new().fg(Color::Color256(220)).bold();
+                multi.println("").ok();
+                multi
+                    .println(
+                        sep_st
+                            .apply_to("  ────────────────────────────────────────")
+                            .to_string(),
+                    )
+                    .ok();
+                multi
+                    .println(
+                        format!(
+                            "  {}  {}",
+                            phase_st.apply_to("⚡"),
+                            Style::new()
+                                .fg(Color::Color256(75))
+                                .bold()
+                                .apply_to("All contracts ready — running Foundry fuzzer")
+                        )
+                    )
+                    .ok();
+                multi
+                    .println(
+                        sep_st
+                            .apply_to("  ────────────────────────────────────────")
+                            .to_string(),
+                    )
+                    .ok();
+
+                let spinner = multi.add(ProgressBar::new_spinner());
+                spinner.set_style(spinner_style());
+                spinner.enable_steady_tick(Duration::from_millis(600));
+                spinner.set_message(msg_fuzzer_active());
+
+                let mut g = state.lock().expect("progress lock");
+                g.fuzzer_bar = Some(spinner);
+            }
+
+            (StageKind::Fuzzer, StageStatus::Finished) => {
+                let mut g = state.lock().expect("progress lock");
+                if let Some(bar) = g.fuzzer_bar.take() {
+                    bar.set_style(finish_style());
+                    bar.finish_with_message(msg_fuzzer_done(true));
+                }
+                g.multi.println("").ok();
+            }
+
+            (StageKind::Fuzzer, StageStatus::Failed) => {
+                let mut g = state.lock().expect("progress lock");
+                if let Some(bar) = g.fuzzer_bar.take() {
+                    bar.set_style(finish_style());
+                    bar.abandon_with_message(msg_fuzzer_done(false));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
