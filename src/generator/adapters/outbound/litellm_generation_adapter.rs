@@ -10,9 +10,8 @@ use super::response_parser::{
     build_parse_repair_prompt, extract_json_payload, parse_generation_response,
 };
 use super::stages::{AnalysisStage, BodiesStage, ConfigStage};
-use crate::generator::domain::generation_response::{
-    GenerationResponse, GenerationResult, GenerationUsage,
-};
+use crate::generator::domain::generation_response::{GenerationResponse, GenerationResult};
+use crate::shared::models::GenerationUsage;
 use crate::generator::ports::outbound::{LlmClientPort, GenerationPort, GenerationRequest};
 
 const MAX_ATTEMPTS: usize = 3;

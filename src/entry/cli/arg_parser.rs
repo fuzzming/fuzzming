@@ -1,33 +1,101 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "fuzzming", about = "Solidity smart contract fuzzing assistant")]
+#[command(
+    name = "fuzzming",
+    about = "AI-powered Solidity smart contract fuzzer",
+    long_about = "FuzzMing — AI-powered Solidity smart contract fuzzer.\n\
+\n\
+Point it at a Foundry project and it will:\n\
+  • Analyse your contracts with an LLM\n\
+  • Auto-generate invariant fuzz tests\n\
+  • Run forge test and iterate until it finds bugs or coverage plateaus\n\
+\n\
+SUBCOMMANDS\n\
+  guide                       Show the full CLI reference and examples\n\
+  report [--workspace-root]   Print a summary of the last run (coverage, output)\n\
+  config [--reset]            View or clear saved fuzzming.config.txt\n\
+\n\
+Run \"fuzzming guide\" for detailed usage, flags, and examples."
+)]
 pub struct CliArgs {
+    /// Optional subcommands (guide | report | config)
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// Paths to target Solidity contracts
-    #[arg(short, long, num_args = 1..)]
+    #[arg(short, long, num_args = 0..)]
     pub targets: Vec<String>,
 
     /// Maximum number of fuzzing rounds
-    #[arg(short, long, default_value_t = 10)]
-    pub max_rounds: u32,
+    #[arg(short, long)]
+    pub max_rounds: Option<u32>,
 
     /// LLM model identifier, e.g. groq/llama-3.3-70b-versatile
     #[arg(long, env = "LLM_MODEL")]
-    pub model: String,
+    pub model: Option<String>,
 
     /// LLM API Key
     #[arg(long, env = "LLM_KEY")]
-    pub llm_key: String,
+    pub llm_key: Option<String>,
 
     /// Run in CI mode (outputs structured for CI/CD pipelines)
     #[arg(long, default_value_t = false)]
     pub ci_mode: bool,
 
+    /// Enable verbose logs
+    #[arg(long, default_value_t = false)]
+    pub verbose: bool,
+
     /// Foundry project root (defaults to current directory)
-    #[arg(long, default_value = ".")]
-    pub workspace_root: PathBuf,
+    #[arg(long)]
+    pub workspace_root: Option<PathBuf>,
+
+    /// Force interactive prompts even when flags are provided
+    #[arg(long, default_value_t = false)]
+    pub interactive: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Show the full CLI reference, all flags, subcommands, and usage examples
+    ///
+    /// Prints a structured guide to stdout — useful as a quick reference
+    /// without leaving the terminal.  Equivalent to the online docs.
+    Guide,
+
+    /// Print a summary report from a previous fuzzming run
+    ///
+    /// Reads the .fuzzming/<Contract>/ artifact directories that were written
+    /// during the last session and prints per-contract coverage percentages
+    /// and the tail of each contract's forge fuzz output.
+    ///
+    /// Defaults to the current directory; use --workspace-root to point at a
+    /// different Foundry project.
+    Report {
+        /// Path to the Foundry project that was fuzzed (defaults to ".")
+        #[arg(
+            long,
+            value_name = "DIR",
+            help = "Foundry project root to read .fuzzming/ artifacts from (default: \".\")]"
+        )]
+        workspace_root: Option<PathBuf>,
+    },
+
+    /// View or reset the saved fuzzming.config.txt
+    ///
+    /// Without flags: prints every key in fuzzming.config.txt.  The LLM API
+    /// key is always masked (shown as ****) for security.
+    ///
+    /// With --reset: deletes fuzzming.config.txt so the next `fuzzming` run
+    /// walks you through the interactive setup again.
+    Config {
+        /// Delete fuzzming.config.txt — the next run will re-prompt for all settings
+        #[arg(long, default_value_t = false)]
+        reset: bool,
+    },
 }
 
 pub fn parse_args() -> CliArgs {

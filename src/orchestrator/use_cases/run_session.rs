@@ -15,7 +15,9 @@ use crate::shared::ports::{ExecutorPort, FuzzerEnginePort, LlmEnginePort, Reader
 use crate::shared::requests::{round_signal::RoundSignal, session_request::SessionRequest};
 use crate::shared::responses::{
     fuzz_report::FuzzReport,
+    round_usage::RoundUsage,
     session_outcome::{SessionOutcome, TerminationReason},
+    stage_event::{StageEvent, StageKind, StageStatus},
 };
 
 pub struct RunSessionUseCase {
@@ -62,17 +64,49 @@ impl OrchestratorRunPort for RunSessionUseCase {
             .await?;
 
             // 2. LLM + Executor for all contracts in parallel.
-            try_join_all(
+            let llm_signals = try_join_all(
                 signals.iter().map(|signal| {
-                    run_round(signal.clone(), self.llm_engine.as_ref(), self.executor.as_ref())
+                    run_round(
+                        signal.clone(),
+                        self.llm_engine.as_ref(),
+                        self.executor.as_ref(),
+                        self.reporter.as_ref(),
+                    )
                 }),
             )
             .await?;
 
+            for (signal, llm_signal) in signals.iter().zip(llm_signals.iter()) {
+                if let Some(result) = llm_signal.result.as_ref() {
+                    let usage = RoundUsage {
+                        contract_name: signal.contract_name.clone(),
+                        round: state.current_round,
+                        usage: result.usage.clone(),
+                    };
+                    self.reporter.emit_round_usage(usage).await?;
+                }
+            }
+
             // 3. One forge run for all contracts.
+            self.reporter
+                .emit_stage_event(StageEvent {
+                    contract_name: None,
+                    round: state.current_round,
+                    stage: StageKind::Fuzzer,
+                    status: StageStatus::Started,
+                })
+                .await?;
             info!(round = state.current_round, "forge run started");
             let reports: Vec<FuzzReport> = self.fuzzer_engine.run(signals.clone()).await?;
             info!(round = state.current_round, "forge run finished");
+            self.reporter
+                .emit_stage_event(StageEvent {
+                    contract_name: None,
+                    round: state.current_round,
+                    stage: StageKind::Fuzzer,
+                    status: StageStatus::Finished,
+                })
+                .await?;
 
             // Decrement before termination check so the last round triggers Exhausted on Pass.
             state.rounds_remaining = state.rounds_remaining.saturating_sub(1);
