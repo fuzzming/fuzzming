@@ -49,6 +49,7 @@ impl CliRunner {
             workspace_root: resolved.workspace_root.clone(),
             max_tokens: resolved.max_tokens,
             llm_timeout_secs: resolved.llm_timeout_secs,
+            full_coverage_rounds: resolved.full_coverage_rounds,
         };
         let request = SessionRequest {
             target_paths: resolved.targets.clone(),

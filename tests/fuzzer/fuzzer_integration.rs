@@ -28,6 +28,7 @@ fn signal(workspace: PathBuf) -> RoundSignal {
             workspace_root: workspace,
             max_tokens: 16_384,
             llm_timeout_secs: 120,
+            full_coverage_rounds: 2,
         },
         contract_name: "Vault".to_string(),
         contract_path: "src/Vault.sol".to_string(),

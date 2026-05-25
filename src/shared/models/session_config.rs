@@ -34,4 +34,6 @@ pub struct SessionConfig {
     pub max_tokens: u32,
     /// Per-call LLM timeout in seconds.
     pub llm_timeout_secs: u64,
+    /// Stop a contract session after this many consecutive rounds with 100% coverage.
+    pub full_coverage_rounds: u32,
 }

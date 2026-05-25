@@ -14,10 +14,11 @@ use crate::shared::models::{BugInfo, CoverageContext, FuzzerConfigArtifact, Repo
 use crate::shared::ports::{ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReaderPort, ReporterPort};
 use crate::shared::requests::{round_signal::RoundSignal, session_request::SessionRequest};
 use crate::shared::responses::{
-    fuzz_report::FuzzReport,
+    fuzz_report::{FuzzOutcome, FuzzReport},
     round_usage::RoundUsage,
     session_outcome::{SessionOutcome, TerminationReason},
     stage_event::{StageEvent, StageKind, StageStatus},
+    termination_decision::TerminationDecision,
 };
 
 pub struct RunSessionUseCase {
@@ -125,6 +126,13 @@ impl OrchestratorRunPort for RunSessionUseCase {
                 }
 
                 let decision = check_termination(report, &state);
+                let decision = if !decision.terminate {
+                    self.check_full_coverage_streak(&signal.contract_name, report, &mut state).await?
+                        .map(|reason| TerminationDecision { terminate: true, reason: Some(reason) })
+                        .unwrap_or(decision)
+                } else {
+                    decision
+                };
 
                 if decision.terminate {
                     let reason = decision.reason.ok_or_else(|| {
@@ -257,6 +265,46 @@ impl RunSessionUseCase {
             .collect();
 
         Ok(ReportArtifacts { fuzz_output, coverage_summary, call_sequences })
+    }
+
+    async fn check_full_coverage_streak(
+        &self,
+        contract_name: &str,
+        report: &FuzzReport,
+        state: &mut SessionState,
+    ) -> Result<Option<TerminationReason>> {
+        if !matches!(report.outcome, FuzzOutcome::Pass) {
+            state.full_coverage_streak.remove(contract_name);
+            return Ok(None);
+        }
+
+        let lcov_path = match &report.lcov_path {
+            Some(p) => p.to_string_lossy().to_string(),
+            None => return Ok(None),
+        };
+
+        let ctx = match self.reader.get_coverage_context(&lcov_path).await? {
+            Some(ctx) => ctx,
+            None => return Ok(None),
+        };
+
+        let full = ctx.line_found > 0
+            && ctx.line_hit == ctx.line_found
+            && (ctx.branch_found == 0 || ctx.branch_hit == ctx.branch_found)
+            && (ctx.function_found == 0 || ctx.function_hit == ctx.function_found);
+
+        if full {
+            let streak = state.full_coverage_streak.entry(contract_name.to_string()).or_insert(0);
+            *streak += 1;
+            info!(contract = %contract_name, streak = *streak, threshold = state.config.full_coverage_rounds, "full coverage streak");
+            if *streak >= state.config.full_coverage_rounds {
+                return Ok(Some(TerminationReason::FullCoverage));
+            }
+        } else {
+            state.full_coverage_streak.remove(contract_name);
+        }
+
+        Ok(None)
     }
 }
 

@@ -11,4 +11,6 @@ pub struct SessionState {
     pub config: SessionConfig,
     /// All bugs accumulated across every round, keyed by contract name.
     pub found_bugs: HashMap<String, Vec<BugInfo>>,
+    /// Number of consecutive rounds with 100% coverage, keyed by contract name.
+    pub full_coverage_streak: HashMap<String, u32>,
 }

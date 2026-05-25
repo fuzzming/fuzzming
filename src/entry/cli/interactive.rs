@@ -29,6 +29,7 @@ pub struct ResolvedCliConfig {
     pub verbose: bool,
     pub max_tokens: u32,
     pub llm_timeout_secs: u64,
+    pub full_coverage_rounds: u32,
 }
 
 pub fn resolve_cli_config(args: &CliArgs) -> Result<ResolvedCliConfig> {
@@ -84,6 +85,7 @@ fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliC
         verbose: args.verbose,
         max_tokens: args.max_tokens,
         llm_timeout_secs: args.llm_timeout_secs,
+        full_coverage_rounds: args.full_coverage_rounds,
     })
 }
 
@@ -195,6 +197,7 @@ fn prompt_for_config(
         verbose: args.verbose,
         max_tokens: args.max_tokens,
         llm_timeout_secs: args.llm_timeout_secs,
+        full_coverage_rounds: args.full_coverage_rounds,
     };
 
     save_config(config_path, &resolved)?;

@@ -61,6 +61,10 @@ pub struct CliArgs {
     /// Per-call LLM timeout in seconds (default: 120)
     #[arg(long, default_value_t = 120)]
     pub llm_timeout_secs: u64,
+
+    /// Stop a contract after this many consecutive rounds with 100% coverage (default: 2)
+    #[arg(long, default_value_t = 2)]
+    pub full_coverage_rounds: u32,
 }
 
 #[derive(Debug, Subcommand)]
