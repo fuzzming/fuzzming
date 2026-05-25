@@ -41,10 +41,6 @@ pub struct CliArgs {
     #[arg(long, env = "LLM_KEY")]
     pub llm_key: Option<String>,
 
-    /// Run in CI mode (outputs structured for CI/CD pipelines)
-    #[arg(long, default_value_t = false)]
-    pub ci_mode: bool,
-
     /// Enable verbose logs
     #[arg(long, default_value_t = false)]
     pub verbose: bool,

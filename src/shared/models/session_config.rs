@@ -2,12 +2,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OutputFormat {
-    Terminal,
-    Ci,
-}
-
 /// Source language of the target project.
 /// Controls which CodeGeneratorPort implementation is selected at composition time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,8 +26,6 @@ pub enum Fuzzer {
 pub struct SessionConfig {
     pub model: String,
     pub llm_key: String,
-    pub output_format: OutputFormat,
-    pub ci_mode: bool,
     pub language: Language,
     pub fuzzer: Fuzzer,
     /// Absolute path to the Foundry project root — all forge commands run here.

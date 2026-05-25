@@ -9,7 +9,7 @@ use crate::composition::composition_root::CompositionRoot;
 use crate::entry::cli::arg_parser::{parse_args, Command};
 use crate::entry::cli::interactive::resolve_cli_config;
 use crate::entry::cli::ui::CliUi;
-use crate::shared::models::{Fuzzer, Language, OutputFormat, SessionConfig};
+use crate::shared::models::{Fuzzer, Language, SessionConfig};
 use crate::shared::requests::session_request::SessionRequest;
 use crate::shared::responses::session_outcome::TerminationReason;
 
@@ -41,17 +41,9 @@ impl CliRunner {
 
         let resolved = resolve_cli_config(&args)?;
 
-        let output_format = if resolved.ci_mode {
-            OutputFormat::Ci
-        } else {
-            OutputFormat::Terminal
-        };
-
         let config = SessionConfig {
             model: resolved.model.clone(),
             llm_key: resolved.llm_key.clone(),
-            output_format: output_format.clone(),
-            ci_mode: resolved.ci_mode,
             language: Language::Solidity,
             fuzzer: Fuzzer::Foundry,
             workspace_root: resolved.workspace_root.clone(),
@@ -60,8 +52,6 @@ impl CliRunner {
             target_paths: resolved.targets.clone(),
             max_rounds: resolved.max_rounds,
             config: config.clone(),
-            output_format,
-            ci_mode: resolved.ci_mode,
         };
         let orchestrator = CompositionRoot::build(config);
 
