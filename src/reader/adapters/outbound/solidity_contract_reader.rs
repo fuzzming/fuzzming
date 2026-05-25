@@ -1,8 +1,22 @@
-use crate::reader::adapters::outbound::FileSystemReader;
-use crate::reader::ports::outbound::ContractReaderPort;
+use std::sync::{Arc, OnceLock};
+
 use anyhow::Result;
 use async_trait::async_trait;
-use std::sync::Arc;
+use regex::Regex;
+
+use crate::reader::adapters::outbound::FileSystemReader;
+use crate::reader::ports::outbound::ContractReaderPort;
+
+static BLOCK_COMMENT_RE: OnceLock<Regex> = OnceLock::new();
+static LINE_COMMENT_RE: OnceLock<Regex> = OnceLock::new();
+
+fn block_comment_re() -> &'static Regex {
+    BLOCK_COMMENT_RE.get_or_init(|| Regex::new(r"(?s)/\*.*?\*/").unwrap())
+}
+
+fn line_comment_re() -> &'static Regex {
+    LINE_COMMENT_RE.get_or_init(|| Regex::new(r"//.*").unwrap())
+}
 
 pub struct SolidityContractReader {
     reader: Arc<FileSystemReader>,
@@ -26,11 +40,8 @@ impl ContractReaderPort for SolidityContractReader {
         let mut source = filtered.join("\n");
 
         if !include_comments {
-            let block_re = regex::Regex::new(r"(?s)/\*.*?\*/").unwrap();
-            source = block_re.replace_all(&source, "").to_string();
-
-            let line_re = regex::Regex::new(r"//.*").unwrap();
-            source = line_re.replace_all(&source, "").to_string();
+            source = block_comment_re().replace_all(&source, "").to_string();
+            source = line_comment_re().replace_all(&source, "").to_string();
 
             source = source
                 .lines()
