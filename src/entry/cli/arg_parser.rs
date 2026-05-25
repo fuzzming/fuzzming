@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(
     name = "fuzzming",
+    version,
     about = "AI-powered Solidity smart contract fuzzer",
     long_about = "FuzzMing — AI-powered Solidity smart contract fuzzer.\n\
 \n\
@@ -48,6 +49,10 @@ pub struct CliArgs {
     /// Foundry project root (defaults to current directory)
     #[arg(long)]
     pub workspace_root: Option<PathBuf>,
+
+    /// Maximum tokens the LLM may generate per call (default: 16384)
+    #[arg(long, default_value_t = 16_384)]
+    pub max_tokens: u32,
 
     /// Force interactive prompts even when flags are provided
     #[arg(long, default_value_t = false)]

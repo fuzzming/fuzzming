@@ -27,6 +27,7 @@ pub struct ResolvedCliConfig {
     pub llm_key: String,
     pub workspace_root: PathBuf,
     pub verbose: bool,
+    pub max_tokens: u32,
 }
 
 pub fn resolve_cli_config(args: &CliArgs) -> Result<ResolvedCliConfig> {
@@ -80,6 +81,7 @@ fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliC
         llm_key,
         workspace_root,
         verbose: args.verbose,
+        max_tokens: args.max_tokens,
     })
 }
 
@@ -189,10 +191,12 @@ fn prompt_for_config(
         llm_key,
         workspace_root,
         verbose: args.verbose,
+        max_tokens: args.max_tokens,
     };
 
     save_config(config_path, &resolved)?;
     ui.success("Saved fuzzming.config.txt");
+    ui.warn("fuzzming.config.txt contains your API key — make sure it is gitignored");
     println!();
 
     Ok(resolved)
@@ -247,6 +251,31 @@ fn save_config(path: &Path, resolved: &ResolvedCliConfig) -> Result<()> {
     );
 
     fs::write(path, content)?;
+    ensure_gitignored(path)?;
+    Ok(())
+}
+
+fn ensure_gitignored(config_path: &Path) -> Result<()> {
+    let dir = config_path.parent().unwrap_or(Path::new("."));
+    let gitignore_path = dir.join(".gitignore");
+    let entry = CONFIG_FILE_NAME.to_string();
+
+    let already_ignored = if gitignore_path.exists() {
+        let contents = fs::read_to_string(&gitignore_path)?;
+        contents.lines().any(|l| l.trim() == entry)
+    } else {
+        false
+    };
+
+    if !already_ignored {
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&gitignore_path)?;
+        use std::io::Write;
+        writeln!(file, "{}", entry)?;
+    }
+
     Ok(())
 }
 

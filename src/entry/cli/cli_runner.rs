@@ -47,6 +47,7 @@ impl CliRunner {
             language: Language::Solidity,
             fuzzer: Fuzzer::Foundry,
             workspace_root: resolved.workspace_root.clone(),
+            max_tokens: resolved.max_tokens,
         };
         let request = SessionRequest {
             target_paths: resolved.targets.clone(),
