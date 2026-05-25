@@ -30,7 +30,6 @@ impl CliUi {
                                                                                     
                                                                                     ";
         println!("{}", banner_style.apply_to(banner));
-        println!("{}", self.muted.apply_to("Interactive configuration"));
         println!();
     }
 

@@ -34,11 +34,7 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     for var in &h.state_vars {
         out.push(format!("    {}", var));
     }
-    out.push(String::new());
-
-    for ghost in &h.ghost_vars {
-        out.push(format!("    {}", ghost));
-    }
+    // ghost_vars is LLM metadata (names only) — declarations already live in state_vars.
     out.push(String::new());
 
     let sig = h.constructor_signature.trim().trim_end_matches('{').trim_end();
@@ -49,7 +45,19 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     out.push("    }".into());
     out.push(String::new());
 
-    for fn_body in h.functions.values() {
+    // Public arrays auto-generate a getter with the same name. Skip any hand-written
+    // function that would conflict with one of those getters.
+    let auto_getters: std::collections::HashSet<String> = h
+        .state_vars
+        .iter()
+        .filter(|v| v.contains("[]") && v.contains("public"))
+        .filter_map(|v| v.trim_end_matches(';').split_whitespace().last().map(str::to_string))
+        .collect();
+
+    for (name, fn_body) in &h.functions {
+        if auto_getters.contains(name) {
+            continue;
+        }
         out.push(fn_body.clone());
         out.push(String::new());
     }

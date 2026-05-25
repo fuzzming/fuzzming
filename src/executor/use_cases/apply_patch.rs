@@ -22,8 +22,8 @@ where
     for update in updates {
         apply_update(&mut root, &update.path, &update.op, &update.value).with_context(|| {
             format!(
-                "{:?} at \"{}\" (reason: {})",
-                update.op, update.path, update.reason
+                "LLM patch failed: {} (op={:?}, path=\"{}\")",
+                update.reason, update.op, update.path
             )
         })?;
     }
@@ -45,9 +45,7 @@ fn apply_update(root: &mut Value, path: &str, op: &JsonPatchOp, new_val: &Value)
     match op {
         JsonPatchOp::Add => match parent {
             Value::Object(map) => {
-                if map.contains_key(*last) {
-                    bail!("key '{}' already exists", last);
-                }
+                // Treat Add as upsert: LLMs sometimes send Add for keys that already exist.
                 map.insert(last.to_string(), new_val.clone());
             }
             Value::Array(arr) => {
@@ -467,18 +465,18 @@ mod tests {
     }
 
     #[test]
-    fn error_on_add_duplicate_key() {
-        let result = apply_patches(
+    fn add_existing_key_upserts() {
+        // Add is treated as upsert so LLM can use Add even when the key already exists.
+        let patched = apply_patches(
             sample_bodies(),
             &[upd(
                 JsonPatchOp::Add,
                 "handler.functions.deposit",
-                json!("// dupe"),
+                json!("// updated deposit"),
             )],
-        );
-        assert!(result.is_err());
-        let msg = format!("{:#}", result.unwrap_err());
-        assert!(msg.contains("already exists"), "unexpected error: {}", msg);
+        )
+        .unwrap();
+        assert_eq!(patched.handler.functions["deposit"], "// updated deposit");
     }
 
     #[test]

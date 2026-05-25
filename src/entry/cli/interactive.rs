@@ -17,6 +17,9 @@ struct ConfigFile {
     model: Option<String>,
     llm_key: Option<String>,
     workspace_root: Option<PathBuf>,
+    max_tokens: Option<u32>,
+    llm_timeout_secs: Option<u64>,
+    full_coverage_rounds: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,9 +86,9 @@ fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliC
         llm_key,
         workspace_root,
         verbose: args.verbose,
-        max_tokens: args.max_tokens,
-        llm_timeout_secs: args.llm_timeout_secs,
-        full_coverage_rounds: args.full_coverage_rounds,
+        max_tokens: stored.max_tokens.unwrap_or(args.max_tokens),
+        llm_timeout_secs: stored.llm_timeout_secs.unwrap_or(args.llm_timeout_secs),
+        full_coverage_rounds: stored.full_coverage_rounds.unwrap_or(args.full_coverage_rounds),
     })
 }
 
@@ -95,8 +98,6 @@ fn prompt_for_config(
     config_path: &Path,
 ) -> Result<ResolvedCliConfig> {
     let ui = CliUi::new();
-    ui.banner();
-
     ui.divider();
     let default_workspace = args
         .workspace_root
@@ -188,6 +189,24 @@ fn prompt_for_config(
         .with_initial_text(max_rounds_default.to_string())
         .interact_text()?;
 
+    ui.divider();
+    let llm_timeout_secs = Input::<u64>::new()
+        .with_prompt(ui.question("LLM timeout (seconds)"))
+        .with_initial_text(stored.llm_timeout_secs.unwrap_or(args.llm_timeout_secs).to_string())
+        .interact_text()?;
+
+    ui.divider();
+    let max_tokens = Input::<u32>::new()
+        .with_prompt(ui.question("Max tokens per LLM call"))
+        .with_initial_text(stored.max_tokens.unwrap_or(args.max_tokens).to_string())
+        .interact_text()?;
+
+    ui.divider();
+    let full_coverage_rounds = Input::<u32>::new()
+        .with_prompt(ui.question("Stop after N consecutive rounds at 100% coverage"))
+        .with_initial_text(stored.full_coverage_rounds.unwrap_or(args.full_coverage_rounds).to_string())
+        .interact_text()?;
+
     let resolved = ResolvedCliConfig {
         targets,
         max_rounds,
@@ -195,9 +214,9 @@ fn prompt_for_config(
         llm_key,
         workspace_root,
         verbose: args.verbose,
-        max_tokens: args.max_tokens,
-        llm_timeout_secs: args.llm_timeout_secs,
-        full_coverage_rounds: args.full_coverage_rounds,
+        max_tokens,
+        llm_timeout_secs,
+        full_coverage_rounds,
     };
 
     save_config(config_path, &resolved)?;
@@ -239,6 +258,9 @@ fn load_config(path: &Path) -> Result<ConfigFile> {
             "model" => config.model = Some(value.to_string()),
             "llm_key" => config.llm_key = Some(value.to_string()),
             "workspace_root" => config.workspace_root = Some(PathBuf::from(value)),
+            "max_tokens" => config.max_tokens = value.parse::<u32>().ok(),
+            "llm_timeout_secs" => config.llm_timeout_secs = value.parse::<u64>().ok(),
+            "full_coverage_rounds" => config.full_coverage_rounds = value.parse::<u32>().ok(),
             _ => {}
         }
     }
@@ -248,12 +270,15 @@ fn load_config(path: &Path) -> Result<ConfigFile> {
 
 fn save_config(path: &Path, resolved: &ResolvedCliConfig) -> Result<()> {
     let content = format!(
-        "targets={}\nmax_rounds={}\nmodel={}\nllm_key={}\nworkspace_root={}\n",
+        "targets={}\nmax_rounds={}\nmodel={}\nllm_key={}\nworkspace_root={}\nmax_tokens={}\nllm_timeout_secs={}\nfull_coverage_rounds={}\n",
         resolved.targets.join(","),
         resolved.max_rounds,
         resolved.model,
         resolved.llm_key,
         resolved.workspace_root.to_string_lossy(),
+        resolved.max_tokens,
+        resolved.llm_timeout_secs,
+        resolved.full_coverage_rounds,
     );
 
     fs::write(path, content)?;

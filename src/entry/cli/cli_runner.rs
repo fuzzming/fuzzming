@@ -30,6 +30,8 @@ impl CliRunner {
         init_tracing(args.verbose);
         let ui = CliUi::new();
 
+        ui.banner();
+
         match &args.command {
             Some(Command::Guide) => {
                 print_extended_help(&ui);
@@ -70,7 +72,7 @@ impl CliRunner {
         let outcomes = match orchestrator.run(request).await {
             Ok(outcomes) => outcomes,
             Err(err) => {
-                let message = err.to_string();
+                let message = format!("{:#}", err);
                 ui.error(&format!("FuzzMing stopped early: {}", message));
                 if message.contains("timed out") {
                     ui.warn("Hint: increase --llm-timeout-secs or try a faster model.");
@@ -78,6 +80,8 @@ impl CliRunner {
                     ui.warn("Hint: check your --llm-key and --model are correct.");
                 } else if message.contains("forge") || message.contains("PATH") {
                     ui.warn("Hint: make sure Foundry is installed and `forge` is on your PATH.");
+                } else if message.contains("LLM patch failed") {
+                    ui.warn("Hint: the LLM returned a malformed edit — run again or try a stronger model.");
                 }
                 std::process::exit(1);
             }
@@ -336,13 +340,11 @@ fn handle_config(reset: bool, ui: &CliUi) -> Result<()> {
 
 // ── guide ─────────────────────────────────────────────────────────────────────
 
-fn print_extended_help(ui: &CliUi) {
+fn print_extended_help(_ui: &CliUi) {
     let header = console::Style::new().fg(console::Color::Color256(99)).bold();
     let label  = console::Style::new().fg(console::Color::Color256(75)).bold();
     let dim    = console::Style::new().fg(console::Color::Color256(245));
     let hi     = console::Style::new().fg(console::Color::Color256(117));   // cyan-ish for inline code
-
-    ui.banner();
 
     // ── Overview ──────────────────────────────────────────────────────────────
     println!("{}", header.apply_to("  FUZZMING — AI-powered Solidity smart contract fuzzer"));

@@ -109,11 +109,11 @@ pub fn build_round_one_bodies_prompt(
 
     // Import lines the LLM must use — derived by FuzzMing, not chosen by the LLM.
     let handler_target_import = format!(
-        "import {{{{{}}}}} from \"{}\";",
+        "import {{{}}} from \"{}\";",
         contract_name, contract_path
     );
     let test_handler_import = format!(
-        "import {{{{{}}}}} from \"./{}.sol\";",
+        "import {{{}}} from \"./{}.sol\";",
         handler_name, handler_name
     );
     let test_std_import = "import {Test} from \"forge-std/Test.sol\";";
@@ -176,6 +176,7 @@ not explicitly exist in the provided source code.\n\
 6. NO REDEFINING TEST HELPERS: Do not define functions already provided by inheriting Test — never write your own `bound`, `vm`, `makeAddr`, `deal`, or similar.\n\
 7. NO RAW BYTECODE: Never embed hex bytecode in setUp. To deploy a contract: use `new ContractName()` if it is imported, `deployCode(\"ContractName.sol:ContractName\")` only for contracts you cannot import.\n\
 8. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. Use `handler.actorsLength()` and `handler.actors(i)` to iterate — never call `handler.getActors()` or any helper that does not exist in the handler source.\n\
+12. NO DUPLICATE GETTERS: A `public` array (e.g. `address[] public actors`) automatically generates a getter `actors(uint256)`. Never write a separate function with the same name — it will cause \"Identifier already declared\".\n\
 9. ASCII ONLY IN STRINGS: All Solidity string literals (assert/require messages, comments) must use only plain ASCII characters. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character in a string literal. Use a plain hyphen (-) or colon (:) instead.\n\
 10. NO UNUSED VARIABLES: Never declare a local variable that is not used in the function body — Solidity treats unused variables as compilation errors. Only declare variables you actually read.\n\
 11. BOUND AMOUNTS TO PREVENT OVERFLOW: When dealing tokens or bounding amounts, always cap at `type(uint128).max` (about 3.4e38) as the upper bound — never `type(uint256).max`. Unbounded uint256 amounts cause multiplication overflow inside the target contract's arithmetic (e.g. shares * price / 1e18), which triggers an arithmetic panic instead of exposing the real logic bug.\n\
@@ -198,8 +199,8 @@ REQUIRED JSON STRUCTURE:\n\
         \"handler\": {{\n\
             \"contractName\": \"{handler_name}\",\n\
             \"imports\": [\"array of import lines\"],\n\
-            \"stateVars\": [\"array of state variables\"],\n\
-            \"ghostVars\": [\"array of ghost variables\"],\n\
+            \"stateVars\": [\"ALL state variable declarations including ghost vars, each a full Solidity line ending with ;\"],\n\
+            \"ghostVars\": [\"names only of the ghost variables already declared in stateVars, e.g. ghost_balance\"],\n\
             \"constructorSignature\": \"signature_string\",\n\
             \"constructorBody\": [\"array of solidity lines\"],\n\
             \"functions\": {{\n\
@@ -298,12 +299,14 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          5. If nothing needs changing for one artifact, return its updates array as [].\n\
          \n\
          SOLIDITY CONSTRAINTS (must hold after every patch):\n\
+         - ALL state variable declarations (including ghost vars) must be in handler.stateVars as full Solidity lines ending with semicolons. handler.ghostVars holds only the variable NAMES (no types, no semicolons) of variables already declared in stateVars.\n\
          - contract {handler_name} is Test {{  — do not change this declaration or remove Test inheritance\n\
          - contract {test_name} is Test {{  — do not change this declaration or remove Test inheritance\n\
          - Never redefine functions provided by Test (bound, vm, makeAddr, deal)\n\
          - Never embed raw bytecode — use deployCode(\"Name.sol:Name\") for dependencies\n\
          - To iterate actors in an invariant, use handler.actorsLength() and handler.actors(i) — never call handler.getActors() or any method not declared in the handler\n\
          - ASCII ONLY IN STRINGS: All string literals must use only plain ASCII. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character. Use plain hyphen (-) or colon (:) instead.\n\
+         - PUBLIC ARRAY GETTERS: A `public` array (e.g. `address[] public actors`) already generates a getter `actors(uint256)` automatically. Never write a separate function with the same name — it will cause \"Identifier already declared\".\n\
          - IMPORT PATHS: Import dependencies (e.g. Token) from their own source file (e.g. \"src/Token.sol\") — never re-export them from the target contract file.\n\
          \n\
          VALID bodies path prefixes:\n\

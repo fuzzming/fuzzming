@@ -1,15 +1,13 @@
 use console::{Color, Style};
 
-pub fn format_compile_error(contract_name: &str, round: u32, message: &str) -> String {
+pub fn format_compile_error(round: u32, message: &str) -> String {
     let err_st  = Style::new().fg(Color::Red).bold();
-    let label_st = Style::new().fg(Color::Color256(75)).bold();
     let muted   = Style::new().fg(Color::Color256(245));
 
     let header = format!(
-        "\n  {}  {}  {}",
+        "\n  {}  {}",
         err_st.apply_to("✗"),
-        label_st.apply_to(contract_name),
-        muted.apply_to(format!("compile error — round {}", round)),
+        muted.apply_to(format!("Solidity compile error — round {}", round)),
     );
 
     let lines: String = message

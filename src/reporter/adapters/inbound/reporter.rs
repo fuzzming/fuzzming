@@ -45,8 +45,8 @@ impl ReporterPort for Reporter {
         self.output.handle_stage_event(event).await
     }
 
-    async fn emit_compile_error(&self, contract_name: &str, round: u32, message: &str) -> Result<()> {
-        let formatted = format_compile_error(contract_name, round, message);
+    async fn emit_compile_error(&self, round: u32, message: &str) -> Result<()> {
+        let formatted = format_compile_error(round, message);
         self.output.write(&formatted).await
     }
 }

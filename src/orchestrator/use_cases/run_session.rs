@@ -120,6 +120,8 @@ impl OrchestratorRunPort for RunSessionUseCase {
 
             // 4. Accumulate bugs, check termination, emit reports for contracts that are done.
             let mut next_active: Vec<String> = Vec::new();
+            // Forge compiles all contracts together — show the compile error only once per round.
+            let mut compile_error_emitted = false;
 
             for ((path, signal), report) in active.iter().zip(signals.iter()).zip(reports.iter()) {
                 // Accumulate all bugs found this round before deciding termination.
@@ -132,10 +134,13 @@ impl OrchestratorRunPort for RunSessionUseCase {
                 }
 
                 // Surface compile errors immediately so the user sees them in the terminal.
-                if matches!(report.outcome, crate::shared::responses::fuzz_report::FuzzOutcome::CompileError) {
+                // Forge compiles the whole project at once, so all contracts share the same error;
+                // emit it only once to avoid identical messages repeating per contract.
+                if matches!(report.outcome, FuzzOutcome::CompileError) && !compile_error_emitted {
                     let fuzz_output_path = format!(".fuzzming/{}/fuzz_output.txt", signal.contract_name);
                     if let Ok(Some(msg)) = self.reader.get_fuzz_output(&fuzz_output_path).await {
-                        self.reporter.emit_compile_error(&signal.contract_name, state.current_round, &msg).await?;
+                        self.reporter.emit_compile_error(state.current_round, &msg).await?;
+                        compile_error_emitted = true;
                     }
                 }
 

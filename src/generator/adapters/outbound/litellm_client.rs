@@ -7,8 +7,8 @@ use litellm_rs::{completion, system_message, user_message, CompletionOptions};
 use serde_json::json;
 use tracing::warn;
 
-use crate::shared::models::GenerationUsage;
 use crate::generator::ports::outbound::LlmClientPort;
+use crate::shared::models::GenerationUsage;
 
 const MAX_HTTP_RETRIES: u32 = 3;
 
@@ -85,7 +85,13 @@ impl LiteLlmClient {
             .first()
             .and_then(|c| c.message.content.clone())
             .map(|content| content.to_string())
-            .ok_or_else(|| anyhow!("LLM returned empty content"))?;
+            .ok_or_else(|| {
+                anyhow!(
+                    "LLM returned empty content — the model '{}' may not support json_object \
+                 response_format. Try a model known to support it or check your API key and quota.",
+                    self.model
+                )
+            })?;
 
         Ok((content, usage))
     }
@@ -108,7 +114,12 @@ impl LlmClientPort for LiteLlmClient {
                         return Err(err);
                     }
                     let wait = Duration::from_secs(2u64.pow(attempt));
-                    warn!(attempt, "transient LLM error, retrying in {}s: {}", wait.as_secs(), msg);
+                    warn!(
+                        attempt,
+                        "transient LLM error, retrying in {}s: {}",
+                        wait.as_secs(),
+                        msg
+                    );
                     tokio::time::sleep(wait).await;
                     last_err = err;
                 }
@@ -134,10 +145,21 @@ impl LiteLlmClient {
         let mut options = CompletionOptions::default();
         options.temperature = self.temperature;
         options.max_tokens = self.max_tokens;
-        options.extra_params = HashMap::from([(
-            "response_format".to_string(),
-            json!({ "type": "json_object" }),
-        )]);
+        if supports_json_mode(&self.model) {
+            options.extra_params = HashMap::from([(
+                "response_format".to_string(),
+                json!({ "type": "json_object" }),
+            )]);
+        }
         options
     }
+}
+
+fn supports_json_mode(model: &str) -> bool {
+    let m = model.to_lowercase();
+    m.contains("gpt-")
+        || m.contains("openai/")
+        || m.contains("anthropic/")
+        || m.contains("claude")
+        || m.contains("gemini")
 }
