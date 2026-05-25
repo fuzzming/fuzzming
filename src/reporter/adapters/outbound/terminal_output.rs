@@ -9,7 +9,7 @@ use console::{Color, Style};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 use crate::reporter::ports::outbound::OutputPort;
-use crate::shared::responses::stage_event::{StageEvent, StageKind, StageStatus};
+use crate::shared::responses::stage_event::{FuzzerRoundSummary, StageEvent, StageKind, StageStatus};
 
 /// Messages shown during round 1 — three LLM calls: analysis → bodies → config.
 const ROUND_ONE_MESSAGES: &[&str] = &[
@@ -31,6 +31,17 @@ const ROUND_N_MESSAGES: &[&str] = &[
     "Updating fuzzer config",
 ];
 
+/// Messages cycled on the fuzzer spinner while forge is running.
+const FUZZER_MESSAGES: &[&str] = &[
+    "Running invariant tests",
+    "Running invariant tests",
+    "Scanning for vulnerabilities",
+    "Scanning for vulnerabilities",
+    "Analysing call sequences",
+    "Analysing call sequences",
+    "Exploring edge cases",
+];
+
 /// Per-contract spinner state.
 struct ContractProgress {
     bar: ProgressBar,
@@ -38,9 +49,14 @@ struct ContractProgress {
     cancel: Arc<AtomicBool>,
 }
 
+struct FuzzerProgress {
+    bar: ProgressBar,
+    cancel: Arc<AtomicBool>,
+}
+
 struct ProgressState {
     contracts: HashMap<String, ContractProgress>,
-    fuzzer_bar: Option<ProgressBar>,
+    fuzzer: Option<FuzzerProgress>,
     multi: MultiProgress,
 }
 
@@ -53,7 +69,7 @@ impl TerminalOutput {
         Self {
             state: Arc::new(Mutex::new(ProgressState {
                 contracts: HashMap::new(),
-                fuzzer_bar: None,
+                fuzzer: None,
                 multi: MultiProgress::new(),
             })),
         }
@@ -80,10 +96,6 @@ fn spinner_style() -> ProgressStyle {
         .tick_strings(&["", ".", "..", "..."])
 }
 
-/// Plain style used when finishing a bar — no trailing spinner dots.
-fn finish_style() -> ProgressStyle {
-    ProgressStyle::with_template("{msg}").unwrap()
-}
 
 fn msg_active(label: &str, verb: &str) -> String {
     let diamond = Style::new().fg(Color::Color256(99)).bold();
@@ -134,19 +146,36 @@ fn msg_done(label: &str, ok: bool) -> String {
     )
 }
 
-fn msg_fuzzer_active() -> String {
+fn msg_fuzzer_active(verb: &str) -> String {
     let bolt = Style::new().fg(Color::Color256(220)).bold();
     let txt = Style::new().fg(Color::Color256(75));
-    format!("  {}  {}", bolt.apply_to("⚡"), txt.apply_to("Fuzzing all contracts"))
+    format!("  {}  {}", bolt.apply_to("⚡"), txt.apply_to(verb))
 }
 
-fn msg_fuzzer_done(ok: bool) -> String {
-    if ok {
-        let st = Style::new().fg(Color::Green).bold();
-        format!("  {}  Fuzzer complete", st.apply_to("✓"))
+fn msg_fuzzer_done(ok: bool, summary: Option<&FuzzerRoundSummary>) -> String {
+    let (icon, icon_st) = if ok {
+        ("✓", Style::new().fg(Color::Green).bold())
     } else {
-        let st = Style::new().fg(Color::Red).bold();
-        format!("  {}  Fuzzer failed", st.apply_to("✗"))
+        ("✗", Style::new().fg(Color::Red).bold())
+    };
+    let label = if ok { "Fuzzer complete" } else { "Fuzzer failed" };
+    let base = format!("  {}  {}", icon_st.apply_to(icon), label);
+    match summary {
+        Some(s) => {
+            let muted = Style::new().fg(Color::Color256(245));
+            let bug_st = if s.bugs > 0 {
+                Style::new().fg(Color::Red)
+            } else {
+                Style::new().fg(Color::Green)
+            };
+            format!(
+                "{}  {}  {}",
+                base,
+                bug_st.apply_to(format!("{} bug{}", s.bugs, if s.bugs == 1 { "" } else { "s" })),
+                muted.apply_to(format!("{} passed", s.passed)),
+            )
+        }
+        None => base,
     }
 }
 
@@ -246,8 +275,9 @@ impl OutputPort for TerminalOutput {
                 let mut g = state.lock().expect("progress lock");
                 if let Some(cp) = g.contracts.remove(&contract) {
                     let label = contract_label(&contract);
-                    cp.bar.set_style(finish_style());
-                    cp.bar.finish_with_message(msg_done(&label, true));
+                    let msg = msg_done(&label, true);
+                    cp.bar.finish_and_clear();
+                    g.multi.println(msg).ok();
                 }
             }
 
@@ -259,74 +289,70 @@ impl OutputPort for TerminalOutput {
                 let mut g = state.lock().expect("progress lock");
                 if let Some(cp) = g.contracts.remove(&contract) {
                     let label = contract_label(&contract);
-                    cp.bar.set_style(finish_style());
-                    cp.bar.abandon_with_message(msg_done(&label, false));
+                    let msg = msg_done(&label, false);
+                    cp.bar.finish_and_clear();
+                    g.multi.println(msg).ok();
                 }
             }
 
-            // ── Fuzzer Started → separator + single spinner at the bottom ────
+            // ── Fuzzer Started → spinner with rotating verb messages ─────────
             (StageKind::Fuzzer, StageStatus::Started) => {
                 let multi = {
                     let g = state.lock().expect("progress lock");
                     g.multi.clone()
                 };
 
-                // Clear visual boundary between per-contract work and fuzzer phase.
-                let sep_st = Style::new().fg(Color::Color256(240));
-                let phase_st = Style::new().fg(Color::Color256(220)).bold();
                 multi.println("").ok();
-                multi
-                    .println(
-                        sep_st
-                            .apply_to("  ────────────────────────────────────────")
-                            .to_string(),
-                    )
-                    .ok();
-                multi
-                    .println(
-                        format!(
-                            "  {}  {}",
-                            phase_st.apply_to("⚡"),
-                            Style::new()
-                                .fg(Color::Color256(75))
-                                .bold()
-                                .apply_to("All contracts ready — running Foundry fuzzer")
-                        )
-                    )
-                    .ok();
-                multi
-                    .println(
-                        sep_st
-                            .apply_to("  ────────────────────────────────────────")
-                            .to_string(),
-                    )
-                    .ok();
 
                 let spinner = multi.add(ProgressBar::new_spinner());
                 spinner.set_style(spinner_style());
                 spinner.enable_steady_tick(Duration::from_millis(600));
-                spinner.set_message(msg_fuzzer_active());
+                spinner.set_message(msg_fuzzer_active(FUZZER_MESSAGES[0]));
+
+                let cancel = Arc::new(AtomicBool::new(false));
+                let cancel_bg = cancel.clone();
+                let bar_bg = spinner.clone();
+                tokio::spawn(async move {
+                    let mut i = 0usize;
+                    loop {
+                        tokio::time::sleep(Duration::from_millis(2200)).await;
+                        if cancel_bg.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        i += 1;
+                        bar_bg.set_message(msg_fuzzer_active(FUZZER_MESSAGES[i % FUZZER_MESSAGES.len()]));
+                    }
+                });
 
                 let mut g = state.lock().expect("progress lock");
-                g.fuzzer_bar = Some(spinner);
+                g.fuzzer = Some(FuzzerProgress { bar: spinner, cancel });
             }
 
             (StageKind::Fuzzer, StageStatus::Finished) => {
+                let summary = event.fuzzer_summary.as_ref();
+                let msg = msg_fuzzer_done(true, summary);
                 let mut g = state.lock().expect("progress lock");
-                if let Some(bar) = g.fuzzer_bar.take() {
-                    bar.set_style(finish_style());
-                    bar.finish_with_message(msg_fuzzer_done(true));
+                if let Some(fp) = g.fuzzer.take() {
+                    fp.cancel.store(true, Ordering::Relaxed);
+                    fp.bar.finish_and_clear();
+                    g.multi.println(msg).ok();
                 }
                 g.multi.println("").ok();
             }
 
             (StageKind::Fuzzer, StageStatus::Failed) => {
+                let summary = event.fuzzer_summary.as_ref();
+                let msg = msg_fuzzer_done(false, summary);
                 let mut g = state.lock().expect("progress lock");
-                if let Some(bar) = g.fuzzer_bar.take() {
-                    bar.set_style(finish_style());
-                    bar.abandon_with_message(msg_fuzzer_done(false));
+                if let Some(fp) = g.fuzzer.take() {
+                    fp.cancel.store(true, Ordering::Relaxed);
+                    fp.bar.finish_and_clear();
+                    g.multi.println(msg).ok();
                 }
+                g.multi.println("").ok();
             }
+
+            (StageKind::ContractDone, _) | (StageKind::SessionDone, _) => {}
         }
 
         Ok(())

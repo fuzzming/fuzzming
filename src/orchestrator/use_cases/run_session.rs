@@ -17,7 +17,7 @@ use crate::shared::responses::{
     fuzz_report::{FuzzOutcome, FuzzReport},
     round_usage::RoundUsage,
     session_outcome::{SessionOutcome, TerminationReason},
-    stage_event::{StageEvent, StageKind, StageStatus},
+    stage_event::{FuzzerRoundSummary, StageEvent, StageKind, StageStatus},
     termination_decision::TerminationDecision,
 };
 
@@ -95,17 +95,23 @@ impl OrchestratorRunPort for RunSessionUseCase {
                     round: state.current_round,
                     stage: StageKind::Fuzzer,
                     status: StageStatus::Started,
+                    fuzzer_summary: None,
                 })
                 .await?;
             info!(round = state.current_round, "forge run started");
             let reports: Vec<FuzzReport> = self.fuzzer_engine.run(signals.clone()).await?;
             info!(round = state.current_round, "forge run finished");
+            let fuzzer_summary = FuzzerRoundSummary {
+                bugs: reports.iter().filter(|r| !r.bugs.is_empty()).count(),
+                passed: reports.iter().filter(|r| r.bugs.is_empty()).count(),
+            };
             self.reporter
                 .emit_stage_event(StageEvent {
                     contract_name: None,
                     round: state.current_round,
                     stage: StageKind::Fuzzer,
                     status: StageStatus::Finished,
+                    fuzzer_summary: Some(fuzzer_summary),
                 })
                 .await?;
 
@@ -168,9 +174,11 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         bugs: all_bugs.to_vec(),
                         artifacts,
                     };
-                    self.reporter.emit(outcome.clone()).await?;
                     let outcome_path = state.config.workspace_root
                         .join(format!(".fuzzming/{}/outcome.json", signal.contract_name));
+                    if let Some(parent) = outcome_path.parent() {
+                        tokio::fs::create_dir_all(parent).await?;
+                    }
                     let json = serde_json::to_string_pretty(&outcome)?;
                     tokio::fs::write(&outcome_path, json).await?;
 
@@ -186,6 +194,7 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         round: state.current_round,
                         stage: StageKind::ContractDone,
                         status: contract_done_status,
+                        fuzzer_summary: None,
                     }).await?;
 
                     outcomes.push(outcome);
@@ -272,13 +281,13 @@ impl RunSessionUseCase {
             self.reader.get_fuzz_output(&fuzz_output_path).await?.unwrap_or_default();
 
         let coverage_summary = match reason {
-            TerminationReason::FullCoverage | TerminationReason::Exhausted => {
+            TerminationReason::Bug | TerminationReason::DevTestFailed => None,
+            _ => {
                 self.reader
                     .get_coverage_context(&lcov_path)
                     .await?
                     .map(format_coverage_summary)
             }
-            _ => None,
         };
 
         // All bugs accumulated across every round, not just the last one.

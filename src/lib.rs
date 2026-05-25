@@ -1,4 +1,5 @@
 pub mod composition;
+pub mod demo;
 pub mod entry;
 pub mod executor;
 pub mod fuzzer;

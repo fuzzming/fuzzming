@@ -6,9 +6,14 @@ use console::{Color, Style};
 use tracing_subscriber::EnvFilter;
 
 use crate::composition::composition_root::CompositionRoot;
+use crate::demo::DemoCompositionRoot;
 use crate::entry::cli::arg_parser::{parse_args, Command};
 use crate::entry::cli::interactive::resolve_cli_config;
 use crate::entry::cli::ui::CliUi;
+use crate::reporter::use_cases::{
+    format_bug_report, format_coverage_report, format_dev_test_failure,
+    format_exhausted_report,
+};
 use crate::shared::models::{Fuzzer, Language, SessionConfig};
 use crate::shared::requests::session_request::SessionRequest;
 use crate::shared::responses::session_outcome::{SessionOutcome, TerminationReason};
@@ -37,6 +42,10 @@ impl CliRunner {
                 return handle_config(*reset, &ui);
             }
             None => {}
+        }
+
+        if args.demo {
+            return run_demo().await;
         }
 
         let resolved = resolve_cli_config(&args)?;
@@ -73,6 +82,7 @@ impl CliRunner {
             }
         };
 
+        print_outcome_reports(&outcomes);
         print_aggregate_summary(&outcomes);
 
         let has_bugs = outcomes.iter().any(|o| {
@@ -85,6 +95,22 @@ impl CliRunner {
         }
 
         Ok(())
+    }
+}
+
+// ── per-contract outcome reports ──────────────────────────────────────────────
+
+fn print_outcome_reports(outcomes: &[SessionOutcome]) {
+    println!();
+    for outcome in outcomes {
+        let msg = match outcome.reason {
+            TerminationReason::Bug => format_bug_report(outcome),
+            TerminationReason::FullCoverage => format_coverage_report(outcome),
+            TerminationReason::DevTestFailed => format_dev_test_failure(outcome),
+            TerminationReason::Exhausted => format_exhausted_report(outcome),
+        };
+        println!("{}", msg);
+        println!();
     }
 }
 
@@ -430,6 +456,61 @@ fn print_extended_help(ui: &CliUi) {
         println!("    {}", dim.apply_to(*desc));
         println!();
     }
+}
+
+// ── demo mode ─────────────────────────────────────────────────────────────────
+
+async fn run_demo() -> Result<()> {
+    use crate::shared::models::{Fuzzer, Language, SessionConfig};
+    use crate::shared::requests::session_request::SessionRequest;
+
+    let demo_st = Style::new().fg(Color::Color256(220)).bold();
+    let muted = Style::new().fg(Color::Color256(245));
+    println!();
+    println!("  {}  {}", demo_st.apply_to("◆ DEMO MODE"), muted.apply_to("— no LLM calls, no tokens spent"));
+    println!("  {}", muted.apply_to("  3 mock contracts · scripted outcomes · real UI"));
+    println!();
+
+    let workspace_root = std::env::temp_dir().join(format!(
+        "fuzzming-demo-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+
+    let config = SessionConfig {
+        model: "demo".to_string(),
+        llm_key: String::new(),
+        language: Language::Solidity,
+        fuzzer: Fuzzer::Foundry,
+        workspace_root,
+        max_tokens: 0,
+        llm_timeout_secs: 0,
+        full_coverage_rounds: 2,
+    };
+    let request = SessionRequest {
+        target_paths: vec![
+            "src/TokenVault.sol".to_string(),
+            "src/StakingPool.sol".to_string(),
+            "src/PriceOracle.sol".to_string(),
+        ],
+        max_rounds: 3,
+        config,
+    };
+
+    let orchestrator = DemoCompositionRoot::build();
+    let outcomes = match orchestrator.run(request).await {
+        Ok(o) => o,
+        Err(err) => {
+            eprintln!("demo error: {}", err);
+            std::process::exit(1);
+        }
+    };
+
+    print_outcome_reports(&outcomes);
+    print_aggregate_summary(&outcomes);
+    Ok(())
 }
 
 fn init_tracing(verbose: bool) {

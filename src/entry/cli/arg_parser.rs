@@ -65,6 +65,10 @@ pub struct CliArgs {
     /// Stop a contract after this many consecutive rounds with 100% coverage (default: 2)
     #[arg(long, default_value_t = 2)]
     pub full_coverage_rounds: u32,
+
+    /// Run an interactive demo with mock adapters — no LLM calls, no tokens spent
+    #[arg(long, default_value_t = false)]
+    pub demo: bool,
 }
 
 #[derive(Debug, Subcommand)]

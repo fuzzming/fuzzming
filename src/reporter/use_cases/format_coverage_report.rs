@@ -8,8 +8,8 @@ pub fn format_coverage_report(outcome: &SessionOutcome) -> String {
         .unwrap_or("(no coverage data)");
 
     format!(
-        "## FuzzMing: Full Coverage Achieved for `{}` (round {})\n\n\
-         **Coverage summary:**\n```\n{}\n```",
+        "## FuzzMing: Full Coverage Achieved for `{}` ({} rounds)\n\n\
+         **Final coverage:**\n```\n{}\n```",
         outcome.contract_name, outcome.rounds_completed, cov,
     )
 }

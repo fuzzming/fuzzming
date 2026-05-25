@@ -27,6 +27,7 @@ pub async fn run_round(
             round: signal.round,
             stage: StageKind::Llm,
             status: StageStatus::Started,
+            fuzzer_summary: None,
         })
         .await?;
     info!(contract = %signal.contract_name, round = signal.round, "LLM started");
@@ -38,6 +39,7 @@ pub async fn run_round(
             round: signal.round,
             stage: StageKind::Llm,
             status: StageStatus::Finished,
+            fuzzer_summary: None,
         })
         .await?;
 
@@ -65,6 +67,7 @@ pub async fn run_round(
             round: signal.round,
             stage: StageKind::Executor,
             status: StageStatus::Started,
+            fuzzer_summary: None,
         })
         .await?;
     let executor_input = build_executor_input(&result.response, &signal)?;
@@ -77,6 +80,7 @@ pub async fn run_round(
             round: signal.round,
             stage: StageKind::Executor,
             status: StageStatus::Finished,
+            fuzzer_summary: None,
         })
         .await?;
 
