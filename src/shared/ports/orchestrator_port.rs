@@ -4,5 +4,5 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait OrchestratorPort: Send + Sync {
-    async fn run(&self, request: SessionRequest) -> Result<SessionOutcome>;
+    async fn run(&self, request: SessionRequest) -> Result<Vec<SessionOutcome>>;
 }

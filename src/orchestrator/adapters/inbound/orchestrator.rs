@@ -18,7 +18,7 @@ impl Orchestrator {
 
 #[async_trait]
 impl OrchestratorPort for Orchestrator {
-    async fn run(&self, request: SessionRequest) -> Result<SessionOutcome> {
+    async fn run(&self, request: SessionRequest) -> Result<Vec<SessionOutcome>> {
         self.use_case.run(request).await
     }
 }

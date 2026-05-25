@@ -65,8 +65,8 @@ impl CliRunner {
         };
         let orchestrator = CompositionRoot::build(config);
 
-        let outcome = match orchestrator.run(request).await {
-            Ok(outcome) => outcome,
+        let outcomes = match orchestrator.run(request).await {
+            Ok(outcomes) => outcomes,
             Err(err) => {
                 let message = err.to_string();
                 ui.error("FuzzMing stopped early.");
@@ -80,10 +80,10 @@ impl CliRunner {
             }
         };
 
-        let has_bugs = matches!(
-            outcome.reason,
-            TerminationReason::Bug | TerminationReason::DevTestFailed
-        ) || !outcome.artifacts.call_sequences.is_empty();
+        let has_bugs = outcomes.iter().any(|o| {
+            matches!(o.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
+                || !o.artifacts.call_sequences.is_empty()
+        });
 
         if has_bugs {
             std::process::exit(1);

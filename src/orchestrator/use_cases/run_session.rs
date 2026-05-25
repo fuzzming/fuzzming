@@ -42,10 +42,10 @@ impl RunSessionUseCase {
 
 #[async_trait]
 impl OrchestratorRunPort for RunSessionUseCase {
-    async fn run(&self, request: SessionRequest) -> Result<SessionOutcome> {
+    async fn run(&self, request: SessionRequest) -> Result<Vec<SessionOutcome>> {
         let mut state = initialise_session(&request)?;
         let mut active: Vec<String> = request.target_paths.clone();
-        let mut last_outcome: Option<SessionOutcome> = None;
+        let mut outcomes: Vec<SessionOutcome> = Vec::new();
 
         info!(
             contracts = active.len(),
@@ -153,7 +153,7 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         artifacts,
                     };
                     self.reporter.emit(outcome.clone()).await?;
-                    last_outcome = Some(outcome);
+                    outcomes.push(outcome);
                 } else {
                     let bug_count = state
                         .found_bugs
@@ -178,7 +178,11 @@ impl OrchestratorRunPort for RunSessionUseCase {
             }
         }
 
-        last_outcome.ok_or_else(|| anyhow!("session produced no outcome"))
+        if outcomes.is_empty() {
+            Err(anyhow!("session produced no outcome"))
+        } else {
+            Ok(outcomes)
+        }
     }
 }
 
