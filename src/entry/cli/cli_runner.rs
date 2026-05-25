@@ -73,6 +73,8 @@ impl CliRunner {
             }
         };
 
+        print_aggregate_summary(&outcomes);
+
         let has_bugs = outcomes.iter().any(|o| {
             matches!(o.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
                 || !o.artifacts.call_sequences.is_empty()
@@ -84,6 +86,45 @@ impl CliRunner {
 
         Ok(())
     }
+}
+
+// ── aggregate summary ─────────────────────────────────────────────────────────
+
+fn print_aggregate_summary(outcomes: &[SessionOutcome]) {
+    if outcomes.len() <= 1 {
+        return;
+    }
+
+    let header_st = Style::new().fg(Color::Color256(99)).bold();
+    let label_st  = Style::new().fg(Color::Color256(75)).bold();
+    let muted     = Style::new().fg(Color::Color256(245));
+    let ok_st     = Style::new().fg(Color::Green).bold();
+    let err_st    = Style::new().fg(Color::Red).bold();
+
+    let total      = outcomes.len();
+    let with_bugs  = outcomes.iter().filter(|o| {
+        matches!(o.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
+            || !o.artifacts.call_sequences.is_empty()
+    }).count();
+    let clean      = total - with_bugs;
+    let total_rounds: u32 = outcomes.iter().map(|o| o.rounds_completed).sum();
+    let total_bugs: usize = outcomes.iter().map(|o| o.bugs.len()).sum();
+
+    println!();
+    println!("{}", header_st.apply_to("  ◆ FuzzMing — Session Summary"));
+    println!("{}", muted.apply_to("  ──────────────────────────────────────────"));
+    println!("  {}  {}", label_st.apply_to("contracts:"), muted.apply_to(total.to_string()));
+    println!("  {}      {}", label_st.apply_to("clean:"), ok_st.apply_to(clean.to_string()));
+    println!("  {}   {}", label_st.apply_to("with bugs:"),
+        if with_bugs > 0 { err_st.apply_to(with_bugs.to_string()).to_string() }
+        else { ok_st.apply_to("0".to_string()).to_string() }
+    );
+    println!("  {}     {}", label_st.apply_to("rounds:"), muted.apply_to(total_rounds.to_string()));
+    println!("  {}       {}", label_st.apply_to("bugs:"),
+        if total_bugs > 0 { err_st.apply_to(total_bugs.to_string()).to_string() }
+        else { ok_st.apply_to("0".to_string()).to_string() }
+    );
+    println!();
 }
 
 // ── subcommand: report ────────────────────────────────────────────────────────
