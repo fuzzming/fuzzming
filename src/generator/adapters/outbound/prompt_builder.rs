@@ -96,11 +96,19 @@ fn extract_pragma(source: &str) -> String {
     "^0.8.20".to_string()
 }
 
+/// Strong models (Claude, GPT-4/5, o1/o3) write correct Solidity without exhaustive rules.
+/// Weaker open-source models need every quirk spelled out.
+fn is_strong_model(model: &str) -> bool {
+    let m = model.to_lowercase();
+    m.contains("claude") || m.contains("gpt-") || m.contains("gemini")
+}
+
 pub fn build_round_one_bodies_prompt(
     analysis: &AnalysisStage,
     contract_name: &str,
     contract_path: &str,
     source_code: &str,
+    model: &str,
 ) -> Result<String> {
     let analysis_summary = serde_json::to_string_pretty(analysis)?;
     let pragma = extract_pragma(source_code);
@@ -108,10 +116,7 @@ pub fn build_round_one_bodies_prompt(
     let test_name = format!("{}InvariantTest", contract_name);
 
     // Import lines the LLM must use — derived by FuzzMing, not chosen by the LLM.
-    let handler_target_import = format!(
-        "import {{{}}} from \"{}\";",
-        contract_name, contract_path
-    );
+    let handler_target_import = format!("import {{{}}} from \"{}\";", contract_name, contract_path);
     let test_handler_import = format!(
         "import {{{}}} from \"./{}.sol\";",
         handler_name, handler_name
@@ -132,6 +137,45 @@ pub fn build_round_one_bodies_prompt(
             "  If the handler or test must interact with a dependency contract (e.g. call approve, \
 transfer, or mint on a token), use EXACTLY these pre-resolved import lines — do not invent paths:\n{lines}\n"
         )
+    };
+
+    let rules_block = if is_strong_model(model) {
+        "STRICT DESIGN RULES:\n\
+1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract \
+instance. Do NOT reimplement the target contract's internal logic inside the handler.\n\
+2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
+not explicitly exist in the provided source code.\n\
+3. IMPORTS: Use only the import lines listed in REQUIRED IMPORT LINES above. If you need to interact with a dependency (e.g. call approve or transfer on a token), use the pre-resolved import line provided in the dependency imports block — do not invent paths. Never use low-level .call() for a contract whose interface you know.\n\
+4. targetSelectors: Always set to empty string \"\". In the invariant test setUp, call `targetContract(address(handler))` — never call `targetSelector(\"\")` or pass a string to targetSelector, it takes a FuzzSelector struct not a string.\n\
+5. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. If the invariant test needs to iterate an array, define a helper in handler.functions using the COMPLETE function syntax, e.g.: `\"actorsLength\": \"function actorsLength() external view returns (uint256) { return actors.length; }\"`. Then call `handler.actorsLength()` from the invariant test. Never call a helper that is not defined in handler.functions.\n\
+6. BOUND AMOUNTS TO PREVENT OVERFLOW: Always cap amounts at `type(uint128).max` — never `type(uint256).max`.\n\
+7. INITIALIZE GHOST STATE: If the contract is deployed with an initial supply or state, ghost variables MUST be initialized to match in the constructor. Uninitialised ghost state causes false positives from the first invariant check.\n\
+8. NO TAUTOLOGICAL INVARIANTS: Never write invariants that are always true by type. `uint256 >= 0` is always true — do not write it. Only write invariants that can actually fail.\n\
+9. HANDLER IS THE CALLER: Inside handler functions, ALL calls to the target contract are made FROM `address(this)`, NOT from `msg.sender`. Therefore: (a) ghost mappings must be keyed by `address(this)` not `msg.sender`; (b) use `vm.prank(someAddress)` before the contract call to simulate a specific user; (c) every state-changing call MUST update its corresponding ghost variable.\n\
+".to_string()
+    } else {
+        "STRICT DESIGN RULES:\n\
+1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract \
+instance. Do NOT reimplement the target contract's internal logic inside the handler.\n\
+2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
+not explicitly exist in the provided source code.\n\
+3. NO REDUNDANCIES: Do not write meaningless checks like `require(myUint >= 0)`.\n\
+4. IMPORTS: Use only the import lines listed in REQUIRED IMPORT LINES above. If you need to interact with a dependency (e.g. call approve or transfer on a token), use the pre-resolved import line provided in the dependency imports block — do not invent paths. Never use low-level .call() for a contract whose interface you know.\n\
+5. targetSelectors: Always set to empty string \"\". In the invariant test setUp, call `targetContract(address(handler))` — never call `targetSelector(\"\")` or pass a string to targetSelector, it takes a FuzzSelector struct not a string.\n\
+6. NO REDEFINING TEST HELPERS: Do not define functions already provided by inheriting Test — never write your own `bound`, `vm`, `makeAddr`, `deal`, or similar.\n\
+7. NO RAW BYTECODE: Never embed hex bytecode in setUp. To deploy a contract: use `new ContractName()` if it is imported, `deployCode(\"ContractName.sol:ContractName\")` only for contracts you cannot import.\n\
+8. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. If the invariant test needs to iterate an array, define a helper in handler.functions using the COMPLETE function syntax, e.g.: `\"actorsLength\": \"function actorsLength() external view returns (uint256) { return actors.length; }\"`. Then call `handler.actorsLength()` from the invariant test. Never call a helper that is not defined in handler.functions.\n\
+9. ASCII ONLY IN STRINGS: All Solidity string literals must use only plain ASCII characters. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character. Use plain hyphen (-) or colon (:) instead.\n\
+10. NO UNUSED VARIABLES: Never declare a local variable that is not used in the function body — Solidity treats unused variables as compilation errors.\n\
+11. BOUND AMOUNTS TO PREVENT OVERFLOW: Always cap amounts at `type(uint128).max` — never `type(uint256).max`.\n\
+12. NO DUPLICATE GETTERS: A `public` array (e.g. `address[] public actors`) automatically generates a getter `actors(uint256)`. Never write a separate function with the same name.\n\
+13. INTERNAL VS EXTERNAL ACCESS: Inside handler functions use `actors[i]` and `actors.length` directly. The getter syntax only works from outside the contract.\n\
+14. ASSERT VS REQUIRE: `assert(condition)` takes exactly one argument. To include a message use `require(condition, \"message\")` — never `assert(condition, \"message\")`.\n\
+15. NO MATH LIBRARY: Never use `Math.min()` or `Math.max()`. Compute inline: `a < b ? a : b`.\n\
+16. INITIALIZE GHOST STATE: If the contract is deployed with an initial supply or state, ghost variables MUST be initialized to match in the constructor. Uninitialised ghost state causes false positives from the first invariant check.\n\
+17. NO TAUTOLOGICAL INVARIANTS: Never write invariants that are always true by type. `uint256 >= 0` is always true — do not write it. Only write invariants that can actually fail.\n\
+18. HANDLER IS THE CALLER: Inside handler functions, ALL calls to the target contract are made FROM `address(this)`, NOT from `msg.sender`. Therefore: (a) ghost mappings must be keyed by `address(this)` not `msg.sender`; (b) use `vm.prank(someAddress)` before the contract call to simulate a specific user; (c) every state-changing call MUST update its corresponding ghost variable.\n\
+".to_string()
     };
 
     Ok(format!(
@@ -165,26 +209,12 @@ CONTRACT INHERITANCE (mandatory):\n\
   {handler_name} must inherit from Test: write `contract {handler_name} is Test {{`\n\
   {test_name} must inherit from Test: write `contract {test_name} is Test {{`\n\
 \n\
-STRICT DESIGN RULES:\n\
-1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract \
-instance. Do NOT reimplement the target contract's internal logic inside the handler.\n\
-2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
-not explicitly exist in the provided source code.\n\
-3. NO REDUNDANCIES: Do not write meaningless checks like `require(myUint >= 0)`.\n\
-4. IMPORTS: Use only the import lines listed in REQUIRED IMPORT LINES above. If you need to interact with a dependency (e.g. call approve or transfer on a token), use the pre-resolved import line provided in the dependency imports block — do not invent paths. Never use low-level .call() for a contract whose interface you know.
-5. targetSelectors: Always set to empty string \"\". Target selector setup (targetSelector, targetContract) belongs ONLY in the invariant test's setUpBody — never in the handler.\n\
-6. NO REDEFINING TEST HELPERS: Do not define functions already provided by inheriting Test — never write your own `bound`, `vm`, `makeAddr`, `deal`, or similar.\n\
-7. NO RAW BYTECODE: Never embed hex bytecode in setUp. To deploy a contract: use `new ContractName()` if it is imported, `deployCode(\"ContractName.sol:ContractName\")` only for contracts you cannot import.\n\
-8. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. Use `handler.actorsLength()` and `handler.actors(i)` to iterate — never call `handler.getActors()` or any helper that does not exist in the handler source.\n\
-12. NO DUPLICATE GETTERS: A `public` array (e.g. `address[] public actors`) automatically generates a getter `actors(uint256)`. Never write a separate function with the same name — it will cause \"Identifier already declared\".\n\
-9. ASCII ONLY IN STRINGS: All Solidity string literals (assert/require messages, comments) must use only plain ASCII characters. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character in a string literal. Use a plain hyphen (-) or colon (:) instead.\n\
-10. NO UNUSED VARIABLES: Never declare a local variable that is not used in the function body — Solidity treats unused variables as compilation errors. Only declare variables you actually read.\n\
-11. BOUND AMOUNTS TO PREVENT OVERFLOW: When dealing tokens or bounding amounts, always cap at `type(uint128).max` (about 3.4e38) as the upper bound — never `type(uint256).max`. Unbounded uint256 amounts cause multiplication overflow inside the target contract's arithmetic (e.g. shares * price / 1e18), which triggers an arithmetic panic instead of exposing the real logic bug.\n\
+{rules_block}\
 \n\
 STRICT SCHEMA RULES:\n\
 - Use camelCase for all keys.\n\
 - Do not combine code into a single field — use the arrays and objects specified below.\n\
-- functions and invariants are JSON objects where the value is the full function body as a string.\n\
+- functions and invariants are JSON objects where the value is the COMPLETE function definition as a string — it MUST start with the `function` keyword (include signature, visibility, body). Never put a bare statement or just a return value as the value.\n\
 - Do not include outputPath — paths are managed by the tool, not the LLM.\n\
 \n\
 REQUIRED JSON STRUCTURE:\n\
@@ -231,6 +261,7 @@ Analysis Context:\n\
         dep_imports_block = dep_imports_block,
         analysis_summary = analysis_summary,
         pragma = pragma,
+        rules_block = rules_block,
     ))
 }
 
@@ -269,13 +300,41 @@ pub fn build_round_one_config_prompt(
     ))
 }
 
-pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
+pub fn build_round_n_prompt(request: &GenerationRequest, model: &str) -> Result<String> {
     let existing_bodies_json = serde_json::to_string_pretty(&request.existing_bodies)
         .context("failed to serialize existing bodies")?;
     let existing_config_json = serde_json::to_string_pretty(&request.existing_foundry_config)
         .context("failed to serialize existing foundry config")?;
     let handler_name = format!("{}Handler", request.contract_name);
     let test_name = format!("{}InvariantTest", request.contract_name);
+
+    let patch_constraints = if is_strong_model(model) {
+        format!(
+            "SOLIDITY CONSTRAINTS (must hold after every patch):\n\
+             - ALL state variable declarations (including ghost vars) must be in handler.stateVars as full Solidity lines ending with semicolons. handler.ghostVars holds only the variable NAMES (no types, no semicolons) of variables already declared in stateVars.\n\
+             - contract {handler_name} is Test  — do not change this declaration or remove Test inheritance.\n\
+             - contract {test_name} is Test  — do not change this declaration or remove Test inheritance.\n\
+             - To iterate actors in an invariant, use handler.actorsLength() and handler.actors(i) — never call handler.getActors().\n\
+             - HANDLER IS THE CALLER: Ghost mappings must be keyed by address(this) not msg.sender. Every state-changing call must update its ghost variable.\n\
+             "
+        )
+    } else {
+        format!(
+            "SOLIDITY CONSTRAINTS (must hold after every patch):\n\
+             - ALL state variable declarations (including ghost vars) must be in handler.stateVars as full Solidity lines ending with semicolons. handler.ghostVars holds only the variable NAMES (no types, no semicolons) of variables already declared in stateVars.\n\
+             - contract {handler_name} is Test  — do not change this declaration or remove Test inheritance.\n\
+             - contract {test_name} is Test  — do not change this declaration or remove Test inheritance.\n\
+             - Never redefine functions provided by Test (bound, vm, makeAddr, deal).\n\
+             - Never embed raw bytecode — use deployCode(\"Name.sol:Name\") for dependencies.\n\
+             - To iterate actors in an invariant, use handler.actorsLength() and handler.actors(i) — never call handler.getActors().\n\
+             - ASCII ONLY IN STRINGS: All string literals must use only plain ASCII. No Unicode dashes or smart quotes.\n\
+             - PUBLIC ARRAY GETTERS: A `public` array already generates a getter automatically. Never write a separate function with the same name.\n\
+             - IMPORT PATHS: Import dependencies from their own source file — never re-export them from the target contract file.\n\
+             - HANDLER IS THE CALLER: Ghost mappings must be keyed by address(this) not msg.sender. Every state-changing call must update its ghost variable.\n\
+             - ASSERT VS REQUIRE: assert(condition) takes one argument only. Use require(condition, \"msg\") for messages.\n\
+             "
+        )
+    };
 
     Ok(format!(
         "Round: {round}\n\
@@ -298,16 +357,7 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          4. No duplicate paths in one response.\n\
          5. If nothing needs changing for one artifact, return its updates array as [].\n\
          \n\
-         SOLIDITY CONSTRAINTS (must hold after every patch):\n\
-         - ALL state variable declarations (including ghost vars) must be in handler.stateVars as full Solidity lines ending with semicolons. handler.ghostVars holds only the variable NAMES (no types, no semicolons) of variables already declared in stateVars.\n\
-         - contract {handler_name} is Test {{  — do not change this declaration or remove Test inheritance\n\
-         - contract {test_name} is Test {{  — do not change this declaration or remove Test inheritance\n\
-         - Never redefine functions provided by Test (bound, vm, makeAddr, deal)\n\
-         - Never embed raw bytecode — use deployCode(\"Name.sol:Name\") for dependencies\n\
-         - To iterate actors in an invariant, use handler.actorsLength() and handler.actors(i) — never call handler.getActors() or any method not declared in the handler\n\
-         - ASCII ONLY IN STRINGS: All string literals must use only plain ASCII. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character. Use plain hyphen (-) or colon (:) instead.\n\
-         - PUBLIC ARRAY GETTERS: A `public` array (e.g. `address[] public actors`) already generates a getter `actors(uint256)` automatically. Never write a separate function with the same name — it will cause \"Identifier already declared\".\n\
-         - IMPORT PATHS: Import dependencies (e.g. Token) from their own source file (e.g. \"src/Token.sol\") — never re-export them from the target contract file.\n\
+         {patch_constraints}\
          \n\
          VALID bodies path prefixes:\n\
          - meta.contract / meta.contractPath / meta.solidity / meta.generatedAt\n\
@@ -325,9 +375,8 @@ pub fn build_round_n_prompt(request: &GenerationRequest) -> Result<String> {
          \n\
          Existing foundry config:\n{existing_config}",
         round = request.round,
-        handler_name = handler_name,
-        test_name = test_name,
         existing_bodies = existing_bodies_json,
         existing_config = existing_config_json,
+        patch_constraints = patch_constraints,
     ))
 }

@@ -58,6 +58,11 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
         if auto_getters.contains(name) {
             continue;
         }
+        // LLM sometimes emits just a bare body (e.g. "return actors.length;") without
+        // the function signature. Skip those to prevent top-level statement errors.
+        if !fn_body.trim_start().starts_with("function ") {
+            continue;
+        }
         out.push(fn_body.clone());
         out.push(String::new());
     }
@@ -97,6 +102,9 @@ async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter)
     out.push(String::new());
 
     for inv_body in t.invariants.values() {
+        if !inv_body.trim_start().starts_with("function ") {
+            continue;
+        }
         out.push(inv_body.clone());
         out.push(String::new());
     }

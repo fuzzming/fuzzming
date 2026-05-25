@@ -111,7 +111,7 @@ impl LiteLlmGenerationAdapter {
         let bodies_stage: BodiesStage = self
             .request_json(
                 &system_prompt,
-                build_round_one_bodies_prompt(&analysis, &request.contract_name, &request.contract_path, &request.source_code)?,
+                build_round_one_bodies_prompt(&analysis, &request.contract_name, &request.contract_path, &request.source_code, &self.model)?,
                 "bodies",
                 "bodies object with valid Solidity syntax",
                 &mut usage,
@@ -142,7 +142,7 @@ impl LiteLlmGenerationAdapter {
         request: &GenerationRequest,
     ) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
-        let mut user_prompt = build_round_n_prompt(request)?;
+        let mut user_prompt = build_round_n_prompt(request, &self.model)?;
         let mut last_error = String::new();
         let mut usage = GenerationUsage::default();
 
