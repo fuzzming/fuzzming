@@ -13,3 +13,5 @@ examples/
 
 # Local editor context
 .context
+
+.cache/
