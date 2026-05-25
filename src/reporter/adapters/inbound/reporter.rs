@@ -3,8 +3,8 @@ use async_trait::async_trait;
 
 use crate::reporter::ports::outbound::OutputPort;
 use crate::reporter::use_cases::{
-    format_bug_report, format_coverage_report, format_dev_test_failure, format_exhausted_report,
-    format_round_usage,
+    format_bug_report, format_compile_error, format_coverage_report, format_dev_test_failure,
+    format_exhausted_report, format_round_usage,
 };
 use crate::shared::ports::ReporterPort;
 use crate::shared::responses::{
@@ -43,5 +43,10 @@ impl ReporterPort for Reporter {
 
     async fn emit_stage_event(&self, event: StageEvent) -> Result<()> {
         self.output.handle_stage_event(event).await
+    }
+
+    async fn emit_compile_error(&self, contract_name: &str, round: u32, message: &str) -> Result<()> {
+        let formatted = format_compile_error(contract_name, round, message);
+        self.output.write(&formatted).await
     }
 }

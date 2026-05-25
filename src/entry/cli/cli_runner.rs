@@ -91,7 +91,7 @@ impl CliRunner {
 // ── aggregate summary ─────────────────────────────────────────────────────────
 
 fn print_aggregate_summary(outcomes: &[SessionOutcome]) {
-    if outcomes.len() <= 1 {
+    if outcomes.is_empty() {
         return;
     }
 

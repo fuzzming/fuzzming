@@ -5,6 +5,10 @@ pub enum StageKind {
     Llm,
     Executor,
     Fuzzer,
+    /// Emitted when a single contract's session terminates (all rounds done).
+    ContractDone,
+    /// Emitted once when the entire multi-contract session ends.
+    SessionDone,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

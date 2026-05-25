@@ -10,4 +10,5 @@ pub trait ReporterPort: Send + Sync {
     async fn emit(&self, outcome: SessionOutcome) -> Result<()>;
     async fn emit_round_usage(&self, usage: RoundUsage) -> Result<()>;
     async fn emit_stage_event(&self, event: StageEvent) -> Result<()>;
+    async fn emit_compile_error(&self, contract_name: &str, round: u32, message: &str) -> Result<()>;
 }

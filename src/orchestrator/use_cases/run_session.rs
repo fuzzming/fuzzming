@@ -125,6 +125,14 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         .extend(report.bugs.iter().cloned());
                 }
 
+                // Surface compile errors immediately so the user sees them in the terminal.
+                if matches!(report.outcome, crate::shared::responses::fuzz_report::FuzzOutcome::CompileError) {
+                    let fuzz_output_path = format!(".fuzzming/{}/fuzz_output.txt", signal.contract_name);
+                    if let Ok(Some(msg)) = self.reader.get_fuzz_output(&fuzz_output_path).await {
+                        self.reporter.emit_compile_error(&signal.contract_name, state.current_round, &msg).await?;
+                    }
+                }
+
                 let decision = check_termination(report, &state);
                 let decision = if !decision.terminate {
                     self.check_full_coverage_streak(&signal.contract_name, report, &mut state).await?
@@ -165,6 +173,21 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         .join(format!(".fuzzming/{}/outcome.json", signal.contract_name));
                     let json = serde_json::to_string_pretty(&outcome)?;
                     tokio::fs::write(&outcome_path, json).await?;
+
+                    let contract_done_status = if outcome.bugs.is_empty()
+                        && !matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
+                    {
+                        StageStatus::Finished
+                    } else {
+                        StageStatus::Failed
+                    };
+                    self.reporter.emit_stage_event(StageEvent {
+                        contract_name: Some(signal.contract_name.clone()),
+                        round: state.current_round,
+                        stage: StageKind::ContractDone,
+                        status: contract_done_status,
+                    }).await?;
+
                     outcomes.push(outcome);
                 } else {
                     let bug_count = state

@@ -11,14 +11,24 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use crate::reporter::ports::outbound::OutputPort;
 use crate::shared::responses::stage_event::{StageEvent, StageKind, StageStatus};
 
-/// Verbs that cycle on the LLM spinner — Claude-code style.
-const THINKING_VERBS: &[&str] = &[
-    "Thinking",
-    "Investigating",
-    "Analysing",
-    "Crafting",
-    "Refining",
-    "Verifying",
+/// Messages shown during round 1 — three LLM calls: analysis → bodies → config.
+const ROUND_ONE_MESSAGES: &[&str] = &[
+    "Analysing security",
+    "Analysing security",
+    "Generating invariants",
+    "Generating invariants",
+    "Building test suite",
+    "Building test suite",
+    "Configuring fuzzer",
+];
+
+/// Messages shown during round N — single patch call.
+const ROUND_N_MESSAGES: &[&str] = &[
+    "Reviewing coverage gaps",
+    "Reviewing coverage gaps",
+    "Patching test suite",
+    "Patching test suite",
+    "Updating fuzzer config",
 ];
 
 /// Per-contract spinner state.
@@ -181,9 +191,14 @@ impl OutputPort for TerminalOutput {
                 spinner.enable_steady_tick(Duration::from_millis(600));
 
                 let label = contract_label(&contract);
-                spinner.set_message(msg_active(&label, THINKING_VERBS[0]));
+                let messages: &'static [&'static str] = if event.round == 1 {
+                    ROUND_ONE_MESSAGES
+                } else {
+                    ROUND_N_MESSAGES
+                };
+                spinner.set_message(msg_active(&label, messages[0]));
 
-                // Background task: rotate verbs every 2.2 s
+                // Background task: step through stage messages every 2.2 s
                 let cancel = Arc::new(AtomicBool::new(false));
                 let cancel_bg = cancel.clone();
                 let bar_bg = spinner.clone();
@@ -196,8 +211,8 @@ impl OutputPort for TerminalOutput {
                             break;
                         }
                         i += 1;
-                        let verb = THINKING_VERBS[i % THINKING_VERBS.len()];
-                        bar_bg.set_message(msg_active(&label_bg, verb));
+                        let msg = messages[i % messages.len()];
+                        bar_bg.set_message(msg_active(&label_bg, msg));
                     }
                 });
 

@@ -15,12 +15,45 @@ pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
     };
 
     let bugs_section = if bug_count > 0 {
-        let list = outcome
-            .bugs
+        // Group by invariant name, preserving first-seen order.
+        let mut order: Vec<String> = Vec::new();
+        let mut groups: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for b in &outcome.bugs {
+            if !groups.contains_key(&b.invariant_name) {
+                order.push(b.invariant_name.clone());
+            }
+            groups
+                .entry(b.invariant_name.clone())
+                .or_default()
+                .push(b.call_sequence.clone());
+        }
+
+        let list = order
             .iter()
-            .map(|b| format!("- `{}`: {}", b.invariant_name, b.call_sequence))
+            .map(|name| {
+                let seqs = &groups[name];
+                let count = seqs.len();
+                let label = if count > 1 {
+                    format!("- `{}` ({} occurrences):", name, count)
+                } else {
+                    format!("- `{}`:", name)
+                };
+                let body = seqs
+                    .iter()
+                    .map(|seq| {
+                        seq.lines()
+                            .map(|line| format!("  {}", line))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("{}\n{}", label, body)
+            })
             .collect::<Vec<_>>()
             .join("\n");
+
         format!("\n\n**Bugs found:**\n{}", list)
     } else {
         String::new()
