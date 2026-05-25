@@ -6,7 +6,7 @@ use fuzzming::{
         use_cases::RunFuzzerUseCase,
     },
     shared::{
-        models::{Fuzzer, Language, OutputFormat, SessionConfig},
+        models::{Fuzzer, Language, SessionConfig},
         requests::round_signal::RoundSignal,
         responses::fuzz_report::FuzzOutcome,
     },
@@ -23,8 +23,6 @@ fn signal(workspace: PathBuf) -> RoundSignal {
         config: SessionConfig {
             model: String::new(),
             llm_key: String::new(),
-            output_format: OutputFormat::Terminal,
-            ci_mode: false,
             language: Language::Solidity,
             fuzzer: Fuzzer::Foundry,
             workspace_root: workspace,

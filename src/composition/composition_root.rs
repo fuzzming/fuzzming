@@ -15,8 +15,8 @@ use crate::reader::adapters::inbound::Reader;
 use crate::reader::adapters::outbound::{FileSystemReader, FoundryCoverageReader, SolidityContractReader};
 use crate::reader::use_cases::ReadUseCase;
 use crate::reporter::adapters::inbound::Reporter;
-use crate::reporter::adapters::outbound::{PrCommentOutput, TerminalOutput};
-use crate::shared::models::{OutputFormat, SessionConfig};
+use crate::reporter::adapters::outbound::TerminalOutput;
+use crate::shared::models::SessionConfig;
 use crate::shared::ports::OrchestratorPort;
 
 pub struct CompositionRoot;
@@ -56,20 +56,8 @@ impl CompositionRoot {
             Box::new(ReadUseCase::new(contract_reader, coverage_reader, fs_reader));
         let reader = Box::new(Reader::new(reader_use_case));
 
-        // Reporter — CI mode reads GitHub context from environment variables set by Actions
         let output: Box<dyn crate::reporter::ports::outbound::OutputPort> =
-            match config.output_format {
-                OutputFormat::Ci => {
-                    let token = std::env::var("GITHUB_TOKEN").unwrap_or_default();
-                    let repo = std::env::var("GITHUB_REPOSITORY").unwrap_or_default();
-                    let pr_number = std::env::var("PR_NUMBER")
-                        .ok()
-                        .and_then(|v| v.parse::<u64>().ok())
-                        .unwrap_or(0);
-                    Box::new(PrCommentOutput::new(token, repo, pr_number))
-                }
-                OutputFormat::Terminal => Box::new(TerminalOutput::new()),
-            };
+            Box::new(TerminalOutput::new());
         let reporter = Box::new(Reporter::new(output));
 
         // Orchestrator

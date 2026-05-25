@@ -17,7 +17,6 @@ struct ConfigFile {
     model: Option<String>,
     llm_key: Option<String>,
     workspace_root: Option<PathBuf>,
-    ci_mode: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -27,7 +26,6 @@ pub struct ResolvedCliConfig {
     pub model: String,
     pub llm_key: String,
     pub workspace_root: PathBuf,
-    pub ci_mode: bool,
     pub verbose: bool,
 }
 
@@ -75,19 +73,12 @@ fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliC
 
     let max_rounds = args.max_rounds.or(stored.max_rounds).unwrap_or(10);
 
-    let ci_mode = if args.ci_mode {
-        true
-    } else {
-        stored.ci_mode.unwrap_or(false)
-    };
-
     Ok(ResolvedCliConfig {
         targets: args.targets.clone(),
         max_rounds,
         model,
         llm_key,
         workspace_root,
-        ci_mode,
         verbose: args.verbose,
     })
 }
@@ -191,25 +182,12 @@ fn prompt_for_config(
         .with_initial_text(max_rounds_default.to_string())
         .interact_text()?;
 
-    let ci_mode_default = if args.ci_mode {
-        true
-    } else {
-        stored.ci_mode.unwrap_or(false)
-    };
-
-    ui.divider();
-    let ci_mode = Confirm::new()
-        .with_prompt(ui.question("CI mode"))
-        .default(ci_mode_default)
-        .interact()?;
-
     let resolved = ResolvedCliConfig {
         targets,
         max_rounds,
         model,
         llm_key,
         workspace_root,
-        ci_mode,
         verbose: args.verbose,
     };
 
@@ -251,7 +229,6 @@ fn load_config(path: &Path) -> Result<ConfigFile> {
             "model" => config.model = Some(value.to_string()),
             "llm_key" => config.llm_key = Some(value.to_string()),
             "workspace_root" => config.workspace_root = Some(PathBuf::from(value)),
-            "ci_mode" => config.ci_mode = value.parse::<bool>().ok(),
             _ => {}
         }
     }
@@ -261,13 +238,12 @@ fn load_config(path: &Path) -> Result<ConfigFile> {
 
 fn save_config(path: &Path, resolved: &ResolvedCliConfig) -> Result<()> {
     let content = format!(
-        "targets={}\nmax_rounds={}\nmodel={}\nllm_key={}\nworkspace_root={}\nci_mode={}\n",
+        "targets={}\nmax_rounds={}\nmodel={}\nllm_key={}\nworkspace_root={}\n",
         resolved.targets.join(","),
         resolved.max_rounds,
         resolved.model,
         resolved.llm_key,
         resolved.workspace_root.to_string_lossy(),
-        resolved.ci_mode,
     );
 
     fs::write(path, content)?;
