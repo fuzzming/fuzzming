@@ -48,6 +48,7 @@ impl CliRunner {
             fuzzer: Fuzzer::Foundry,
             workspace_root: resolved.workspace_root.clone(),
             max_tokens: resolved.max_tokens,
+            llm_timeout_secs: resolved.llm_timeout_secs,
         };
         let request = SessionRequest {
             target_paths: resolved.targets.clone(),
