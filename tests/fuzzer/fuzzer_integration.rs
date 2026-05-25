@@ -27,6 +27,7 @@ fn signal(workspace: PathBuf) -> RoundSignal {
             fuzzer: Fuzzer::Foundry,
             workspace_root: workspace,
             max_tokens: 16_384,
+            llm_timeout_secs: 120,
         },
         contract_name: "Vault".to_string(),
         contract_path: "src/Vault.sol".to_string(),

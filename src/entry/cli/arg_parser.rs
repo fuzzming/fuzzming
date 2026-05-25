@@ -57,6 +57,10 @@ pub struct CliArgs {
     /// Force interactive prompts even when flags are provided
     #[arg(long, default_value_t = false)]
     pub interactive: bool,
+
+    /// Per-call LLM timeout in seconds (default: 120)
+    #[arg(long, default_value_t = 120)]
+    pub llm_timeout_secs: u64,
 }
 
 #[derive(Debug, Subcommand)]

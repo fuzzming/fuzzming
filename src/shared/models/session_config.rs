@@ -32,4 +32,6 @@ pub struct SessionConfig {
     pub workspace_root: PathBuf,
     /// Maximum tokens the LLM may generate per call.
     pub max_tokens: u32,
+    /// Per-call LLM timeout in seconds.
+    pub llm_timeout_secs: u64,
 }
