@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(
     name = "fuzzming",
+    version,
     about = "AI-powered Solidity smart contract fuzzer",
     long_about = "FuzzMing — AI-powered Solidity smart contract fuzzer.\n\
 \n\
