@@ -34,11 +34,19 @@ struct ProgressState {
     multi: MultiProgress,
 }
 
-pub struct TerminalOutput;
+pub struct TerminalOutput {
+    state: Arc<Mutex<ProgressState>>,
+}
 
 impl TerminalOutput {
     pub fn new() -> Self {
-        Self
+        Self {
+            state: Arc::new(Mutex::new(ProgressState {
+                contracts: HashMap::new(),
+                fuzzer_bar: None,
+                multi: MultiProgress::new(),
+            })),
+        }
     }
 }
 
@@ -46,21 +54,6 @@ impl Default for TerminalOutput {
     fn default() -> Self {
         Self::new()
     }
-}
-
-// ── global singleton ──────────────────────────────────────────────────────────
-
-fn progress_state() -> Arc<Mutex<ProgressState>> {
-    static STATE: std::sync::OnceLock<Arc<Mutex<ProgressState>>> = std::sync::OnceLock::new();
-    STATE
-        .get_or_init(|| {
-            Arc::new(Mutex::new(ProgressState {
-                contracts: HashMap::new(),
-                fuzzer_bar: None,
-                multi: MultiProgress::new(),
-            }))
-        })
-        .clone()
 }
 
 // ── message helpers ───────────────────────────────────────────────────────────
@@ -152,7 +145,7 @@ fn msg_fuzzer_done(ok: bool) -> String {
 #[async_trait]
 impl OutputPort for TerminalOutput {
     async fn write(&self, output: &str) -> Result<()> {
-        let state = progress_state();
+        let state = self.state.clone();
         let guard = state.lock().expect("progress lock");
         // Use multi.println so spinners are not disturbed.
         guard.multi.println(output).ok();
@@ -160,14 +153,14 @@ impl OutputPort for TerminalOutput {
     }
 
     async fn write_progress(&self, output: &str) -> Result<()> {
-        let state = progress_state();
+        let state = self.state.clone();
         let guard = state.lock().expect("progress lock");
         guard.multi.println(output).ok();
         Ok(())
     }
 
     async fn handle_stage_event(&self, event: StageEvent) -> Result<()> {
-        let state = progress_state();
+        let state = self.state.clone();
 
         match (&event.stage, &event.status) {
             // ── LLM Started → new per-contract spinner + verb rotation ──────
