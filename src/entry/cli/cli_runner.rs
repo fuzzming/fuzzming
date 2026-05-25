@@ -11,7 +11,7 @@ use crate::entry::cli::interactive::resolve_cli_config;
 use crate::entry::cli::ui::CliUi;
 use crate::shared::models::{Fuzzer, Language, SessionConfig};
 use crate::shared::requests::session_request::SessionRequest;
-use crate::shared::responses::session_outcome::TerminationReason;
+use crate::shared::responses::session_outcome::{SessionOutcome, TerminationReason};
 
 pub struct CliRunner;
 
@@ -146,6 +146,37 @@ fn handle_report(workspace_root: Option<PathBuf>, ui: &CliUi) -> Result<()> {
                         err_st.apply_to(pct.to_string()).to_string()
                     }
                 );
+            }
+        }
+
+        // Outcome: termination reason and bugs from outcome.json
+        let outcome_path = entry.path().join("outcome.json");
+        if outcome_path.exists() {
+            if let Ok(json) = fs::read_to_string(&outcome_path) {
+                if let Ok(outcome) = serde_json::from_str::<SessionOutcome>(&json) {
+                    let reason_str = match outcome.reason {
+                        TerminationReason::Bug => "Bug found",
+                        TerminationReason::Exhausted => "Rounds exhausted",
+                        TerminationReason::FullCoverage => "Full coverage",
+                        TerminationReason::DevTestFailed => "Test setup failed",
+                    };
+                    println!(
+                        "     {}  {}  ({} rounds)",
+                        muted.apply_to("result:"),
+                        if matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed) {
+                            err_st.apply_to(reason_str).to_string()
+                        } else {
+                            ok_st.apply_to(reason_str).to_string()
+                        },
+                        outcome.rounds_completed
+                    );
+                    for bug in &outcome.bugs {
+                        println!("     {}  {}", err_st.apply_to("bug:"), label_st.apply_to(&bug.invariant_name));
+                        for line in bug.call_sequence.lines().take(4) {
+                            println!("       {}", muted.apply_to(line));
+                        }
+                    }
+                }
             }
         }
 

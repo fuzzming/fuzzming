@@ -153,6 +153,10 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         artifacts,
                     };
                     self.reporter.emit(outcome.clone()).await?;
+                    let outcome_path = state.config.workspace_root
+                        .join(format!(".fuzzming/{}/outcome.json", signal.contract_name));
+                    let json = serde_json::to_string_pretty(&outcome)?;
+                    tokio::fs::write(&outcome_path, json).await?;
                     outcomes.push(outcome);
                 } else {
                     let bug_count = state
