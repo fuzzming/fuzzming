@@ -285,15 +285,21 @@ fn default_config_path() -> Result<PathBuf> {
 
 fn discover_targets(workspace_root: &Path) -> Result<Vec<String>> {
     let src_root = workspace_root.join("src");
-    if !src_root.exists() {
+    let contracts_root = workspace_root.join("contracts");
+
+    let search_root = if src_root.exists() {
+        src_root
+    } else if contracts_root.exists() {
+        contracts_root
+    } else {
         return Err(anyhow!(
-            "no targets specified and '{}' does not exist",
-            src_root.to_string_lossy()
+            "no targets specified and neither 'src/' nor 'contracts/' exist in '{}'",
+            workspace_root.to_string_lossy()
         ));
-    }
+    };
 
     let mut targets = Vec::new();
-    for entry in WalkDir::new(&src_root).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(&search_root).into_iter().filter_map(Result::ok) {
         if entry.file_type().is_file() {
             let path = entry.path();
             if path.extension().map(|e| e == "sol").unwrap_or(false) {
