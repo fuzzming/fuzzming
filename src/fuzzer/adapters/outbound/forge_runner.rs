@@ -40,7 +40,7 @@ impl TestRunnerPort for ForgeRunner {
             .current_dir(&self.working_dir)
             .output()
             .await
-            .context("failed to spawn `forge test`")?;
+            .context("failed to spawn `forge test` — is Foundry installed and `forge` on your PATH?")?;
 
         Ok(RunnerResult {
             exit_code: output.status.code().unwrap_or(-1),
@@ -57,7 +57,7 @@ impl TestRunnerPort for ForgeRunner {
             .current_dir(&self.working_dir)
             .output()
             .await
-            .context("failed to spawn `forge coverage`")?;
+            .context("failed to spawn `forge coverage` — is Foundry installed and `forge` on your PATH?")?;
 
         let exit_code = output.status.code().unwrap_or(-1);
         let lcov_content = tokio::fs::read_to_string(self.working_dir.join("lcov.info")).await.ok();

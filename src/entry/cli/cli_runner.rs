@@ -71,12 +71,13 @@ impl CliRunner {
             Ok(outcomes) => outcomes,
             Err(err) => {
                 let message = err.to_string();
-                ui.error("FuzzMing stopped early.");
-                if message.contains("litellm")
-                    || message.contains("LLM")
-                    || message.contains("executor")
-                {
-                    ui.warn("Hint: try a stronger model or check your LLM provider key.");
+                ui.error(&format!("FuzzMing stopped early: {}", message));
+                if message.contains("timed out") {
+                    ui.warn("Hint: increase --llm-timeout-secs or try a faster model.");
+                } else if message.contains("litellm") || message.contains("completion failed") {
+                    ui.warn("Hint: check your --llm-key and --model are correct.");
+                } else if message.contains("forge") || message.contains("PATH") {
+                    ui.warn("Hint: make sure Foundry is installed and `forge` is on your PATH.");
                 }
                 std::process::exit(1);
             }
@@ -503,7 +504,8 @@ async fn run_demo() -> Result<()> {
     let outcomes = match orchestrator.run(request).await {
         Ok(o) => o,
         Err(err) => {
-            eprintln!("demo error: {}", err);
+            let ui = CliUi::new();
+            ui.error(&format!("Demo failed: {}", err));
             std::process::exit(1);
         }
     };
