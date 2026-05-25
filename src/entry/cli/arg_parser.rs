@@ -17,7 +17,7 @@ Point it at a Foundry project and it will:\n\
 SUBCOMMANDS\n\
   guide                       Show the full CLI reference and examples\n\
   report [--workspace-root]   Print a summary of the last run (coverage, output)\n\
-  config [--reset]            View or clear saved fuzzming.config.txt\n\
+  config [--reset]            View or clear saved fuzzming.config\n\
 \n\
 Run \"fuzzming guide\" for detailed usage, flags, and examples."
 )]
@@ -97,15 +97,15 @@ pub enum Command {
         workspace_root: Option<PathBuf>,
     },
 
-    /// View or reset the saved fuzzming.config.txt
+    /// View or reset the saved fuzzming.config
     ///
-    /// Without flags: prints every key in fuzzming.config.txt.  The LLM API
+    /// Without flags: prints every key in fuzzming.config.  The LLM API
     /// key is always masked (shown as ****) for security.
     ///
-    /// With --reset: deletes fuzzming.config.txt so the next `fuzzming` run
+    /// With --reset: deletes fuzzming.config so the next `fuzzming` run
     /// walks you through the interactive setup again.
     Config {
-        /// Delete fuzzming.config.txt — the next run will re-prompt for all settings
+        /// Delete fuzzming.config — the next run will re-prompt for all settings
         #[arg(long, default_value_t = false)]
         reset: bool,
     },

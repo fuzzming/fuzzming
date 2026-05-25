@@ -8,7 +8,7 @@ use walkdir::WalkDir;
 use crate::entry::cli::arg_parser::CliArgs;
 use crate::entry::cli::ui::CliUi;
 
-const CONFIG_FILE_NAME: &str = "fuzzming.config.txt";
+const CONFIG_FILE_NAME: &str = "fuzzming.config";
 
 #[derive(Debug, Default, Clone)]
 struct ConfigFile {
@@ -201,8 +201,8 @@ fn prompt_for_config(
     };
 
     save_config(config_path, &resolved)?;
-    ui.success("Saved fuzzming.config.txt");
-    ui.warn("fuzzming.config.txt contains your API key — make sure it is gitignored");
+    ui.success("Saved fuzzming.config");
+    ui.warn("fuzzming.config contains your API key — make sure it is gitignored");
     println!();
 
     Ok(resolved)

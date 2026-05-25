@@ -284,7 +284,7 @@ fn parse_lcov_totals(lcov: &str) -> (u64, u64) {
 // ── subcommand: config ────────────────────────────────────────────────────────
 
 fn handle_config(reset: bool, ui: &CliUi) -> Result<()> {
-    let config_path = std::env::current_dir()?.join("fuzzming.config.txt");
+    let config_path = std::env::current_dir()?.join("fuzzming.config");
     let header_st = Style::new().fg(Color::Color256(99)).bold();
     let label_st = Style::new().fg(Color::Color256(75)).bold();
     let muted = Style::new().fg(Color::Color256(245));
@@ -294,13 +294,13 @@ fn handle_config(reset: bool, ui: &CliUi) -> Result<()> {
             fs::remove_file(&config_path)?;
             ui.success("✓ Config file removed. The next run will re-prompt for settings.");
         } else {
-            ui.warn("No fuzzming.config.txt found — nothing to reset.");
+            ui.warn("No fuzzming.config found — nothing to reset.");
         }
         return Ok(());
     }
 
     if !config_path.exists() {
-        ui.warn("No fuzzming.config.txt found. Run fuzzming --interactive to create one.");
+        ui.warn("No fuzzming.config found. Run fuzzming --interactive to create one.");
         return Ok(());
     }
 
@@ -385,14 +385,14 @@ fn print_extended_help(ui: &CliUi) {
     // config
     println!("  {}  {}",
         label.apply_to("config"),
-        dim.apply_to("View or reset the saved fuzzming.config.txt"));
+        dim.apply_to("View or reset the saved fuzzming.config"));
     println!("  {}", dim.apply_to("  Without flags: prints all saved keys (API key is always masked)."));
     println!("  {}", dim.apply_to("  With --reset:  deletes the config so the next run re-prompts."));
     println!();
     println!("  {}",  dim.apply_to("  Flags:"));
     println!("    {}  {}",
         label.apply_to("--reset"),
-        dim.apply_to("Delete fuzzming.config.txt — next run will re-prompt for all settings"));
+        dim.apply_to("Delete fuzzming.config — next run will re-prompt for all settings"));
     println!();
     println!("  {}", dim.apply_to("  Examples:"));
     println!("    {}", hi.apply_to("fuzzming config"));
