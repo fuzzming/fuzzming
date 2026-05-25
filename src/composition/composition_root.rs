@@ -28,7 +28,7 @@ impl CompositionRoot {
         let api_key = config.llm_key.clone();
 
         // Generator (LLM engine)
-        let llm_client = Box::new(LiteLlmClient::new(&model, Some(0.1), Some(4_096)));
+        let llm_client = Box::new(LiteLlmClient::new(&model, Some(0.1), Some(config.max_tokens)));
         let generation_adapter =
             Box::new(LiteLlmGenerationAdapter::new(&model, &api_key, llm_client));
         let generator_use_case = Box::new(GeneratorRunUseCase::new(generation_adapter));

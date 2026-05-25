@@ -30,4 +30,6 @@ pub struct SessionConfig {
     pub fuzzer: Fuzzer,
     /// Absolute path to the Foundry project root — all forge commands run here.
     pub workspace_root: PathBuf,
+    /// Maximum tokens the LLM may generate per call.
+    pub max_tokens: u32,
 }

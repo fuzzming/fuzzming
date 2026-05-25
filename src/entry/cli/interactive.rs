@@ -27,6 +27,7 @@ pub struct ResolvedCliConfig {
     pub llm_key: String,
     pub workspace_root: PathBuf,
     pub verbose: bool,
+    pub max_tokens: u32,
 }
 
 pub fn resolve_cli_config(args: &CliArgs) -> Result<ResolvedCliConfig> {
@@ -80,6 +81,7 @@ fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliC
         llm_key,
         workspace_root,
         verbose: args.verbose,
+        max_tokens: args.max_tokens,
     })
 }
 
@@ -189,6 +191,7 @@ fn prompt_for_config(
         llm_key,
         workspace_root,
         verbose: args.verbose,
+        max_tokens: args.max_tokens,
     };
 
     save_config(config_path, &resolved)?;

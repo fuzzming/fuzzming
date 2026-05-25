@@ -26,6 +26,7 @@ fn signal(workspace: PathBuf) -> RoundSignal {
             language: Language::Solidity,
             fuzzer: Fuzzer::Foundry,
             workspace_root: workspace,
+            max_tokens: 16_384,
         },
         contract_name: "Vault".to_string(),
         contract_path: "src/Vault.sol".to_string(),
