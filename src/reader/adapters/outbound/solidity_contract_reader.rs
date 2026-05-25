@@ -21,7 +21,7 @@ impl ContractReaderPort for SolidityContractReader {
 
         let filtered: Vec<&str> = content
             .lines()
-            .filter(|l| !l.trim().starts_with("pragma") && !l.trim().starts_with("import"))
+            .filter(|l| !l.trim().starts_with("pragma"))
             .collect();
         let mut source = filtered.join("\n");
 
