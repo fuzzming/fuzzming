@@ -45,13 +45,21 @@ pub struct RunArgs {
     #[arg(long)]
     pub workspace_root: Option<PathBuf>,
 
-    /// Maximum tokens the LLM may generate per call (default: 16384)
-    #[arg(long, default_value_t = 16_384)]
-    pub max_tokens: u32,
+    /// Maximum tokens the LLM may generate per call (omit for no limit)
+    #[arg(long)]
+    pub max_tokens: Option<u32>,
 
     /// Force interactive prompts even when flags are provided
     #[arg(long, default_value_t = false)]
     pub interactive: bool,
+
+    /// Skip all prompts and use default values (targets/model/key from flags or env vars)
+    #[arg(long, default_value_t = false)]
+    pub defaults: bool,
+
+    /// Skip all prompts and read everything from fuzzming.config — fails if config is incomplete
+    #[arg(long, default_value_t = false)]
+    pub from_config: bool,
 
     /// Per-call LLM timeout in seconds (default: 120)
     #[arg(long, default_value_t = 120)]

@@ -32,7 +32,7 @@ pub struct ResolvedCliConfig {
     pub llm_key: String,
     pub workspace_root: PathBuf,
     pub verbose: bool,
-    pub max_tokens: u32,
+    pub max_tokens: Option<u32>,
     pub llm_timeout_secs: u64,
     pub full_coverage_rounds: u32,
     pub prompt_mode: PromptMode,
@@ -48,7 +48,11 @@ pub fn resolve_cli_config(args: &RunArgs) -> Result<ResolvedCliConfig> {
         || args.workspace_root.is_none()
         || args.targets.is_empty();
 
-    let mut resolved = if needs_prompt {
+    let mut resolved = if args.from_config {
+        resolve_from_config_only(&stored)?
+    } else if args.defaults {
+        resolve_with_defaults(args)?
+    } else if needs_prompt {
         prompt_for_config(args, &stored, &config_path)?
     } else {
         resolve_from_args(args, &stored)?
@@ -59,6 +63,48 @@ pub fn resolve_cli_config(args: &RunArgs) -> Result<ResolvedCliConfig> {
     }
 
     Ok(resolved)
+}
+
+fn resolve_from_config_only(stored: &ConfigFile) -> Result<ResolvedCliConfig> {
+    let model = stored.model.clone()
+        .ok_or_else(|| anyhow!("fuzzming.config is missing 'model'"))?;
+    let llm_key = stored.llm_key.clone()
+        .ok_or_else(|| anyhow!("fuzzming.config is missing 'llm_key'"))?;
+    let workspace_root = stored.workspace_root.clone()
+        .unwrap_or_else(|| PathBuf::from("."));
+    Ok(ResolvedCliConfig {
+        targets: stored.targets.clone(),
+        max_rounds: stored.max_rounds.unwrap_or(10),
+        model,
+        llm_key,
+        workspace_root,
+        verbose: false,
+        max_tokens: stored.max_tokens,
+        llm_timeout_secs: stored.llm_timeout_secs.unwrap_or(120),
+        full_coverage_rounds: stored.full_coverage_rounds.unwrap_or(2),
+        prompt_mode: stored.prompt_mode.clone().unwrap_or_default(),
+    })
+}
+
+fn resolve_with_defaults(args: &RunArgs) -> Result<ResolvedCliConfig> {
+    let model = args.model.clone()
+        .ok_or_else(|| anyhow!("--defaults requires --model or LLM_MODEL env var"))?;
+    let llm_key = args.llm_key.clone()
+        .ok_or_else(|| anyhow!("--defaults requires --llm-key or LLM_KEY env var"))?;
+    let workspace_root = args.workspace_root.clone()
+        .unwrap_or_else(|| PathBuf::from("."));
+    Ok(ResolvedCliConfig {
+        targets: args.targets.clone(),
+        max_rounds: args.max_rounds.unwrap_or(10),
+        model,
+        llm_key,
+        workspace_root,
+        verbose: args.verbose,
+        max_tokens: args.max_tokens,
+        llm_timeout_secs: args.llm_timeout_secs,
+        full_coverage_rounds: args.full_coverage_rounds,
+        prompt_mode: PromptMode::default(),
+    })
 }
 
 fn resolve_from_args(args: &RunArgs, stored: &ConfigFile) -> Result<ResolvedCliConfig> {
@@ -91,7 +137,7 @@ fn resolve_from_args(args: &RunArgs, stored: &ConfigFile) -> Result<ResolvedCliC
         llm_key,
         workspace_root,
         verbose: args.verbose,
-        max_tokens: stored.max_tokens.unwrap_or(args.max_tokens),
+        max_tokens: stored.max_tokens.or(args.max_tokens),
         llm_timeout_secs: stored.llm_timeout_secs.unwrap_or(args.llm_timeout_secs),
         full_coverage_rounds: stored.full_coverage_rounds.unwrap_or(args.full_coverage_rounds),
         prompt_mode,
@@ -219,10 +265,11 @@ fn prompt_for_config(
         .interact_text()?;
 
     ui.divider();
-    let max_tokens = Input::<u32>::new()
-        .with_prompt(ui.question("Max tokens per LLM call"))
-        .with_initial_text(stored.max_tokens.unwrap_or(args.max_tokens).to_string())
+    let max_tokens_raw = Input::<u32>::new()
+        .with_prompt(ui.question("Max tokens per LLM call (0 = no limit)"))
+        .with_initial_text(stored.max_tokens.or(args.max_tokens).unwrap_or(0).to_string())
         .interact_text()?;
+    let max_tokens: Option<u32> = if max_tokens_raw == 0 { None } else { Some(max_tokens_raw) };
 
     ui.divider();
     let full_coverage_rounds = Input::<u32>::new()
@@ -282,7 +329,7 @@ fn load_config(path: &Path) -> Result<ConfigFile> {
             "model" => config.model = Some(value.to_string()),
             "llm_key" => config.llm_key = Some(value.to_string()),
             "workspace_root" => config.workspace_root = Some(PathBuf::from(value)),
-            "max_tokens" => config.max_tokens = value.parse::<u32>().ok(),
+            "max_tokens" => config.max_tokens = value.parse::<u32>().ok().filter(|&v| v > 0),
             "llm_timeout_secs" => config.llm_timeout_secs = value.parse::<u64>().ok(),
             "full_coverage_rounds" => config.full_coverage_rounds = value.parse::<u32>().ok(),
             "prompt_mode" => config.prompt_mode = value.parse::<PromptMode>().ok(),
@@ -301,7 +348,7 @@ fn save_config(path: &Path, resolved: &ResolvedCliConfig) -> Result<()> {
         resolved.model,
         resolved.llm_key,
         resolved.workspace_root.to_string_lossy(),
-        resolved.max_tokens,
+        resolved.max_tokens.unwrap_or(0),
         resolved.llm_timeout_secs,
         resolved.full_coverage_rounds,
         resolved.prompt_mode.as_str(),

@@ -60,8 +60,8 @@ pub struct SessionConfig {
     pub fuzzer: Fuzzer,
     /// Absolute path to the Foundry project root — all forge commands run here.
     pub workspace_root: PathBuf,
-    /// Maximum tokens the LLM may generate per call.
-    pub max_tokens: u32,
+    /// Maximum tokens the LLM may generate per call. None means no restriction.
+    pub max_tokens: Option<u32>,
     /// Per-call LLM timeout in seconds.
     pub llm_timeout_secs: u64,
     /// Stop a contract session after this many consecutive rounds with 100% coverage.

@@ -103,7 +103,7 @@ impl OrchestratorRunPort for RunSessionUseCase {
             info!(round = state.current_round, "forge run finished");
             let fuzzer_summary = FuzzerRoundSummary {
                 bugs: reports.iter().filter(|r| !r.bugs.is_empty()).count(),
-                passed: reports.iter().filter(|r| r.bugs.is_empty()).count(),
+                passed: reports.iter().filter(|r| matches!(r.outcome, FuzzOutcome::Pass)).count(),
             };
             self.reporter
                 .emit_stage_event(StageEvent {

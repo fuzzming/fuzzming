@@ -100,6 +100,15 @@ async fn handle_run(args: RunArgs, ui: &CliUi) -> Result<()> {
     };
     let orchestrator = CompositionRoot::build(config);
 
+    let tokens_label = match resolved.max_tokens {
+        Some(n) => n.to_string(),
+        None => "unlimited".to_string(),
+    };
+    ui.info(&format!(
+        "model: {}  |  max rounds: {}  |  max tokens/call: {}",
+        resolved.model, resolved.max_rounds, tokens_label
+    ));
+
     let outcomes = match orchestrator.run(request).await {
         Ok(outcomes) => outcomes,
         Err(err) => {
@@ -403,7 +412,7 @@ fn print_extended_help(_ui: &CliUi) {
             one_liner: "Start a fuzzing session against one or more contracts",
             description: &[
                 "Loads fuzzming.config if present, then prompts for any missing values.",
-                "Pass all flags explicitly to skip interactive prompts entirely.",
+                "Use --defaults or --from-config to skip all prompts entirely.",
             ],
             flags: &[
                 ("--targets",        "<PATHS...>", "Paths to target Solidity contracts"),
@@ -411,15 +420,20 @@ fn print_extended_help(_ui: &CliUi) {
                 ("--model",          "<ID>",       "LLM model identifier  [env: LLM_MODEL]"),
                 ("--llm-key",        "<KEY>",      "LLM API key  [env: LLM_KEY]"),
                 ("--workspace-root", "<DIR>",      "Foundry project root (default: \".\")"),
+                ("--max-tokens",     "<N>",        "Max tokens per LLM call (omit for no limit)"),
+                ("--defaults",       "",           "Skip all prompts, use defaults + flags/env vars"),
+                ("--from-config",    "",           "Skip all prompts, read everything from fuzzming.config"),
                 ("--interactive",    "",           "Force interactive prompts even when config exists"),
                 ("--demo",           "",           "Run with mock adapters, no LLM calls, no tokens spent"),
                 ("--verbose",        "",           "Enable verbose trace logs"),
             ],
             examples: &[
-                ("fuzzming run",                                              "Interactive: prompts for all missing values"),
-                ("fuzzming run --targets src/Vault.sol --max-rounds 5",      "Non-interactive with explicit flags"),
-                ("fuzzming run --interactive",                                "Force prompts even when config exists"),
-                ("fuzzming run --demo",                                       "Mock run, no LLM calls"),
+                ("fuzzming run",                                                           "Interactive: prompts for all missing values"),
+                ("fuzzming run --targets src/Vault.sol --max-rounds 5",                   "Non-interactive with explicit flags"),
+                ("fuzzming run --defaults --targets src/Vault.sol",                       "No prompts, defaults + flags/env vars"),
+                ("fuzzming run --from-config",                                             "No prompts, read everything from fuzzming.config"),
+                ("fuzzming run --interactive",                                             "Force prompts even when config exists"),
+                ("fuzzming run --demo",                                                    "Mock run, no LLM calls"),
             ],
         },
         CommandDoc {
@@ -563,7 +577,7 @@ async fn run_demo() -> Result<()> {
         language: Language::Solidity,
         fuzzer: Fuzzer::Foundry,
         workspace_root,
-        max_tokens: 0,
+        max_tokens: None,
         llm_timeout_secs: 0,
         full_coverage_rounds: 2,
         prompt_mode: PromptMode::Guided,
