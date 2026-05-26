@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use dialoguer::{Confirm, Input};
 use walkdir::WalkDir;
 
-use crate::entry::cli::arg_parser::CliArgs;
+use crate::entry::cli::arg_parser::RunArgs;
 use crate::entry::cli::ui::CliUi;
 use crate::shared::models::PromptMode;
 
@@ -38,7 +38,7 @@ pub struct ResolvedCliConfig {
     pub prompt_mode: PromptMode,
 }
 
-pub fn resolve_cli_config(args: &CliArgs) -> Result<ResolvedCliConfig> {
+pub fn resolve_cli_config(args: &RunArgs) -> Result<ResolvedCliConfig> {
     let config_path = default_config_path()?;
     let stored = load_config(&config_path).unwrap_or_default();
 
@@ -61,7 +61,7 @@ pub fn resolve_cli_config(args: &CliArgs) -> Result<ResolvedCliConfig> {
     Ok(resolved)
 }
 
-fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliConfig> {
+fn resolve_from_args(args: &RunArgs, stored: &ConfigFile) -> Result<ResolvedCliConfig> {
     let workspace_root = args
         .workspace_root
         .clone()
@@ -99,7 +99,7 @@ fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliC
 }
 
 fn prompt_for_config(
-    args: &CliArgs,
+    args: &RunArgs,
     stored: &ConfigFile,
     config_path: &Path,
 ) -> Result<ResolvedCliConfig> {
@@ -245,7 +245,7 @@ fn prompt_for_config(
 
     save_config(config_path, &resolved)?;
     ui.success("Saved fuzzming.config");
-    ui.warn("fuzzming.config contains your API key — make sure it is gitignored");
+    ui.warn("fuzzming.config contains your API key, make sure it is gitignored");
     println!();
 
     Ok(resolved)
@@ -334,6 +334,11 @@ fn ensure_gitignored(config_path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn workspace_root_from_config() -> Option<PathBuf> {
+    let path = default_config_path().ok()?;
+    load_config(&path).ok()?.workspace_root
 }
 
 fn default_config_path() -> Result<PathBuf> {

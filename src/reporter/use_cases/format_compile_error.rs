@@ -7,7 +7,7 @@ pub fn format_compile_error(round: u32, message: &str) -> String {
     let header = format!(
         "\n  {}  {}",
         err_st.apply_to("✗"),
-        muted.apply_to(format!("Solidity compile error — round {}", round)),
+        muted.apply_to(format!("Solidity compile error, round {}", round)),
     );
 
     let lines: String = message
