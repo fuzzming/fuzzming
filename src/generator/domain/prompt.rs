@@ -1,4 +1,5 @@
 use crate::shared::models::{AssembledPrompt, BugInfo, CoverageContext, GapType, Message, Role};
+use super::fuzz_output_parser::format_for_llm;
 
 const RULES: [&str; 5] = [
     "NO FOR-IN LOOPS: Solidity mappings are not iterable. Track actors with `address[] public actors` and push new callers into it.",
@@ -59,7 +60,7 @@ impl Prompt {
         }
 
         if let Some(output) = &self.fuzz_output {
-            sections.push(format!("FUZZ OUTPUT:\n{}", output));
+            sections.push(format!("FUZZ OUTPUT:\n{}", format_for_llm(output)));
         }
 
         if let Some(coverage) = &self.coverage_context {

@@ -12,7 +12,7 @@ use crate::generator::use_cases::GeneratorRunUseCase;
 use crate::orchestrator::adapters::inbound::Orchestrator;
 use crate::orchestrator::use_cases::RunSessionUseCase;
 use crate::reader::adapters::inbound::Reader;
-use crate::reader::adapters::outbound::{FileSystemReader, FoundryCoverageReader, SolidityContractReader};
+use crate::reader::adapters::outbound::{FileSystemReader, SolidityContractReader};
 use crate::reader::use_cases::ReadUseCase;
 use crate::reporter::adapters::inbound::Reporter;
 use crate::reporter::adapters::outbound::TerminalOutput;
@@ -37,7 +37,7 @@ impl CompositionRoot {
         // Fuzzer engine
         let forge_runner = Box::new(ForgeRunner::new(workspace.clone()));
         let fuzzer_output = Box::new(FileSystemFuzzerOutput::new(workspace.clone()));
-        let fuzzer_use_case = Box::new(RunFuzzerUseCase::new(forge_runner, fuzzer_output));
+        let fuzzer_use_case = Box::new(RunFuzzerUseCase::new(forge_runner, fuzzer_output, workspace.clone()));
         let fuzzer = Box::new(FuzzerAdapter::new(fuzzer_use_case));
 
         // Executor
@@ -51,9 +51,7 @@ impl CompositionRoot {
         // Reader
         let fs_reader = Arc::new(FileSystemReader::new(workspace.clone()));
         let contract_reader = Arc::new(SolidityContractReader::new(fs_reader.clone()));
-        let coverage_reader = Arc::new(FoundryCoverageReader::new(fs_reader.clone()));
-        let reader_use_case =
-            Box::new(ReadUseCase::new(contract_reader, coverage_reader, fs_reader));
+        let reader_use_case = Box::new(ReadUseCase::new(contract_reader, fs_reader));
         let reader = Box::new(Reader::new(reader_use_case));
 
         let output: Box<dyn crate::reporter::ports::outbound::OutputPort> =

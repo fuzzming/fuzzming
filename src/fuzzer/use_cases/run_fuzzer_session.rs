@@ -1,9 +1,12 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::fuzzer::ports::inbound::FuzzerRunPort;
 use crate::fuzzer::ports::outbound::{FuzzerOutputPort, TestRunnerPort};
-use crate::fuzzer::use_cases::{run_coverage, run_fuzzer};
+use crate::fuzzer::use_cases::{enrich_coverage_context, run_coverage, run_fuzzer};
+use crate::reader::use_cases::parse_lcov::parse_lcov;
 use crate::shared::models::BugInfo;
 use crate::shared::requests::round_signal::RoundSignal;
 use crate::shared::responses::fuzz_report::{FuzzOutcome, FuzzReport};
@@ -11,11 +14,16 @@ use crate::shared::responses::fuzz_report::{FuzzOutcome, FuzzReport};
 pub struct RunFuzzerUseCase {
     pub runner: Box<dyn TestRunnerPort>,
     pub output: Box<dyn FuzzerOutputPort>,
+    pub workspace_root: PathBuf,
 }
 
 impl RunFuzzerUseCase {
-    pub fn new(runner: Box<dyn TestRunnerPort>, output: Box<dyn FuzzerOutputPort>) -> Self {
-        Self { runner, output }
+    pub fn new(
+        runner: Box<dyn TestRunnerPort>,
+        output: Box<dyn FuzzerOutputPort>,
+        workspace_root: PathBuf,
+    ) -> Self {
+        Self { runner, output, workspace_root }
     }
 }
 
@@ -81,6 +89,11 @@ impl FuzzerRunPort for RunFuzzerUseCase {
                         let filtered = self.runner.filter_lcov(&lcov_content, contract);
                         let path = self.output.write_lcov(contract, &filtered).await?;
                         report.lcov_path = Some(path);
+
+                        if let Ok(mut ctx) = parse_lcov(&filtered) {
+                            enrich_coverage_context(&mut ctx, &self.workspace_root).await;
+                            self.output.write_coverage_context(contract, &ctx).await?;
+                        }
                     }
                 }
             }

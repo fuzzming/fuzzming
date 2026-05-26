@@ -49,6 +49,7 @@ async fn correct_vault_invariants_pass() -> Result<()> {
     let use_case = RunFuzzerUseCase::new(
         Box::new(runner),
         Box::new(FileSystemFuzzerOutput::new(workspace.clone())),
+        workspace.clone(),
     );
 
     let reports = use_case.run(vec![signal(workspace)]).await?;
@@ -70,6 +71,7 @@ async fn fuzz_output_written_to_workspace() -> Result<()> {
     let use_case = RunFuzzerUseCase::new(
         Box::new(runner),
         Box::new(FileSystemFuzzerOutput::new(workspace.clone())),
+        workspace.clone(),
     );
 
     use_case.run(vec![signal(workspace.clone())]).await?;
