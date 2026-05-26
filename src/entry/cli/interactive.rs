@@ -7,6 +7,7 @@ use walkdir::WalkDir;
 
 use crate::entry::cli::arg_parser::CliArgs;
 use crate::entry::cli::ui::CliUi;
+use crate::shared::models::PromptMode;
 
 const CONFIG_FILE_NAME: &str = "fuzzming.config";
 
@@ -20,6 +21,7 @@ struct ConfigFile {
     max_tokens: Option<u32>,
     llm_timeout_secs: Option<u64>,
     full_coverage_rounds: Option<u32>,
+    prompt_mode: Option<PromptMode>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +35,7 @@ pub struct ResolvedCliConfig {
     pub max_tokens: u32,
     pub llm_timeout_secs: u64,
     pub full_coverage_rounds: u32,
+    pub prompt_mode: PromptMode,
 }
 
 pub fn resolve_cli_config(args: &CliArgs) -> Result<ResolvedCliConfig> {
@@ -79,6 +82,8 @@ fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliC
 
     let max_rounds = args.max_rounds.or(stored.max_rounds).unwrap_or(10);
 
+    let prompt_mode = stored.prompt_mode.clone().unwrap_or_default();
+
     Ok(ResolvedCliConfig {
         targets: args.targets.clone(),
         max_rounds,
@@ -89,6 +94,7 @@ fn resolve_from_args(args: &CliArgs, stored: &ConfigFile) -> Result<ResolvedCliC
         max_tokens: stored.max_tokens.unwrap_or(args.max_tokens),
         llm_timeout_secs: stored.llm_timeout_secs.unwrap_or(args.llm_timeout_secs),
         full_coverage_rounds: stored.full_coverage_rounds.unwrap_or(args.full_coverage_rounds),
+        prompt_mode,
     })
 }
 
@@ -160,6 +166,23 @@ fn prompt_for_config(
         .trim()
         .to_string();
 
+    let tier_default = stored
+        .prompt_mode
+        .as_ref()
+        .map(|t| t.as_str().to_string())
+        .unwrap_or_else(|| PromptMode::Concise.as_str().to_string());
+
+    ui.divider();
+    let tier_input = Input::<String>::new()
+        .with_prompt(ui.question("Prompt mode (concise = Claude/GPT-4+/Gemini, guided = open-source models)"))
+        .with_initial_text(&tier_default)
+        .interact_text()?;
+
+    let prompt_mode = tier_input
+        .trim()
+        .parse::<PromptMode>()
+        .unwrap_or_default();
+
     let llm_key_hint = if stored.llm_key.is_some() {
         "(leave blank to keep saved key)"
     } else {
@@ -217,6 +240,7 @@ fn prompt_for_config(
         max_tokens,
         llm_timeout_secs,
         full_coverage_rounds,
+        prompt_mode,
     };
 
     save_config(config_path, &resolved)?;
@@ -261,6 +285,7 @@ fn load_config(path: &Path) -> Result<ConfigFile> {
             "max_tokens" => config.max_tokens = value.parse::<u32>().ok(),
             "llm_timeout_secs" => config.llm_timeout_secs = value.parse::<u64>().ok(),
             "full_coverage_rounds" => config.full_coverage_rounds = value.parse::<u32>().ok(),
+            "prompt_mode" => config.prompt_mode = value.parse::<PromptMode>().ok(),
             _ => {}
         }
     }
@@ -270,7 +295,7 @@ fn load_config(path: &Path) -> Result<ConfigFile> {
 
 fn save_config(path: &Path, resolved: &ResolvedCliConfig) -> Result<()> {
     let content = format!(
-        "targets={}\nmax_rounds={}\nmodel={}\nllm_key={}\nworkspace_root={}\nmax_tokens={}\nllm_timeout_secs={}\nfull_coverage_rounds={}\n",
+        "targets={}\nmax_rounds={}\nmodel={}\nllm_key={}\nworkspace_root={}\nmax_tokens={}\nllm_timeout_secs={}\nfull_coverage_rounds={}\nprompt_mode={}\n",
         resolved.targets.join(","),
         resolved.max_rounds,
         resolved.model,
@@ -279,6 +304,7 @@ fn save_config(path: &Path, resolved: &ResolvedCliConfig) -> Result<()> {
         resolved.max_tokens,
         resolved.llm_timeout_secs,
         resolved.full_coverage_rounds,
+        resolved.prompt_mode.as_str(),
     );
 
     fs::write(path, content)?;

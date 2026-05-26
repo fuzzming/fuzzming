@@ -26,11 +26,12 @@ impl CompositionRoot {
         let workspace = config.workspace_root.clone();
         let model = config.model.clone();
         let api_key = config.llm_key.clone();
+        let prompt_mode = config.prompt_mode.clone();
 
         // Generator (LLM engine)
         let llm_client = Box::new(LiteLlmClient::new(&model, Some(0.1), Some(config.max_tokens), config.llm_timeout_secs));
         let generation_adapter =
-            Box::new(LiteLlmGenerationAdapter::new(&model, &api_key, llm_client));
+            Box::new(LiteLlmGenerationAdapter::new(&model, &api_key, llm_client, prompt_mode));
         let generator_use_case = Box::new(GeneratorRunUseCase::new(generation_adapter));
         let generator = Box::new(Generator::new(generator_use_case));
 

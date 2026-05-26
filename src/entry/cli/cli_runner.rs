@@ -61,6 +61,7 @@ impl CliRunner {
             max_tokens: resolved.max_tokens,
             llm_timeout_secs: resolved.llm_timeout_secs,
             full_coverage_rounds: resolved.full_coverage_rounds,
+            prompt_mode: resolved.prompt_mode.clone(),
         };
         let request = SessionRequest {
             target_paths: resolved.targets.clone(),
@@ -464,7 +465,7 @@ fn print_extended_help(_ui: &CliUi) {
 // ── demo mode ─────────────────────────────────────────────────────────────────
 
 async fn run_demo() -> Result<()> {
-    use crate::shared::models::{Fuzzer, Language, SessionConfig};
+    use crate::shared::models::{Fuzzer, Language, PromptMode, SessionConfig};
     use crate::shared::requests::session_request::SessionRequest;
 
     let demo_st = Style::new().fg(Color::Color256(220)).bold();
@@ -491,6 +492,7 @@ async fn run_demo() -> Result<()> {
         max_tokens: 0,
         llm_timeout_secs: 0,
         full_coverage_rounds: 2,
+        prompt_mode: PromptMode::Guided,
     };
     let request = SessionRequest {
         target_paths: vec![

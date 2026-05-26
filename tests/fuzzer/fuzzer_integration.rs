@@ -6,7 +6,7 @@ use fuzzming::{
         use_cases::RunFuzzerUseCase,
     },
     shared::{
-        models::{Fuzzer, Language, SessionConfig},
+        models::{Fuzzer, Language, PromptMode, SessionConfig},
         requests::round_signal::RoundSignal,
         responses::fuzz_report::FuzzOutcome,
     },
@@ -29,6 +29,7 @@ fn signal(workspace: PathBuf) -> RoundSignal {
             max_tokens: 16_384,
             llm_timeout_secs: 120,
             full_coverage_rounds: 2,
+            prompt_mode: PromptMode::Guided,
         },
         contract_name: "Vault".to_string(),
         contract_path: "src/Vault.sol".to_string(),

@@ -11,7 +11,7 @@ use super::response_parser::{
 };
 use super::stages::{AnalysisStage, BodiesStage, ConfigStage};
 use crate::generator::domain::generation_response::{GenerationResponse, GenerationResult};
-use crate::shared::models::GenerationUsage;
+use crate::shared::models::{GenerationUsage, PromptMode};
 use crate::generator::ports::outbound::{LlmClientPort, GenerationPort, GenerationRequest};
 
 const MAX_ATTEMPTS: usize = 3;
@@ -20,14 +20,16 @@ pub struct LiteLlmGenerationAdapter {
     model: String,
     api_key: String,
     client: Box<dyn LlmClientPort>,
+    prompt_mode: PromptMode,
 }
 
 impl LiteLlmGenerationAdapter {
-    pub fn new(model: impl Into<String>, api_key: impl Into<String>, client: Box<dyn LlmClientPort>) -> Self {
+    pub fn new(model: impl Into<String>, api_key: impl Into<String>, client: Box<dyn LlmClientPort>, prompt_mode: PromptMode) -> Self {
         Self {
             model: model.into(),
             api_key: api_key.into(),
             client,
+            prompt_mode,
         }
     }
 
@@ -111,7 +113,7 @@ impl LiteLlmGenerationAdapter {
         let bodies_stage: BodiesStage = self
             .request_json(
                 &system_prompt,
-                build_round_one_bodies_prompt(&analysis, &request.contract_name, &request.contract_path, &request.source_code, &self.model)?,
+                build_round_one_bodies_prompt(&analysis, &request.contract_name, &request.contract_path, &request.source_code, &self.prompt_mode)?,
                 "bodies",
                 "bodies object with valid Solidity syntax",
                 &mut usage,
@@ -143,7 +145,7 @@ impl LiteLlmGenerationAdapter {
     ) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
         let domain_context = user_prompt_from_request(request);
-        let patch_prompt = build_round_n_prompt(request, &self.model)?;
+        let patch_prompt = build_round_n_prompt(request, &self.prompt_mode)?;
         let mut user_prompt = format!("{domain_context}\n\n{patch_prompt}");
         let mut last_error = String::new();
         let mut usage = GenerationUsage::default();

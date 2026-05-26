@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 
 use crate::generator::ports::outbound::GenerationRequest;
-use crate::shared::models::{BodiesJson, Role};
+use crate::shared::models::{BodiesJson, PromptMode, Role};
 
 use super::stages::AnalysisStage;
 
@@ -106,11 +106,8 @@ fn extract_pragma(source: &str) -> String {
     "^0.8.20".to_string()
 }
 
-/// Strong models (Claude, GPT-4/5, o1/o3) write correct Solidity without exhaustive rules.
-/// Weaker open-source models need every quirk spelled out.
-fn is_strong_model(model: &str) -> bool {
-    let m = model.to_lowercase();
-    m.contains("claude") || m.contains("gpt-") || m.contains("gemini")
+fn is_concise(mode: &PromptMode) -> bool {
+    matches!(mode, PromptMode::Concise)
 }
 
 pub fn build_round_one_bodies_prompt(
@@ -118,7 +115,7 @@ pub fn build_round_one_bodies_prompt(
     contract_name: &str,
     contract_path: &str,
     source_code: &str,
-    model: &str,
+    mode: &PromptMode,
 ) -> Result<String> {
     let analysis_summary = serde_json::to_string_pretty(analysis)?;
     let pragma = extract_pragma(source_code);
@@ -149,7 +146,7 @@ transfer, or mint on a token), use EXACTLY these pre-resolved import lines — d
         )
     };
 
-    let rules_block = if is_strong_model(model) {
+    let rules_block = if is_concise(mode) {
         "STRICT DESIGN RULES:\n\
 1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract \
 instance. Do NOT reimplement the target contract's internal logic inside the handler.\n\
@@ -310,7 +307,7 @@ pub fn build_round_one_config_prompt(
     ))
 }
 
-pub fn build_round_n_prompt(request: &GenerationRequest, model: &str) -> Result<String> {
+pub fn build_round_n_prompt(request: &GenerationRequest, mode: &PromptMode) -> Result<String> {
     let existing_bodies_json = serde_json::to_string_pretty(&request.existing_bodies)
         .context("failed to serialize existing bodies")?;
     let existing_config_json = serde_json::to_string_pretty(&request.existing_foundry_config)
@@ -318,7 +315,7 @@ pub fn build_round_n_prompt(request: &GenerationRequest, model: &str) -> Result<
     let handler_name = format!("{}Handler", request.contract_name);
     let test_name = format!("{}InvariantTest", request.contract_name);
 
-    let patch_constraints = if is_strong_model(model) {
+    let patch_constraints = if is_concise(mode) {
         format!(
             "SOLIDITY CONSTRAINTS (must hold after every patch):\n\
              - ALL state variable declarations (including ghost vars) must be in handler.stateVars as full Solidity lines ending with semicolons. handler.ghostVars holds only the variable NAMES (no types, no semicolons) of variables already declared in stateVars.\n\
