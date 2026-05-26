@@ -123,7 +123,7 @@ async fn handle_run(args: RunArgs, ui: &CliUi) -> Result<()> {
 
     let has_bugs = outcomes.iter().any(|o| {
         matches!(o.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
-            || !o.artifacts.call_sequences.is_empty()
+            || !o.bugs.is_empty()
     });
 
     if has_bugs {
@@ -165,7 +165,7 @@ fn print_aggregate_summary(outcomes: &[SessionOutcome]) {
     let total      = outcomes.len();
     let with_bugs  = outcomes.iter().filter(|o| {
         matches!(o.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
-            || !o.artifacts.call_sequences.is_empty()
+            || !o.bugs.is_empty()
     }).count();
     let clean      = total - with_bugs;
     let total_rounds: u32 = outcomes.iter().map(|o| o.rounds_completed).sum();
@@ -236,31 +236,35 @@ fn handle_report(workspace_root: Option<PathBuf>, ui: &CliUi) -> Result<()> {
             label_st.apply_to(&contract)
         );
 
-        // Coverage summary from lcov if present
-        if lcov.exists() {
-            let content = fs::read_to_string(&lcov).unwrap_or_default();
-            let (lf, lh) = parse_lcov_totals(&content);
-            if lf > 0 {
-                let pct = (lh as f64 / lf as f64 * 100.0) as u32;
-                println!(
-                    "     {}  {}/{} lines covered  ({}%)",
-                    muted.apply_to("coverage:"),
-                    lh,
-                    lf,
-                    if pct >= 80 {
-                        ok_st.apply_to(pct.to_string()).to_string()
-                    } else {
-                        err_st.apply_to(pct.to_string()).to_string()
-                    }
-                );
-            }
-        }
-
         // Outcome: termination reason and bugs from outcome.json
         let outcome_path = entry.path().join("outcome.json");
         if outcome_path.exists() {
             if let Ok(json) = fs::read_to_string(&outcome_path) {
                 if let Ok(outcome) = serde_json::from_str::<SessionOutcome>(&json) {
+                    let has_bugs = !outcome.bugs.is_empty()
+                        || matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed);
+
+                    // Only show coverage when the run was clean — when bugs are found,
+                    // forge coverage was never run for that round so lcov.info is stale.
+                    if !has_bugs && lcov.exists() {
+                        let content = fs::read_to_string(&lcov).unwrap_or_default();
+                        let (lf, lh) = parse_lcov_totals(&content);
+                        if lf > 0 {
+                            let pct = (lh as f64 / lf as f64 * 100.0) as u32;
+                            println!(
+                                "     {}  {}/{} lines covered  ({}%)",
+                                muted.apply_to("coverage:"),
+                                lh,
+                                lf,
+                                if pct >= 80 {
+                                    ok_st.apply_to(pct.to_string()).to_string()
+                                } else {
+                                    err_st.apply_to(pct.to_string()).to_string()
+                                }
+                            );
+                        }
+                    }
+
                     let reason_str = match outcome.reason {
                         TerminationReason::Bug => "Bug found",
                         TerminationReason::Exhausted => "Rounds exhausted",
@@ -279,7 +283,7 @@ fn handle_report(workspace_root: Option<PathBuf>, ui: &CliUi) -> Result<()> {
                     );
                     for bug in &outcome.bugs {
                         println!("     {}  {}", err_st.apply_to("bug:"), label_st.apply_to(&bug.invariant_name));
-                        for line in bug.call_sequence.lines().take(4) {
+                        for line in bug.call_sequence.lines() {
                             println!("       {}", muted.apply_to(line));
                         }
                     }
@@ -287,14 +291,6 @@ fn handle_report(workspace_root: Option<PathBuf>, ui: &CliUi) -> Result<()> {
             }
         }
 
-        // Last few lines of fuzz output
-        let content = fs::read_to_string(&fuzz_out).unwrap_or_default();
-        let tail: Vec<&str> = content.lines().rev().take(5).collect::<Vec<_>>().into_iter().rev().collect();
-        for line in tail {
-            if !line.trim().is_empty() {
-                println!("     {}", muted.apply_to(line));
-            }
-        }
         println!();
     }
 

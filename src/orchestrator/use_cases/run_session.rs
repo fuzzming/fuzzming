@@ -10,7 +10,7 @@ use crate::orchestrator::use_cases::{
     check_termination::check_termination, initialise_session::initialise_session,
     run_round::run_round,
 };
-use crate::shared::models::{BugInfo, CoverageContext, FuzzerConfigArtifact, ReportArtifacts, SessionState};
+use crate::shared::models::{CoverageContext, FuzzerConfigArtifact, SessionState};
 use crate::shared::ports::{ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReaderPort, ReporterPort};
 use crate::shared::requests::{round_signal::RoundSignal, session_request::SessionRequest};
 use crate::shared::responses::{
@@ -131,6 +131,15 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         .entry(signal.contract_name.clone())
                         .or_default()
                         .extend(report.bugs.iter().cloned());
+                } else if let Some(lcov_path) = &report.lcov_path {
+                    let lcov_str = lcov_path.to_string_lossy().to_string();
+                    if let Ok(Some(ctx)) = self.reader.get_coverage_context(&lcov_str).await {
+                        state
+                            .coverage_snapshots
+                            .entry(signal.contract_name.clone())
+                            .or_default()
+                            .push(format_coverage_summary(ctx));
+                    }
                 }
 
                 // Surface compile errors immediately so the user sees them in the terminal.
@@ -169,15 +178,14 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         rounds = state.current_round,
                         "contract session terminated"
                     );
-                    let artifacts =
-                        self.read_artifacts(&signal.contract_name, all_bugs, report, &reason)
-                            .await?;
                     let outcome = SessionOutcome {
                         reason,
                         contract_name: signal.contract_name.clone(),
                         rounds_completed: state.current_round,
                         bugs: all_bugs.to_vec(),
-                        artifacts,
+                        coverage_snapshots: state.coverage_snapshots
+                            .remove(&signal.contract_name)
+                            .unwrap_or_default(),
                     };
                     let outcome_path = state.config.workspace_root
                         .join(format!(".fuzzming/{}/outcome.json", signal.contract_name));
@@ -271,37 +279,6 @@ impl RunSessionUseCase {
             existing_foundry_config,
             confirmed_bugs,
         })
-    }
-
-    async fn read_artifacts(
-        &self,
-        contract_name: &str,
-        all_bugs: &[BugInfo],
-        _report: &FuzzReport,
-        reason: &TerminationReason,
-    ) -> Result<ReportArtifacts> {
-        let fuzz_output_path = format!(".fuzzming/{}/fuzz_output.txt", contract_name);
-        let lcov_path = format!(".fuzzming/{}/coverage_context.json", contract_name);
-        let fuzz_output =
-            self.reader.get_fuzz_output(&fuzz_output_path).await?.unwrap_or_default();
-
-        let coverage_summary = match reason {
-            TerminationReason::Bug | TerminationReason::DevTestFailed => None,
-            _ => {
-                self.reader
-                    .get_coverage_context(&lcov_path)
-                    .await?
-                    .map(format_coverage_summary)
-            }
-        };
-
-        // All bugs accumulated across every round, not just the last one.
-        let call_sequences = all_bugs
-            .iter()
-            .map(|b| format!("{}:\n{}", b.invariant_name, b.call_sequence))
-            .collect();
-
-        Ok(ReportArtifacts { fuzz_output, coverage_summary, call_sequences })
     }
 
     async fn check_full_coverage_streak(

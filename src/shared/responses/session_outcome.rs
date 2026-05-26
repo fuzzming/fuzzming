@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::shared::models::{BugInfo, ReportArtifacts};
+use crate::shared::models::BugInfo;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TerminationReason {
@@ -16,5 +16,5 @@ pub struct SessionOutcome {
     pub contract_name: String,
     pub rounds_completed: u32,
     pub bugs: Vec<BugInfo>,
-    pub artifacts: ReportArtifacts,
+    pub coverage_snapshots: Vec<String>,
 }

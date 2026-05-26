@@ -1,11 +1,7 @@
 use crate::shared::responses::session_outcome::SessionOutcome;
 
 pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
-    let cov = outcome
-        .artifacts
-        .coverage_summary
-        .as_deref()
-        .unwrap_or("(no coverage data)");
+    let cov_section = format_coverage_snapshots(&outcome.coverage_snapshots);
 
     let bug_count = outcome.bugs.len();
     let summary = if bug_count == 0 {
@@ -60,8 +56,19 @@ pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
     };
 
     format!(
-        "## FuzzMing: Rounds Exhausted for `{}` ({} rounds, {}){}\n\n\
-         **Final coverage:**\n```\n{}\n```",
-        outcome.contract_name, outcome.rounds_completed, summary, bugs_section, cov,
+        "## FuzzMing: Rounds Exhausted for `{}` ({} rounds, {}){}\n\n{}",
+        outcome.contract_name, outcome.rounds_completed, summary, bugs_section, cov_section,
     )
+}
+
+fn format_coverage_snapshots(snapshots: &[String]) -> String {
+    if snapshots.is_empty() {
+        return "**Coverage:** (no coverage data)".to_string();
+    }
+    snapshots
+        .iter()
+        .enumerate()
+        .map(|(i, s)| format!("**Round {}:**\n```\n{}\n```", i + 1, s))
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }

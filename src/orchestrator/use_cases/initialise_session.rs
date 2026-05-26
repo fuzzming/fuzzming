@@ -11,5 +11,6 @@ pub fn initialise_session(request: &SessionRequest) -> Result<SessionState> {
         config: request.config.clone(),
         found_bugs: HashMap::new(),
         full_coverage_streak: HashMap::new(),
+        coverage_snapshots: HashMap::new(),
     })
 }
