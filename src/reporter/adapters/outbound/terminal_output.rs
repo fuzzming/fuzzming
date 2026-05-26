@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use tokio::sync::Notify;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -42,16 +43,14 @@ const FUZZER_MESSAGES: &[&str] = &[
     "Exploring edge cases",
 ];
 
-/// Per-contract spinner state.
 struct ContractProgress {
     bar: ProgressBar,
-    /// Set to `true` to stop the background verb-rotation task.
-    cancel: Arc<AtomicBool>,
+    cancel: Arc<Notify>,
 }
 
 struct FuzzerProgress {
     bar: ProgressBar,
-    cancel: Arc<AtomicBool>,
+    cancel: Arc<Notify>,
 }
 
 struct ProgressState {
@@ -227,21 +226,20 @@ impl OutputPort for TerminalOutput {
                 };
                 spinner.set_message(msg_active(&label, messages[0]));
 
-                // Background task: step through stage messages every 2.2 s
-                let cancel = Arc::new(AtomicBool::new(false));
+                let cancel = Arc::new(Notify::new());
                 let cancel_bg = cancel.clone();
                 let bar_bg = spinner.clone();
                 let label_bg = label.clone();
                 tokio::spawn(async move {
                     let mut i = 0usize;
                     loop {
-                        tokio::time::sleep(Duration::from_millis(2200)).await;
-                        if cancel_bg.load(Ordering::Relaxed) {
-                            break;
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_millis(2200)) => {
+                                i += 1;
+                                bar_bg.set_message(msg_active(&label_bg, messages[i % messages.len()]));
+                            }
+                            _ = cancel_bg.notified() => break,
                         }
-                        i += 1;
-                        let msg = messages[i % messages.len()];
-                        bar_bg.set_message(msg_active(&label_bg, msg));
                     }
                 });
 
@@ -257,7 +255,7 @@ impl OutputPort for TerminalOutput {
                 };
                 let mut g = state.lock().expect("progress lock");
                 if let Some(cp) = g.contracts.get_mut(&contract) {
-                    cp.cancel.store(true, Ordering::Relaxed);
+                    cp.cancel.notify_one();
                     let label = contract_label(&contract);
                     cp.bar.set_message(msg_writing(&label));
                 }
@@ -309,18 +307,19 @@ impl OutputPort for TerminalOutput {
                 spinner.enable_steady_tick(Duration::from_millis(600));
                 spinner.set_message(msg_fuzzer_active(FUZZER_MESSAGES[0]));
 
-                let cancel = Arc::new(AtomicBool::new(false));
+                let cancel = Arc::new(Notify::new());
                 let cancel_bg = cancel.clone();
                 let bar_bg = spinner.clone();
                 tokio::spawn(async move {
                     let mut i = 0usize;
                     loop {
-                        tokio::time::sleep(Duration::from_millis(2200)).await;
-                        if cancel_bg.load(Ordering::Relaxed) {
-                            break;
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_millis(2200)) => {
+                                i += 1;
+                                bar_bg.set_message(msg_fuzzer_active(FUZZER_MESSAGES[i % FUZZER_MESSAGES.len()]));
+                            }
+                            _ = cancel_bg.notified() => break,
                         }
-                        i += 1;
-                        bar_bg.set_message(msg_fuzzer_active(FUZZER_MESSAGES[i % FUZZER_MESSAGES.len()]));
                     }
                 });
 
@@ -333,7 +332,7 @@ impl OutputPort for TerminalOutput {
                 let msg = msg_fuzzer_done(true, summary);
                 let mut g = state.lock().expect("progress lock");
                 if let Some(fp) = g.fuzzer.take() {
-                    fp.cancel.store(true, Ordering::Relaxed);
+                    fp.cancel.notify_one();
                     fp.bar.finish_and_clear();
                     g.multi.println(msg).ok();
                 }
@@ -345,7 +344,7 @@ impl OutputPort for TerminalOutput {
                 let msg = msg_fuzzer_done(false, summary);
                 let mut g = state.lock().expect("progress lock");
                 if let Some(fp) = g.fuzzer.take() {
-                    fp.cancel.store(true, Ordering::Relaxed);
+                    fp.cancel.notify_one();
                     fp.bar.finish_and_clear();
                     g.multi.println(msg).ok();
                 }
