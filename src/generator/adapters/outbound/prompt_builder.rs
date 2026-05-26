@@ -159,6 +159,10 @@ not explicitly exist in the provided source code.\n\
 7. INITIALIZE GHOST STATE: If the contract is deployed with an initial supply or state, ghost variables MUST be initialized to match in the constructor. Uninitialised ghost state causes false positives from the first invariant check.\n\
 8. NO TAUTOLOGICAL INVARIANTS: Never write invariants that are always true by type. `uint256 >= 0` is always true — do not write it. Only write invariants that can actually fail.\n\
 9. HANDLER IS THE CALLER: Inside handler functions, ALL calls to the target contract are made FROM `address(this)`, NOT from `msg.sender`. Therefore: (a) ghost mappings must be keyed by `address(this)` not `msg.sender`; (b) use `vm.prank(someAddress)` before the contract call to simulate a specific user; (c) every state-changing call MUST update its corresponding ghost variable.\n\
+10. NO DUPLICATE GETTERS: A `public` state variable automatically generates a getter with that exact name. NEVER define a function whose name matches a public state variable — e.g. if `EtherVault public target;` is declared, do NOT write `function target() external view returns (EtherVault)`. This causes a \"Identifier already declared\" compile error.\n\
+11. PREVENT DUPLICATE ACTORS: In addActor (or any actor-registration function), guard against re-registration. Declare `mapping(address => bool) public ghost_isActor;` in stateVars. At the top of addActor: `if (ghost_isActor[actor]) return; ghost_isActor[actor] = true;`. Duplicate actors cause invariants that sum over the array to double-count balances, producing false positives.\n\
+12. QUALIFIED STRUCT TYPES: When the target contract defines a struct inside its body (e.g. `contract C { struct S {...} }`), reference it from the handler as `ContractName.StructName`. NEVER use the bare struct name — e.g. write `VestingWallet.Schedule memory s = target.schedules(key);` NOT `Schedule memory s = target.schedules(key);`.\n\
+13. NO MATH LIBRARY: Never use `Math.min()` or `Math.max()`. Use inline ternary: `a < b ? a : b`.\n\
 ".to_string()
     } else {
         "STRICT DESIGN RULES:\n\
@@ -175,7 +179,7 @@ not explicitly exist in the provided source code.\n\
 9. ASCII ONLY IN STRINGS: All Solidity string literals must use only plain ASCII characters. Never use Unicode dashes (—, –), smart quotes, or any non-ASCII character. Use plain hyphen (-) or colon (:) instead.\n\
 10. NO UNUSED VARIABLES: Never declare a local variable that is not used in the function body — Solidity treats unused variables as compilation errors.\n\
 11. BOUND AMOUNTS TO PREVENT OVERFLOW: Always cap amounts at `type(uint128).max` — never `type(uint256).max`.\n\
-12. NO DUPLICATE GETTERS: A `public` array (e.g. `address[] public actors`) automatically generates a getter `actors(uint256)`. Never write a separate function with the same name.\n\
+12. NO DUPLICATE GETTERS: A `public` state variable automatically generates a getter with that exact name. NEVER define a function whose name matches any public state variable — e.g. if `EtherVault public target;` is declared, do NOT write `function target() ...`. This causes a \"Identifier already declared\" compile error.\n\
 13. INTERNAL VS EXTERNAL ACCESS: Inside handler functions use `actors[i]` and `actors.length` directly. The getter syntax only works from outside the contract.\n\
 14. ASSERT VS REQUIRE: `assert(condition)` takes exactly one argument. To include a message use `require(condition, \"message\")` — never `assert(condition, \"message\")`.\n\
 15. NO MATH LIBRARY: Never use `Math.min()` or `Math.max()`. Compute inline: `a < b ? a : b`.\n\
@@ -185,7 +189,8 @@ not explicitly exist in the provided source code.\n\
 19. NO TAUTOLOGICAL INVARIANTS: Never write invariants that are always true by type. `uint256 >= 0` is always true — do not write it. Only write invariants that can actually fail.\n\
 20. HANDLER IS THE CALLER: Inside handler functions, ALL calls to the target contract are made FROM `address(this)`, NOT from `msg.sender`. Therefore: (a) ghost mappings must be keyed by `address(this)` not `msg.sender`; (b) use `vm.prank(someAddress)` before the contract call to simulate a specific user; (c) every state-changing call MUST update its corresponding ghost variable.\n\
 21. ACCESS CONSTANTS VIA INSTANCE NOT TYPE: Never write `ContractName.CONSTANT_NAME` or `ContractName.CONSTANT_NAME()` — Solidity does not allow accessing public constants or getters via the contract type name. Always access them via an instance variable, e.g. `target.CONSTANT_NAME()`.\n\
-22. NO STRUCT FIELD ACCESS ON PUBLIC MAPPING GETTERS: When a contract has `mapping(K => MyStruct) public data`, the auto-generated getter `target.data(key)` returns a tuple — you cannot do `.fieldName` on it. To read individual fields, either (a) destructure the tuple: `(uint256 a, uint256 b, ) = target.data(key);`, or (b) only use dedicated view functions the contract exposes that return individual fields.\n\
+22. STRUCT ACCESS FROM EXTERNAL CONTRACTS: When a target contract defines a struct INSIDE its body (e.g. `contract C { struct S {...} }`), reference it from the handler as `ContractName.StructName` — NEVER as bare `StructName`. Example: `VestingWallet.Schedule memory s = target.schedules(key);` — NOT `Schedule memory s = target.schedules(key);`. If assigning to the struct fails, fall back to tuple destructuring: `(uint256 a, uint256 b, ) = target.schedules(key);`. Do NOT call `.fieldName` directly on the getter return without assigning to a variable first.\n\
+23. PREVENT DUPLICATE ACTORS: In addActor (or any actor-registration function), guard against re-registration. Declare `mapping(address => bool) public ghost_isActor;` in stateVars. At the top of addActor: `if (ghost_isActor[actor]) return; ghost_isActor[actor] = true;`. Duplicate actors cause invariants that sum over the array to double-count balances, producing false positives.\n\
 ".to_string()
     };
 

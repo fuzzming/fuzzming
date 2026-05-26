@@ -103,6 +103,9 @@ impl FuzzerRunPort for RunFuzzerUseCase {
             return Err(anyhow::anyhow!("fuzzer called with no signals"));
         }
 
+        // Restore any dirs left disabled by a previous crashed session.
+        restore_leftover_disabled(&self.workspace_root).await;
+
         let fuzz_result = run_fuzzer("fuzzming", &*self.runner).await?;
 
         if is_compile_error(&fuzz_result) {
@@ -110,25 +113,28 @@ impl FuzzerRunPort for RunFuzzerUseCase {
             let has_healthy = signals.iter().any(|s| !erroring.contains(&s.contract_name));
 
             if !erroring.is_empty() && has_healthy {
-                // Disable erroring contracts' test directories.
+                // Move erroring test dirs outside the forge scan tree.
+                let stash = self.workspace_root.join(".fuzzming-disabled");
+                let _ = tokio::fs::create_dir_all(&stash).await;
+
                 let mut disabled: Vec<(PathBuf, PathBuf)> = Vec::new();
                 for name in &erroring {
                     let original = self.workspace_root.join("test").join("fuzzming").join(name);
-                    let hidden   = self.workspace_root.join("test").join("fuzzming").join(format!("{}.disabled", name));
+                    let hidden   = stash.join(name);
                     if original.exists() {
-                        tokio::fs::rename(&original, &hidden).await?;
+                        let _ = tokio::fs::rename(&original, &hidden).await;
                         disabled.push((hidden, original));
                     }
                 }
 
-                // Re-run forge and coverage for the healthy contracts (erroring dirs hidden).
+                // Re-run forge for the healthy contracts (erroring dirs stashed).
                 let healthy_result = run_fuzzer("fuzzming", &*self.runner).await;
                 let reports = match healthy_result {
                     Ok(result) => self.process_results(&signals, &result, &erroring, &fuzz_result).await,
                     Err(e) => Err(e),
                 };
 
-                // Always restore disabled directories before returning.
+                // Always restore before returning.
                 for (hidden, original) in &disabled {
                     if hidden.exists() {
                         let _ = tokio::fs::rename(hidden, original).await;
@@ -142,6 +148,22 @@ impl FuzzerRunPort for RunFuzzerUseCase {
         // No compile error, or every contract is erroring — process normally.
         let empty = HashSet::new();
         self.process_results(&signals, &fuzz_result, &empty, &fuzz_result).await
+    }
+}
+
+async fn restore_leftover_disabled(workspace_root: &PathBuf) {
+    let stash = workspace_root.join(".fuzzming-disabled");
+    let mut dir = match tokio::fs::read_dir(&stash).await {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    while let Ok(Some(entry)) = dir.next_entry().await {
+        let hidden   = entry.path();
+        let name     = entry.file_name();
+        let original = workspace_root.join("test").join("fuzzming").join(&name);
+        if hidden.is_dir() && !original.exists() {
+            let _ = tokio::fs::rename(&hidden, &original).await;
+        }
     }
 }
 
