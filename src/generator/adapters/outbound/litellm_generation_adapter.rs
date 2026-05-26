@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 
 use super::prompt_builder::{
     build_round_n_prompt, build_round_one_analysis_prompt, build_round_one_bodies_prompt,
-    build_round_one_config_prompt, system_prompt_from_request,
+    build_round_one_config_prompt, system_prompt_from_request, user_prompt_from_request,
 };
 use super::response_parser::{
     build_parse_repair_prompt, extract_json_payload, parse_generation_response,
@@ -142,7 +142,9 @@ impl LiteLlmGenerationAdapter {
         request: &GenerationRequest,
     ) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
-        let mut user_prompt = build_round_n_prompt(request, &self.model)?;
+        let domain_context = user_prompt_from_request(request);
+        let patch_prompt = build_round_n_prompt(request, &self.model)?;
+        let mut user_prompt = format!("{domain_context}\n\n{patch_prompt}");
         let mut last_error = String::new();
         let mut usage = GenerationUsage::default();
 

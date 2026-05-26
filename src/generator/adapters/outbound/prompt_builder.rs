@@ -15,6 +15,16 @@ pub fn system_prompt_from_request(request: &GenerationRequest) -> String {
         .unwrap_or_default()
 }
 
+pub fn user_prompt_from_request(request: &GenerationRequest) -> String {
+    request
+        .prompt
+        .messages
+        .iter()
+        .find(|m| matches!(m.role, Role::User))
+        .map(|m| m.content.clone())
+        .unwrap_or_default()
+}
+
 pub fn build_round_one_analysis_prompt() -> String {
     "Stage 1/3: Security Analysis & Logic Design.\n\
      Analyze the contract for ALL invariant-breaking vulnerability classes:\n\
