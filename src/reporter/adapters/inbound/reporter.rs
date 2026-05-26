@@ -3,8 +3,8 @@ use async_trait::async_trait;
 
 use crate::reporter::ports::outbound::OutputPort;
 use crate::reporter::use_cases::{
-    format_bug_report, format_compile_error, format_coverage_report, format_dev_test_failure,
-    format_exhausted_report, format_round_usage,
+    format_bug_report, format_compile_error, format_compile_error_outcome, format_coverage_report,
+    format_dev_test_failure, format_exhausted_report, format_round_usage,
 };
 use crate::shared::ports::ReporterPort;
 use crate::shared::responses::{
@@ -31,6 +31,7 @@ impl ReporterPort for Reporter {
             TerminationReason::FullCoverage => format_coverage_report(&outcome),
             TerminationReason::DevTestFailed => format_dev_test_failure(&outcome),
             TerminationReason::Exhausted => format_exhausted_report(&outcome),
+            TerminationReason::CompileError => format_compile_error_outcome(&outcome),
         };
 
         self.output.write(&message).await

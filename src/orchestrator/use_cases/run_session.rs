@@ -104,6 +104,7 @@ impl OrchestratorRunPort for RunSessionUseCase {
             let fuzzer_summary = FuzzerRoundSummary {
                 bugs: reports.iter().filter(|r| !r.bugs.is_empty()).count(),
                 passed: reports.iter().filter(|r| matches!(r.outcome, FuzzOutcome::Pass)).count(),
+                compile_errors: reports.iter().filter(|r| matches!(r.outcome, FuzzOutcome::CompileError)).count(),
             };
             self.reporter
                 .emit_stage_event(StageEvent {
@@ -196,7 +197,7 @@ impl OrchestratorRunPort for RunSessionUseCase {
                     tokio::fs::write(&outcome_path, json).await?;
 
                     let contract_done_status = if outcome.bugs.is_empty()
-                        && !matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
+                        && !matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed | TerminationReason::CompileError)
                     {
                         StageStatus::Finished
                     } else {

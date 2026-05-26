@@ -167,11 +167,25 @@ fn msg_fuzzer_done(ok: bool, summary: Option<&FuzzerRoundSummary>) -> String {
             } else {
                 Style::new().fg(Color::Green)
             };
+            let compile_part = if s.compile_errors > 0 {
+                let err_st = Style::new().fg(Color::Color256(208));
+                format!(
+                    "  {}",
+                    err_st.apply_to(format!(
+                        "{} compile error{}",
+                        s.compile_errors,
+                        if s.compile_errors == 1 { "" } else { "s" }
+                    ))
+                )
+            } else {
+                String::new()
+            };
             format!(
-                "{}  {}  {}",
+                "{}  {}  {}{}",
                 base,
                 bug_st.apply_to(format!("{} bug{}", s.bugs, if s.bugs == 1 { "" } else { "s" })),
                 muted.apply_to(format!("{} passed", s.passed)),
+                compile_part,
             )
         }
         None => base,

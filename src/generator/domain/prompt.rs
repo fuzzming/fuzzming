@@ -54,7 +54,7 @@ impl Prompt {
                 .collect::<Vec<_>>()
                 .join("\n");
             sections.push(format!(
-                "CONFIRMED BUGS (already found and removed from the test — do NOT regenerate these invariants):\n{}",
+                "CONFIRMED BUGS (these invariants already caught real vulnerabilities — keep them in the test and focus on finding additional distinct bugs):\n{}",
                 list
             ));
         }

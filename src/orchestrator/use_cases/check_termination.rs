@@ -19,7 +19,7 @@ pub fn check_termination(report: &FuzzReport, state: &SessionState) -> Terminati
         // Compilation failure — let the LLM repair the code and retry, but stop if budget exhausted.
         FuzzOutcome::CompileError => {
             if state.rounds_remaining == 0 {
-                TerminationDecision { terminate: true, reason: Some(TerminationReason::Exhausted) }
+                TerminationDecision { terminate: true, reason: Some(TerminationReason::CompileError) }
             } else {
                 TerminationDecision { terminate: false, reason: None }
             }

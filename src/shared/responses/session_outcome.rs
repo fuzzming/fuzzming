@@ -8,6 +8,8 @@ pub enum TerminationReason {
     Exhausted,
     FullCoverage,
     DevTestFailed,
+    /// Rounds exhausted while the generated test code never compiled.
+    CompileError,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

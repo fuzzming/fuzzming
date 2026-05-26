@@ -55,8 +55,22 @@ impl RunFuzzerUseCase {
                 (msg, FuzzOutcome::CompileError, vec![])
             } else {
                 let filtered = self.runner.filter_output(&fuzz_result.stdout, contract);
-                let (outcome, bugs) = evaluate_outcome_for_contract(&*self.runner, fuzz_result, contract);
-                let output = if matches!(outcome, FuzzOutcome::DevTestFailed) && filtered.is_empty() {
+                let (mut outcome, bugs) = evaluate_outcome_for_contract(&*self.runner, fuzz_result, contract);
+                // If forge ran other contracts but produced zero output for this one,
+                // the contract simply wasn't in the run (stashed or never generated).
+                // Declaring DevTestFailed would confuse the LLM — use CompileError instead.
+                if matches!(outcome, FuzzOutcome::DevTestFailed)
+                    && filtered.is_empty()
+                    && fuzz_result.stdout.contains("InvariantTest")
+                {
+                    outcome = FuzzOutcome::CompileError;
+                }
+                let output = if matches!(outcome, FuzzOutcome::CompileError) && filtered.is_empty() {
+                    format!(
+                        "COMPILATION ERROR — fix the Solidity before fuzzing can proceed:\n{}",
+                        fuzz_result.stderr
+                    )
+                } else if matches!(outcome, FuzzOutcome::DevTestFailed) && filtered.is_empty() {
                     let mut msg = String::from("TEST FAILED — fix the handler/invariant test:\n");
                     if !fuzz_result.stderr.is_empty() { msg.push_str(&fuzz_result.stderr); }
                     if !fuzz_result.stdout.is_empty() { msg.push('\n'); msg.push_str(&fuzz_result.stdout); }

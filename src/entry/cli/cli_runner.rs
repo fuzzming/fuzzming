@@ -11,8 +11,8 @@ use crate::entry::cli::arg_parser::{parse_args, Command, RunArgs};
 use crate::entry::cli::interactive::{resolve_cli_config, workspace_root_from_config};
 use crate::entry::cli::ui::CliUi;
 use crate::reporter::use_cases::{
-    format_bug_report, format_coverage_report, format_dev_test_failure,
-    format_exhausted_report,
+    format_bug_report, format_compile_error_outcome, format_coverage_report,
+    format_dev_test_failure, format_exhausted_report,
 };
 use crate::shared::models::{Fuzzer, Language, SessionConfig};
 use crate::shared::requests::session_request::SessionRequest;
@@ -131,7 +131,7 @@ async fn handle_run(args: RunArgs, ui: &CliUi) -> Result<()> {
     print_aggregate_summary(&outcomes);
 
     let has_bugs = outcomes.iter().any(|o| {
-        matches!(o.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
+        matches!(o.reason, TerminationReason::Bug | TerminationReason::DevTestFailed | TerminationReason::CompileError)
             || !o.bugs.is_empty()
     });
 
@@ -152,6 +152,7 @@ fn print_outcome_reports(outcomes: &[SessionOutcome]) {
             TerminationReason::FullCoverage => format_coverage_report(outcome),
             TerminationReason::DevTestFailed => format_dev_test_failure(outcome),
             TerminationReason::Exhausted => format_exhausted_report(outcome),
+            TerminationReason::CompileError => format_compile_error_outcome(outcome),
         };
         println!("{}", msg);
         println!();
@@ -165,32 +166,76 @@ fn print_aggregate_summary(outcomes: &[SessionOutcome]) {
         return;
     }
 
-    let header_st = Style::new().fg(Color::Color256(99)).bold();
-    let label_st  = Style::new().fg(Color::Color256(75)).bold();
-    let muted     = Style::new().fg(Color::Color256(245));
-    let ok_st     = Style::new().fg(Color::Green).bold();
-    let err_st    = Style::new().fg(Color::Red).bold();
+    let header_st  = Style::new().fg(Color::Color256(99)).bold();
+    let label_st   = Style::new().fg(Color::Color256(75)).bold();
+    let muted      = Style::new().fg(Color::Color256(245));
+    let ok_st      = Style::new().fg(Color::Green).bold();
+    let err_st     = Style::new().fg(Color::Red).bold();
+    let warn_st    = Style::new().fg(Color::Color256(208)).bold();
 
-    let total      = outcomes.len();
-    let with_bugs  = outcomes.iter().filter(|o| {
-        matches!(o.reason, TerminationReason::Bug | TerminationReason::DevTestFailed)
-            || !o.bugs.is_empty()
+    let total: usize = outcomes.len();
+
+    // Contracts where the fuzzer ran and found no bugs.
+    let passed: usize = outcomes.iter().filter(|o| {
+        o.bugs.is_empty()
+            && matches!(o.reason, TerminationReason::Exhausted | TerminationReason::FullCoverage)
     }).count();
-    let clean      = total - with_bugs;
+
+    // Contracts with actual invariant violations.
+    let with_bugs: usize = outcomes.iter().filter(|o| {
+        !o.bugs.is_empty() || matches!(o.reason, TerminationReason::Bug)
+    }).count();
+
+    // Contracts whose test code never ran (compile error or forge test setup failure).
+    let not_tested: usize = outcomes.iter().filter(|o| {
+        matches!(o.reason, TerminationReason::CompileError | TerminationReason::DevTestFailed)
+    }).count();
+
+    // Subsets of not_tested.
+    let compile_errors: usize = outcomes.iter().filter(|o| {
+        matches!(o.reason, TerminationReason::CompileError)
+    }).count();
+    let setup_failed: usize = outcomes.iter().filter(|o| {
+        matches!(o.reason, TerminationReason::DevTestFailed)
+    }).count();
+
     let total_rounds: u32 = outcomes.iter().map(|o| o.rounds_completed).sum();
     let total_bugs: usize = outcomes.iter().map(|o| o.bugs.len()).sum();
 
     println!();
     println!("{}", header_st.apply_to("  ◆ FuzzMing: Session Summary"));
     println!("{}", muted.apply_to("  ──────────────────────────────────────────"));
-    println!("  {}  {}", label_st.apply_to("contracts:"), muted.apply_to(total.to_string()));
-    println!("  {}      {}", label_st.apply_to("clean:"), ok_st.apply_to(clean.to_string()));
-    println!("  {}   {}", label_st.apply_to("with bugs:"),
+    println!("  {}    {}", label_st.apply_to("contracts:"), muted.apply_to(total.to_string()));
+    println!("  {}       {}",
+        label_st.apply_to("passed:"),
+        if passed == total { ok_st.apply_to(passed.to_string()).to_string() }
+        else { muted.apply_to(passed.to_string()).to_string() }
+    );
+    println!("  {}    {}",
+        label_st.apply_to("with bugs:"),
         if with_bugs > 0 { err_st.apply_to(with_bugs.to_string()).to_string() }
         else { ok_st.apply_to("0".to_string()).to_string() }
     );
-    println!("  {}     {}", label_st.apply_to("rounds:"), muted.apply_to(total_rounds.to_string()));
-    println!("  {}       {}", label_st.apply_to("bugs:"),
+    println!("  {}   {}",
+        label_st.apply_to("not tested:"),
+        if not_tested > 0 { warn_st.apply_to(not_tested.to_string()).to_string() }
+        else { ok_st.apply_to("0".to_string()).to_string() }
+    );
+    println!("  {}  {}  {}",
+        label_st.apply_to("  compile errors:"),
+        if compile_errors > 0 { warn_st.apply_to(compile_errors.to_string()).to_string() }
+        else { muted.apply_to("0".to_string()).to_string() },
+        muted.apply_to("(test code never compiled)"),
+    );
+    println!("  {}   {}  {}",
+        label_st.apply_to("  setup failed:"),
+        if setup_failed > 0 { warn_st.apply_to(setup_failed.to_string()).to_string() }
+        else { muted.apply_to("0".to_string()).to_string() },
+        muted.apply_to("(compiled, but setUp/forge failed)"),
+    );
+    println!("  {}      {}", label_st.apply_to("rounds:"), muted.apply_to(total_rounds.to_string()));
+    println!("  {}        {}",
+        label_st.apply_to("bugs:"),
         if total_bugs > 0 { err_st.apply_to(total_bugs.to_string()).to_string() }
         else { ok_st.apply_to("0".to_string()).to_string() }
     );
@@ -251,7 +296,7 @@ fn handle_report(workspace_root: Option<PathBuf>, ui: &CliUi) -> Result<()> {
             if let Ok(json) = fs::read_to_string(&outcome_path) {
                 if let Ok(outcome) = serde_json::from_str::<SessionOutcome>(&json) {
                     let has_bugs = !outcome.bugs.is_empty()
-                        || matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed);
+                        || matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed | TerminationReason::CompileError);
 
                     // Only show coverage when the run was clean — when bugs are found,
                     // forge coverage was never run for that round so lcov.info is stale.
@@ -279,11 +324,12 @@ fn handle_report(workspace_root: Option<PathBuf>, ui: &CliUi) -> Result<()> {
                         TerminationReason::Exhausted => "Rounds exhausted",
                         TerminationReason::FullCoverage => "Full coverage",
                         TerminationReason::DevTestFailed => "Test setup failed",
+                        TerminationReason::CompileError => "Compile error (never ran)",
                     };
                     println!(
                         "     {}  {}  ({} rounds)",
                         muted.apply_to("result:"),
-                        if matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed) {
+                        if matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed | TerminationReason::CompileError) {
                             err_st.apply_to(reason_str).to_string()
                         } else {
                             ok_st.apply_to(reason_str).to_string()

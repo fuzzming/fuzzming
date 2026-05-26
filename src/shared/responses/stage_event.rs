@@ -23,6 +23,7 @@ pub enum StageStatus {
 pub struct FuzzerRoundSummary {
     pub bugs: usize,
     pub passed: usize,
+    pub compile_errors: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

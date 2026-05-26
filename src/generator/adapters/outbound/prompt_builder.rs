@@ -191,6 +191,8 @@ not explicitly exist in the provided source code.\n\
 21. ACCESS CONSTANTS VIA INSTANCE NOT TYPE: Never write `ContractName.CONSTANT_NAME` or `ContractName.CONSTANT_NAME()` — Solidity does not allow accessing public constants or getters via the contract type name. Always access them via an instance variable, e.g. `target.CONSTANT_NAME()`.\n\
 22. STRUCT ACCESS FROM EXTERNAL CONTRACTS: When a target contract defines a struct INSIDE its body (e.g. `contract C { struct S {...} }`), reference it from the handler as `ContractName.StructName` — NEVER as bare `StructName`. Example: `VestingWallet.Schedule memory s = target.schedules(key);` — NOT `Schedule memory s = target.schedules(key);`. If assigning to the struct fails, fall back to tuple destructuring: `(uint256 a, uint256 b, ) = target.schedules(key);`. Do NOT call `.fieldName` directly on the getter return without assigning to a variable first.\n\
 23. PREVENT DUPLICATE ACTORS: In addActor (or any actor-registration function), guard against re-registration. Declare `mapping(address => bool) public ghost_isActor;` in stateVars. At the top of addActor: `if (ghost_isActor[actor]) return; ghost_isActor[actor] = true;`. Duplicate actors cause invariants that sum over the array to double-count balances, producing false positives.\n\
+24. addActor MUST BE PUBLIC: Declare `addActor` as `public`, not `external`. If other handler functions call `addActor` internally (e.g. inside `transfer` to auto-register participants), `external` will cause a compile error. Always use `public`.\n\
+25. BOUND NEEDS UINT256: `bound(x, min, max)` requires `x` to be `uint256`. Never pass `address` or `msg.sender` directly — cast first: `bound(uint256(uint160(msg.sender)), 0, max)`.\n\
 ".to_string()
     };
 

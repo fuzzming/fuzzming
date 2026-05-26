@@ -2,8 +2,8 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Vault} from "../../src/Vault.sol";
-import {Token} from "../../src/Token.sol";
+import {Vault} from "../../../src/Vault.sol";
+import {Token} from "../../../src/Token.sol";
 
 contract VaultHandler is Test {
     Vault public vault;

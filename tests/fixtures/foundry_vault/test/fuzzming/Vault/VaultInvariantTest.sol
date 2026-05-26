@@ -2,9 +2,9 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Vault} from "../../src/Vault.sol";
-import {Token} from "../../src/Token.sol";
-import {VaultHandler} from "../handlers/VaultHandler.sol";
+import {Vault} from "../../../src/Vault.sol";
+import {Token} from "../../../src/Token.sol";
+import {VaultHandler} from "./VaultHandler.sol";
 
 contract VaultInvariantTest is Test {
     Vault public vault;
@@ -18,7 +18,6 @@ contract VaultInvariantTest is Test {
         targetContract(address(handler));
     }
 
-    /// vault.totalAssets must always equal deposits minus withdrawals
     function invariant_totalAssetsMatch() external view {
         assertEq(
             vault.totalAssets(),
@@ -27,7 +26,6 @@ contract VaultInvariantTest is Test {
         );
     }
 
-    /// vault.totalAssets must never exceed the deposit cap
     function invariant_depositCapRespected() external view {
         assertLe(
             vault.totalAssets(),
