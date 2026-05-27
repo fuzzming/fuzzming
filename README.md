@@ -7,7 +7,7 @@
 
 ---
 
-FuzzMing closes the loop between an LLM and a fuzzer. It generates test contracts, runs them, reads the output, and iterates round after round until it finds every bug, achieves full coverage, or exhausts its round budget.
+FuzzMing is an open source tool that closes the loop between an LLM and a fuzzer. It generates test contracts, runs them, reads the output, and iterates round after round until it finds every bug, achieves full coverage, or exhausts its round budget.
 
 **Current stack: Solidity + Foundry.** The first supported target is Solidity smart contracts fuzzed with Foundry. But FuzzMing is not a Foundry tool, it is built on hexagonal architecture specifically so that new languages and fuzzers plug in as adapters without touching the core. Rust + cargo-fuzz, Vyper + Echidna, Move + any fuzzer: each is a set of adapters away. The orchestrator, session loop, LLM integration, and report format are language and fuzzer agnostic.
 
@@ -198,14 +198,6 @@ The session ends on **full coverage or round exhaustion** — not on the first b
 
 ---
 
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| `0` | Clean — all invariants passed, full coverage reached, or exhausted with no bugs |
-| `1` | Bugs found or tests failed — treat as build failure in CI |
-
----
 
 ## Logging
 
@@ -275,6 +267,24 @@ Every contribution matters: code, docs, bug reports, ideas. Thank you to everyon
     </tr>
   </table>
 </div>
+
+---
+
+## About this project
+
+FuzzMing **started as** a **final year engineering project** by **[AchrefHemissi](https://github.com/AchrefHemissi)**, **[Dhia9030](https://github.com/Dhia9030)**, and **[HanineKhemir](https://github.com/HanineKhemir)**, students in computer engineering at **[INSAT — Institut National des Sciences Appliquées et de Technologie](https://insat.rnu.tn)**, with the support and guidance of **[Dar Blockchain](https://darblockchain.io)**.
+
+We are grateful to everyone who guided us through this journey:
+
+**Academic Supervisor**
+- **Ms. Lilia Sfaxi** 
+
+**Industry Mentors**
+- **Mr. Nadhir Abdelatif**
+- **Mr. Ayoub Amer**
+- **Mr. Anas Hammou**
+
+Their expertise, feedback, and encouragement made this project possible. Thank you ❤️
 
 ---
 
