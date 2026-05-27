@@ -2,12 +2,12 @@
   <img src="assets/fuzzming-logo.png" alt="FuzzMing" width="200" />
   <h1>FuzzMing</h1>
   <p><strong>AI-powered invariant fuzzer for Solidity smart contracts</strong></p>
-  <p>Point it at a Foundry project. Watch it think. Let it find bugs.</p>
+  <p>Point it at a Foundry project. It thinks, it fuzzes, it finds bugs.</p>
 </div>
 
 ---
 
-FuzzMing closes the loop between an LLM and Foundry's invariant fuzzer. It writes the handler and invariant test contracts, runs `forge test`, reads the output, and iterates — round after round — until it finds every bug, achieves full coverage, or exhausts its round budget.
+FuzzMing closes the loop between an LLM and Foundry's invariant fuzzer. It writes the handler and invariant test contracts, runs `forge test`, reads the output, and iterates round after round until it finds every bug, achieves full coverage, or exhausts its round budget.
 
 ---
 
@@ -234,3 +234,33 @@ FuzzMing is built on hexagonal architecture and is designed to absorb new langua
 | [docs/composition.md](docs/composition.md) | Composition root — full wiring graph |
 
 To add a new language or fuzzer, see the checklist in [docs/composition.md](docs/composition.md).
+
+**How to contribute:**
+
+1. Fork the repo and create a branch from `main`.
+2. Read [docs/shared.md](docs/shared.md) first — understanding the shared data layer is the fastest way to orient yourself.
+3. Keep changes inside one component if possible; cross-component changes must go through `src/shared/`.
+4. Run `cargo test` before opening a PR — the fuzzer integration tests require Foundry to be installed.
+5. Open a PR against `main` with a clear description of what changed and why.
+
+---
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+```
+Copyright 2025 FuzzMing Contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
