@@ -45,7 +45,7 @@ cargo install fuzzming
 Or build from source:
 
 ```bash
-git clone https://github.com/your-org/fuzzming
+git clone https://github.com/AchrefHemissi/fuzzming
 cd fuzzming
 cargo install --path .
 ```
@@ -244,6 +244,37 @@ To add a new language or fuzzer, see the checklist in [docs/composition.md](docs
 3. Keep changes inside one component if possible; cross-component changes must go through `src/shared/`.
 4. Run `cargo test` before opening a PR — the fuzzer integration tests require Foundry to be installed.
 5. Open a PR against `main` with a clear description of what changed and why.
+
+---
+
+## Contributors
+
+Every contribution matters: code, docs, bug reports, ideas. Thank you to everyone who helps grow FuzzMing.
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" style="padding: 16px;">
+        <a href="https://github.com/AchrefHemissi">
+          <img src="https://github.com/AchrefHemissi.png" width="96" style="border-radius: 50%;" /><br /><br />
+          <b>AchrefHemissi</b>
+        </a>
+      </td>
+      <td align="center" style="padding: 16px;">
+        <a href="https://github.com/Dhia9030">
+          <img src="https://github.com/Dhia9030.png" width="96" style="border-radius: 50%;" /><br /><br />
+          <b>Dhia9030</b>
+        </a>
+      </td>
+      <td align="center" style="padding: 16px;">
+        <a href="https://github.com/HanineKhemir">
+          <img src="https://github.com/HanineKhemir.png" width="96" style="border-radius: 50%;" /><br /><br />
+          <b>HanineKhemir</b>
+        </a>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ---
 
