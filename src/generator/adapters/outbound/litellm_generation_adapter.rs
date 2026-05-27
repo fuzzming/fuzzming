@@ -90,7 +90,7 @@ impl LiteLlmGenerationAdapter {
             }
         }
 
-        bail!("{stage_name} failed after {} attempts: {}", MAX_ATTEMPTS, last_error)
+        bail!("{stage_name} failed after {MAX_ATTEMPTS} attempts: {last_error}")
     }
 
     async fn generate_round_one(
@@ -132,8 +132,8 @@ impl LiteLlmGenerationAdapter {
 
         Ok(GenerationResult {
             response: GenerationResponse::Full {
-                bodies: bodies_stage.bodies,
-                foundry_config: config_stage.foundry_config,
+                bodies: Box::new(bodies_stage.bodies),
+                foundry_config: Box::new(config_stage.foundry_config),
             },
             usage,
         })
@@ -178,9 +178,7 @@ impl LiteLlmGenerationAdapter {
         }
 
         bail!(
-            "model returned invalid structured output after {} attempts: {}",
-            MAX_ATTEMPTS,
-            last_error
+            "model returned invalid structured output after {MAX_ATTEMPTS} attempts: {last_error}"
         )
     }
 }

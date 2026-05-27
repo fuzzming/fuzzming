@@ -105,8 +105,8 @@ fn build_executor_input(
             bodies,
             foundry_config,
         } => Ok(ExecutorInput::Full {
-            bodies: bodies.clone(),
-            fuzzer_config: FuzzerConfigArtifact::Foundry(foundry_config.clone()),
+            bodies: *bodies.clone(),
+            fuzzer_config: FuzzerConfigArtifact::Foundry(*foundry_config.clone()),
         }),
 
         GenerationResponse::Patch {

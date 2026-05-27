@@ -29,7 +29,7 @@ pub fn format_for_llm(raw: &str) -> String {
         if !f.call_sequence.is_empty() {
             out.push_str(&format!("  Call sequence ({} step(s)):\n", f.call_sequence.len()));
             for step in &f.call_sequence {
-                out.push_str(&format!("    {}\n", step));
+                out.push_str(&format!("    {step}\n"));
             }
         }
     }

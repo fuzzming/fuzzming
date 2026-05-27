@@ -6,8 +6,8 @@ use crate::shared::models::{BodiesJson, FoundryConfig, GenerationUsage, JsonBloc
 #[serde(tag = "mode", rename_all = "camelCase")]
 pub enum GenerationResponse {
     Full {
-        bodies: BodiesJson,
-        foundry_config: FoundryConfig,
+        bodies: Box<BodiesJson>,
+        foundry_config: Box<FoundryConfig>,
     },
     Patch {
         bodies_updates: Vec<JsonBlockUpdate>,

@@ -39,27 +39,23 @@ const MAX_RUNS: u32 = 1000;
 const MAX_DEPTH: u32 = 500;
 
 fn build_fuzzming_section(config: &FoundryConfig) -> String {
-    vec![
-        FUZZMING_HEADER.to_string(),
+    [FUZZMING_HEADER.to_string(),
         String::new(),
         "[profile.fuzzming.invariant]".to_string(),
         format!("runs             = {}", config.runs.min(MAX_RUNS)),
         format!("depth            = {}", config.depth.min(MAX_DEPTH)),
         format!("seed             = \"{}\"", config.seed),
         format!("max_test_rejects = {}", config.max_test_rejects),
-        format!("dictionary_weight = {}", config.dictionary_weight),
-    ]
+        format!("dictionary_weight = {}", config.dictionary_weight)]
     .join("\n")
 }
 
 fn build_coverage_section() -> String {
-    vec![
-        COVERAGE_HEADER.to_string(),
+    [COVERAGE_HEADER.to_string(),
         String::new(),
         "[profile.coverage.invariant]".to_string(),
         "runs  = 256".to_string(),
-        "depth = 50".to_string(),
-    ]
+        "depth = 50".to_string()]
     .join("\n")
 }
 
@@ -71,9 +67,9 @@ fn replace_or_append_section(toml: &str, header: &str, new_section: &str) -> Str
         None => {
             let base = toml.trim_end();
             if base.is_empty() {
-                format!("{}\n", new_section)
+                format!("{new_section}\n")
             } else {
-                format!("{}\n\n{}\n", base, new_section)
+                format!("{base}\n\n{new_section}\n")
             }
         }
         Some(start_idx) => {
@@ -92,13 +88,12 @@ fn replace_or_append_section(toml: &str, header: &str, new_section: &str) -> Str
             let after_trimmed = after.trim_start();
 
             match (before_trimmed.is_empty(), after_trimmed.is_empty()) {
-                (true, true) => format!("{}\n", new_section),
-                (true, false) => format!("{}\n\n{}\n", new_section, after_trimmed),
-                (false, true) => format!("{}\n\n{}\n", before_trimmed, new_section),
+                (true, true) => format!("{new_section}\n"),
+                (true, false) => format!("{new_section}\n\n{after_trimmed}\n"),
+                (false, true) => format!("{before_trimmed}\n\n{new_section}\n"),
                 (false, false) => {
                     format!(
-                        "{}\n\n{}\n\n{}\n",
-                        before_trimmed, new_section, after_trimmed
+                        "{before_trimmed}\n\n{new_section}\n\n{after_trimmed}\n"
                     )
                 }
             }

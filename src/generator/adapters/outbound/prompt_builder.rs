@@ -83,7 +83,7 @@ fn extract_dependency_imports(contract_path: &str, source: &str) -> Vec<String> 
             }
             parts.join("/")
         };
-        imports.push(format!("{}from \"{}\";", symbols, resolved));
+        imports.push(format!("{symbols}from \"{resolved}\";"));
     }
     imports
 }
@@ -115,13 +115,12 @@ pub fn build_round_one_bodies_prompt(
 ) -> Result<String> {
     let analysis_summary = serde_json::to_string_pretty(analysis)?;
     let pragma = extract_pragma(source_code);
-    let handler_name = format!("{}Handler", contract_name);
-    let test_name = format!("{}InvariantTest", contract_name);
+    let handler_name = format!("{contract_name}Handler");
+    let test_name = format!("{contract_name}InvariantTest");
 
-    let handler_target_import = format!("import {{{}}} from \"{}\";", contract_name, contract_path);
+    let handler_target_import = format!("import {{{contract_name}}} from \"{contract_path}\";");
     let test_handler_import = format!(
-        "import {{{}}} from \"./{}.sol\";",
-        handler_name, handler_name
+        "import {{{handler_name}}} from \"./{handler_name}.sol\";"
     );
     let test_std_import = "import {Test} from \"forge-std/Test.sol\";";
 
@@ -266,16 +265,6 @@ REQUIRED JSON STRUCTURE:\n\
 \n\
 Analysis Context:\n\
 {analysis_summary}\n",
-        contract_name = contract_name,
-        contract_path = contract_path,
-        handler_name = handler_name,
-        test_name = test_name,
-        handler_target_import = handler_target_import,
-        test_handler_import = test_handler_import,
-        dep_imports_block = dep_imports_block,
-        analysis_summary = analysis_summary,
-        pragma = pragma,
-        rules_block = rules_block,
     ))
 }
 
@@ -307,10 +296,9 @@ pub fn build_round_one_config_prompt(
          - depth: 50–500.\n\
          - seed must be a hex string like \"0xdeadbeef\".\n\
          \n\
-         Analysis JSON:\n{}\n\
+         Analysis JSON:\n{analysis_json}\n\
          \n\
-         Handler function names:\n{}",
-        analysis_json, functions_json
+         Handler function names:\n{functions_json}"
     ))
 }
 

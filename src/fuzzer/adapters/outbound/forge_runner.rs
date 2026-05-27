@@ -68,7 +68,7 @@ impl TestRunnerPort for ForgeRunner {
     /// Parse failing invariants for a contract from forge stdout.
     /// Forge prints results twice; stop at the summary to avoid duplicates.
     fn collect_bugs(&self, stdout: &str, contract_name: &str) -> Vec<BugInfo> {
-        let section_marker = format!("{}InvariantTest", contract_name);
+        let section_marker = format!("{contract_name}InvariantTest");
         let mut in_section = false;
         let mut in_fail_block = false;
         let mut collecting_sequence = false;
@@ -144,7 +144,7 @@ impl TestRunnerPort for ForgeRunner {
 
     /// Capture the forge output section for a single contract.
     fn filter_output(&self, stdout: &str, contract_name: &str) -> String {
-        let section_marker = format!("{}InvariantTest", contract_name);
+        let section_marker = format!("{contract_name}InvariantTest");
         let mut in_section = false;
         let mut lines: Vec<&str> = Vec::new();
 

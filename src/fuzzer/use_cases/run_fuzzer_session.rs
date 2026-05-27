@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -185,7 +185,7 @@ impl FuzzerRunPort for RunFuzzerUseCase {
     }
 }
 
-async fn restore_leftover_disabled(workspace_root: &PathBuf) {
+async fn restore_leftover_disabled(workspace_root: &Path) {
     let stash = workspace_root.join(".fuzzming-disabled");
     let mut dir = match tokio::fs::read_dir(&stash).await {
         Ok(d) => d,

@@ -36,8 +36,8 @@ impl LlmEnginePort for MockLlmEngine {
             status: LlmStatus::Done,
             result: Some(GenerationResult {
                 response: GenerationResponse::Full {
-                    bodies: fake_bodies(&signal.contract_name, &signal.contract_path),
-                    foundry_config: fake_foundry_config(),
+                    bodies: Box::new(fake_bodies(&signal.contract_name, &signal.contract_path)),
+                    foundry_config: Box::new(fake_foundry_config()),
                 },
                 usage: GenerationUsage {
                     calls: 1,
@@ -123,8 +123,7 @@ fn pass_report(contract_name: &str) -> FuzzReport {
         outcome: FuzzOutcome::Pass,
         bugs: vec![],
         lcov_path: Some(PathBuf::from(format!(
-            ".fuzzming/{}/lcov.info",
-            contract_name
+            ".fuzzming/{contract_name}/lcov.info"
         ))),
     }
 }
@@ -146,8 +145,7 @@ impl ReaderPort for MockReader {
             .to_string();
         Ok(ContractContext {
             source_code: format!(
-                "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\ncontract {} {{\n    // demo\n}}\n",
-                name
+                "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\ncontract {name} {{\n    // demo\n}}\n"
             ),
         })
     }
@@ -186,7 +184,7 @@ fn fake_bodies(contract_name: &str, contract_path: &str) -> BodiesJson {
             generated_at: "demo".to_string(),
         },
         handler: HandlerBodies {
-            contract_name: format!("{}Handler", contract_name),
+            contract_name: format!("{contract_name}Handler"),
             imports: vec![],
             state_vars: vec![],
             ghost_vars: vec![],
@@ -196,7 +194,7 @@ fn fake_bodies(contract_name: &str, contract_path: &str) -> BodiesJson {
             target_selectors: String::new(),
         },
         invariant_test: InvariantTestBodies {
-            contract_name: format!("{}Test", contract_name),
+            contract_name: format!("{contract_name}Test"),
             imports: vec![],
             state_vars: vec![],
             set_up_body: vec![],

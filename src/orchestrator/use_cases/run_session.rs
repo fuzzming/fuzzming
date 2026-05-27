@@ -272,10 +272,10 @@ impl OrchestratorRunPort for RunSessionUseCase {
 impl RunSessionUseCase {
     async fn build_signal(&self, contract_path: &str, state: &SessionState) -> Result<RoundSignal> {
         let contract_name = extract_contract_name(contract_path);
-        let fuzz_output_path = format!(".fuzzming/{}/fuzz_output.txt", contract_name);
-        let lcov_path = format!(".fuzzming/{}/coverage_context.json", contract_name);
-        let bodies_path = format!(".fuzzming/{}/{}.bodies.json", contract_name, contract_name);
-        let config_path = format!(".fuzzming/{}/{}.config.json", contract_name, contract_name);
+        let fuzz_output_path = format!(".fuzzming/{contract_name}/fuzz_output.txt");
+        let lcov_path = format!(".fuzzming/{contract_name}/coverage_context.json");
+        let bodies_path = format!(".fuzzming/{contract_name}/{contract_name}.bodies.json");
+        let config_path = format!(".fuzzming/{contract_name}/{contract_name}.config.json");
 
         let (contract_context, fuzz_output, coverage_context, existing_bodies, existing_config) = tokio::try_join!(
             self.reader.get_contract_context(contract_path, false),
@@ -285,8 +285,8 @@ impl RunSessionUseCase {
             self.reader.get_existing_config(&config_path),
         )?;
 
-        let existing_foundry_config = existing_config.and_then(|c| match c {
-            FuzzerConfigArtifact::Foundry(fc) => Some(fc),
+        let existing_foundry_config = existing_config.map(|c| match c {
+            FuzzerConfigArtifact::Foundry(fc) => fc,
         });
 
         let confirmed_bugs = state

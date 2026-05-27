@@ -237,7 +237,7 @@ fn prompt_for_config(
 
     ui.divider();
     let llm_key_input = Input::<String>::new()
-        .with_prompt(ui.question(&format!("LLM key {}", llm_key_hint)))
+        .with_prompt(ui.question(&format!("LLM key {llm_key_hint}")))
         .allow_empty(true)
         .interact_text()?;
 
@@ -377,7 +377,7 @@ fn ensure_gitignored(config_path: &Path) -> Result<()> {
             .append(true)
             .open(&gitignore_path)?;
         use std::io::Write;
-        writeln!(file, "{}", entry)?;
+        writeln!(file, "{entry}")?;
     }
 
     Ok(())

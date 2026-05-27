@@ -83,7 +83,7 @@ impl Default for TerminalOutput {
 
 fn contract_label(name: &str) -> String {
     let s = if name.len() > 20 { &name[..20] } else { name };
-    format!("{:<22}", s)
+    format!("{s:<22}")
 }
 
 fn spinner_style() -> ProgressStyle {

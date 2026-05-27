@@ -31,26 +31,26 @@ pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
                 let seqs = &groups[name];
                 let count = seqs.len();
                 let label = if count > 1 {
-                    format!("- `{}` ({} occurrences):", name, count)
+                    format!("- `{name}` ({count} occurrences):")
                 } else {
-                    format!("- `{}`:", name)
+                    format!("- `{name}`:")
                 };
                 let body = seqs
                     .iter()
                     .map(|seq| {
                         seq.lines()
-                            .map(|line| format!("  {}", line))
+                            .map(|line| format!("  {line}"))
                             .collect::<Vec<_>>()
                             .join("\n")
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                format!("{}\n{}", label, body)
+                format!("{label}\n{body}")
             })
             .collect::<Vec<_>>()
             .join("\n");
 
-        format!("\n\n**Bugs found:**\n{}", list)
+        format!("\n\n**Bugs found:**\n{list}")
     } else {
         String::new()
     };

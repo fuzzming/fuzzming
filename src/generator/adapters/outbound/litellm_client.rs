@@ -142,16 +142,20 @@ fn is_transient_error(msg: &str) -> bool {
 
 impl LiteLlmClient {
     fn build_options(&self) -> CompletionOptions {
-        let mut options = CompletionOptions::default();
-        options.temperature = self.temperature;
-        options.max_tokens = self.max_tokens;
-        if supports_json_mode(&self.model) {
-            options.extra_params = HashMap::from([(
+        let extra_params = if supports_json_mode(&self.model) {
+            HashMap::from([(
                 "response_format".to_string(),
                 json!({ "type": "json_object" }),
-            )]);
+            )])
+        } else {
+            HashMap::new()
+        };
+        CompletionOptions {
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            extra_params,
+            ..Default::default()
         }
-        options
     }
 }
 

@@ -7,6 +7,12 @@ pub struct CliUi {
     error: Style,
 }
 
+impl Default for CliUi {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CliUi {
     pub fn new() -> Self {
         Self {

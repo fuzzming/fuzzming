@@ -32,7 +32,7 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     out.push(String::new());
 
     for var in &h.state_vars {
-        out.push(format!("    {}", var));
+        out.push(format!("    {var}"));
     }
     // ghost_vars is metadata only; declarations live in state_vars.
     out.push(String::new());
@@ -42,9 +42,9 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
         .trim()
         .trim_end_matches('{')
         .trim_end();
-    out.push(format!("    {} {{", sig));
+    out.push(format!("    {sig} {{"));
     for stmt in &h.constructor_body {
-        out.push(format!("        {}", stmt));
+        out.push(format!("        {stmt}"));
     }
     out.push("    }".into());
     out.push(String::new());
@@ -100,13 +100,13 @@ async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter)
     out.push(String::new());
 
     for var in &t.state_vars {
-        out.push(format!("    {}", var));
+        out.push(format!("    {var}"));
     }
     out.push(String::new());
 
     out.push("    function setUp() public {".into());
     for stmt in &t.set_up_body {
-        out.push(format!("        {}", stmt));
+        out.push(format!("        {stmt}"));
     }
     out.push("    }".into());
     out.push(String::new());

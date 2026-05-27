@@ -54,8 +54,7 @@ impl Prompt {
                 .collect::<Vec<_>>()
                 .join("\n");
             sections.push(format!(
-                "CONFIRMED BUGS (these invariants already caught real vulnerabilities — keep them in the test and focus on finding additional distinct bugs):\n{}",
-                list
+                "CONFIRMED BUGS (these invariants already caught real vulnerabilities — keep them in the test and focus on finding additional distinct bugs):\n{list}"
             ));
         }
 
@@ -143,7 +142,7 @@ impl Prompt {
             };
             lines.push(format!("  [{kind}] {}:{}", gap.file, gap.line));
             for ctx in &gap.source_context {
-                lines.push(format!("    {}", ctx));
+                lines.push(format!("    {ctx}"));
             }
         }
         lines.join("\n")

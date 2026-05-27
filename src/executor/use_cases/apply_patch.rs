@@ -62,7 +62,7 @@ fn apply_update(root: &mut Value, path: &str, op: &JsonPatchOp, new_val: &Value)
                 let idx = parse_index(last)?;
                 let len = arr.len();
                 *arr.get_mut(idx)
-                    .with_context(|| format!("index {} out of bounds (len={})", idx, len))? =
+                    .with_context(|| format!("index {idx} out of bounds (len={len})"))? =
                     new_val.clone();
             }
             _ => bail!("expected object or array as parent"),
@@ -71,7 +71,7 @@ fn apply_update(root: &mut Value, path: &str, op: &JsonPatchOp, new_val: &Value)
         JsonPatchOp::Remove => match parent {
             Value::Object(map) => {
                 map.remove(*last)
-                    .with_context(|| format!("key '{}' not found", last))?;
+                    .with_context(|| format!("key '{last}' not found"))?;
             }
             Value::Array(arr) => {
                 let idx = parse_index(last)?;
@@ -101,43 +101,43 @@ fn step_into_mut<'a>(node: &'a mut Value, seg: &str) -> Result<&'a mut Value> {
         let key = &seg[..bracket];
         let idx_str = seg
             .get(bracket + 1..seg.len() - 1)
-            .with_context(|| format!("malformed index in segment '{}'", seg))?;
+            .with_context(|| format!("malformed index in segment '{seg}'"))?;
         let idx = parse_index(idx_str)?;
 
         let child = match node {
             Value::Object(map) => map
                 .get_mut(key)
-                .with_context(|| format!("key '{}' not found", key))?,
-            _ => bail!("expected object at segment '{}'", key),
+                .with_context(|| format!("key '{key}' not found"))?,
+            _ => bail!("expected object at segment '{key}'"),
         };
         match child {
             Value::Array(arr) => {
                 let len = arr.len();
                 arr.get_mut(idx).with_context(|| {
-                    format!("'{}': index {} out of bounds (len={})", key, idx, len)
+                    format!("'{key}': index {idx} out of bounds (len={len})")
                 })
             }
-            _ => bail!("'{}' is not an array", key),
+            _ => bail!("'{key}' is not an array"),
         }
     } else {
         match node {
             Value::Object(map) => map
                 .get_mut(seg)
-                .with_context(|| format!("key '{}' not found", seg)),
+                .with_context(|| format!("key '{seg}' not found")),
             Value::Array(arr) => {
                 let idx = parse_index(seg)?;
                 let len = arr.len();
                 arr.get_mut(idx)
-                    .with_context(|| format!("index {} out of bounds (len={})", idx, len))
+                    .with_context(|| format!("index {idx} out of bounds (len={len})"))
             }
-            _ => bail!("expected object or array at segment '{}'", seg),
+            _ => bail!("expected object or array at segment '{seg}'"),
         }
     }
 }
 
 fn parse_index(s: &str) -> Result<usize> {
     s.parse::<usize>()
-        .with_context(|| format!("'{}' is not a valid array index", s))
+        .with_context(|| format!("'{s}' is not a valid array index"))
 }
 
 #[cfg(test)]
@@ -443,7 +443,7 @@ mod tests {
         );
         assert!(result.is_err());
         let msg = format!("{:#}", result.unwrap_err());
-        assert!(msg.contains("empty"), "unexpected error: {}", msg);
+        assert!(msg.contains("empty"), "unexpected error: {msg}");
     }
 
     #[test]
@@ -472,7 +472,7 @@ mod tests {
         );
         assert!(result.is_err());
         let msg = format!("{:#}", result.unwrap_err());
-        assert!(msg.contains("not found"), "unexpected error: {}", msg);
+        assert!(msg.contains("not found"), "unexpected error: {msg}");
     }
 
     #[test]
@@ -500,6 +500,6 @@ mod tests {
         );
         assert!(result.is_err());
         let msg = format!("{:#}", result.unwrap_err());
-        assert!(msg.contains("out of bounds"), "unexpected error: {}", msg);
+        assert!(msg.contains("out of bounds"), "unexpected error: {msg}");
     }
 }

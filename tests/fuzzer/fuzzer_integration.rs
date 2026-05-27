@@ -37,7 +37,7 @@ fn signal_for(contract_name: &str, workspace: PathBuf) -> RoundSignal {
             prompt_mode: PromptMode::Guided,
         },
         contract_name: contract_name.to_string(),
-        contract_path: format!("src/{}.sol", contract_name),
+        contract_path: format!("src/{contract_name}.sol"),
         source_code: String::new(),
         fuzz_output: None,
         coverage_context: None,
@@ -83,13 +83,13 @@ async fn create_broken_contract_dir(workspace: &PathBuf, name: &str) -> PathBuf 
     let dir = workspace.join("test/fuzzming").join(name);
     tokio::fs::create_dir_all(&dir).await.unwrap();
     tokio::fs::write(
-        dir.join(format!("{}Handler.sol", name)),
+        dir.join(format!("{name}Handler.sol")),
         broken_handler_source(),
     )
     .await
     .unwrap();
     tokio::fs::write(
-        dir.join(format!("{}InvariantTest.sol", name)),
+        dir.join(format!("{name}InvariantTest.sol")),
         broken_invariant_source().replace("BrokenContract", name),
     )
     .await

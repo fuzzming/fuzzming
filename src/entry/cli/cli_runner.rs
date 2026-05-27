@@ -58,13 +58,13 @@ impl CliRunner {
         match args.command {
             Some(Command::Guide) => {
                 print_extended_help(&ui);
-                return Ok(());
+                Ok(())
             }
             Some(Command::Report { workspace_root }) => {
-                return handle_report(workspace_root, &ui);
+                handle_report(workspace_root, &ui)
             }
             Some(Command::Config { reset }) => {
-                return handle_config(reset, &ui);
+                handle_config(reset, &ui)
             }
             Some(Command::Run(run_args)) => {
                 return handle_run(run_args, &ui).await;
@@ -117,8 +117,8 @@ async fn handle_run(args: RunArgs, ui: &CliUi) -> Result<()> {
     let outcomes = match orchestrator.run(request).await {
         Ok(outcomes) => outcomes,
         Err(err) => {
-            let message = format!("{:#}", err);
-            ui.error(&format!("FuzzMing stopped early: {}", message));
+            let message = format!("{err:#}");
+            ui.error(&format!("FuzzMing stopped early: {message}"));
             if message.contains("timed out") {
                 ui.warn("Hint: increase --llm-timeout-secs or try a faster model.");
             } else if message.contains("litellm") || message.contains("completion failed") {
@@ -163,7 +163,7 @@ fn print_outcome_reports(outcomes: &[SessionOutcome]) {
             TerminationReason::Exhausted => format_exhausted_report(outcome),
             TerminationReason::CompileError => format_compile_error_outcome(outcome),
         };
-        println!("{}", msg);
+        println!("{msg}");
         println!();
     }
 }
@@ -512,12 +512,12 @@ fn print_extended_help(_ui: &CliUi) {
         let flag_str = if hint.is_empty() {
             flag.to_string()
         } else {
-            format!("{} {}", flag, hint)
+            format!("{flag} {hint}")
         };
         println!(
             "{}{}   {}",
             indent,
-            label.apply_to(format!("{:<col$}", flag_str)),
+            label.apply_to(format!("{flag_str:<col$}")),
             dim.apply_to(desc),
         );
     };
@@ -720,7 +720,7 @@ fn print_extended_help(_ui: &CliUi) {
         for (example, desc) in cmd.examples {
             println!(
                 "      {}   {}",
-                hi.apply_to(format!("{:<col$}", example)),
+                hi.apply_to(format!("{example:<col$}")),
                 dim.apply_to(*desc),
             );
         }
@@ -807,7 +807,7 @@ async fn run_demo() -> Result<()> {
         Ok(o) => o,
         Err(err) => {
             let ui = CliUi::new();
-            ui.error(&format!("Demo failed: {}", err));
+            ui.error(&format!("Demo failed: {err}"));
             std::process::exit(1);
         }
     };
