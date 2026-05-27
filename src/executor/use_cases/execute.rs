@@ -48,7 +48,9 @@ impl ExecutorRunPort for ExecuteUseCase {
 
 /// Resolve an `ExecutorInput` into concrete `(BodiesJson, FuzzerConfigArtifact)` by either
 /// passing through the full artifacts (round 1) or applying patch operations (round N).
-fn resolve_input(input: ExecutorInput) -> Result<(crate::shared::models::BodiesJson, FuzzerConfigArtifact)> {
+fn resolve_input(
+    input: ExecutorInput,
+) -> Result<(crate::shared::models::BodiesJson, FuzzerConfigArtifact)> {
     match input {
         ExecutorInput::Full {
             bodies,
@@ -62,8 +64,7 @@ fn resolve_input(input: ExecutorInput) -> Result<(crate::shared::models::BodiesJ
             config_updates,
         } => {
             let patched_bodies = apply_patches(existing_bodies, &bodies_updates)?;
-            // Unwrap the enum so paths like "depth"/"runs" work directly on the
-            // inner FoundryConfig, matching what the prompt shows the LLM.
+            // Unwrap the enum so patch paths apply to FoundryConfig fields.
             let patched_config = match existing_config {
                 FuzzerConfigArtifact::Foundry(inner) => {
                     FuzzerConfigArtifact::Foundry(apply_patches(inner, &config_updates)?)

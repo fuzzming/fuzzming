@@ -30,8 +30,6 @@ where
     serde_json::from_value(root).context("deserialise patched value")
 }
 
-// ── internals ─────────────────────────────────────────────────────────────────
-
 fn apply_update(root: &mut Value, path: &str, op: &JsonPatchOp, new_val: &Value) -> Result<()> {
     if path.is_empty() {
         bail!("patch path is empty");
@@ -115,8 +113,9 @@ fn step_into_mut<'a>(node: &'a mut Value, seg: &str) -> Result<&'a mut Value> {
         match child {
             Value::Array(arr) => {
                 let len = arr.len();
-                arr.get_mut(idx)
-                    .with_context(|| format!("'{}': index {} out of bounds (len={})", key, idx, len))
+                arr.get_mut(idx).with_context(|| {
+                    format!("'{}': index {} out of bounds (len={})", key, idx, len)
+                })
             }
             _ => bail!("'{}' is not an array", key),
         }
@@ -141,8 +140,6 @@ fn parse_index(s: &str) -> Result<usize> {
         .with_context(|| format!("'{}' is not a valid array index", s))
 }
 
-// ── tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -151,13 +148,11 @@ mod tests {
     use serde_json::json;
 
     use crate::shared::models::{
-        BodiesJson, BodiesMeta, FuzzerConfigArtifact, HandlerBodies, InvariantTestBodies,
-        JsonBlockUpdate, JsonPatchOp, FoundryConfig,
+        BodiesJson, BodiesMeta, FoundryConfig, FuzzerConfigArtifact, HandlerBodies,
+        InvariantTestBodies, JsonBlockUpdate, JsonPatchOp,
     };
 
     use super::apply_patches;
-
-    // ── helpers ───────────────────────────────────────────────────────────────
 
     fn upd(op: JsonPatchOp, path: &str, value: serde_json::Value) -> JsonBlockUpdate {
         JsonBlockUpdate {
@@ -218,8 +213,6 @@ mod tests {
         }
     }
 
-    // ── BodiesJson patches ────────────────────────────────────────────────────
-
     #[test]
     fn replace_existing_function_body() {
         let patched = apply_patches(
@@ -254,7 +247,11 @@ mod tests {
     fn remove_function() {
         let patched = apply_patches(
             sample_bodies(),
-            &[upd(JsonPatchOp::Remove, "handler.functions.withdraw", json!(null))],
+            &[upd(
+                JsonPatchOp::Remove,
+                "handler.functions.withdraw",
+                json!(null),
+            )],
         )
         .unwrap();
         assert!(!patched.handler.functions.contains_key("withdraw"));
@@ -346,27 +343,12 @@ mod tests {
 
     #[test]
     fn bracket_navigation_syntax() {
-        // navigate through "handler.ghostVars[0]" using bracket syntax
-        // by targeting constructorBody[0] we test bracket navigation on a non-last segment
-        // Here we use it on the last segment via the dot form instead, which is already covered.
-        // This test specifically uses bracket syntax on a navigation (non-terminal) segment.
+        // Exercise bracket syntax on a non-terminal segment.
         let mut bodies = sample_bodies();
-        bodies.handler.ghost_vars.push("uint256 ghost_b;".to_string());
-
-        // Replace the value pointed to by navigating handler → ghostVars[0]
-        // expressed as two segments: "handler" + "ghostVars[0]"
-        // Since apply_update splits on ".", we navigate "handler" then "ghostVars[0]" as last key.
-        // ghostVars[0] as the last segment: the bracket part isn't parsed in apply_update,
-        // so use the dot form "handler.ghostVars.0" for terminal access.
-        // Bracket syntax is used for intermediate navigation — test that here:
-        // path "handler.ghostVars[0]" where ghostVars[0] is the LAST segment.
-        // In step_into_mut, brackets on the last segment would be handled by apply_update's
-        // parent navigation, not step_into_mut. Let's test a 3-level path instead.
-
-        // Create a nested structure: invariantTest.invariants.invariant_balance
-        // and navigate through a bracket in the middle isn't applicable to BodiesJson directly.
-        // The bracket form is tested via the array-index-in-navigate path.
-        // Use bare index test which goes through step_into_mut's array branch.
+        bodies
+            .handler
+            .ghost_vars
+            .push("uint256 ghost_b;".to_string());
         let patched = apply_patches(
             bodies,
             &[upd(
@@ -379,21 +361,23 @@ mod tests {
         assert_eq!(patched.handler.ghost_vars[1], "uint256 ghost_replaced;");
     }
 
-    // ── FoundryConfig patches ─────────────────────────────────────────────────
-
     #[test]
     fn replace_depth() {
-        let patched =
-            apply_patches(sample_config(), &[upd(JsonPatchOp::Replace, "depth", json!(200))])
-                .unwrap();
+        let patched = apply_patches(
+            sample_config(),
+            &[upd(JsonPatchOp::Replace, "depth", json!(200))],
+        )
+        .unwrap();
         assert_eq!(patched.depth, 200);
     }
 
     #[test]
     fn replace_runs() {
-        let patched =
-            apply_patches(sample_config(), &[upd(JsonPatchOp::Replace, "runs", json!(512))])
-                .unwrap();
+        let patched = apply_patches(
+            sample_config(),
+            &[upd(JsonPatchOp::Replace, "runs", json!(512))],
+        )
+        .unwrap();
         assert_eq!(patched.runs, 512);
     }
 
@@ -439,12 +423,9 @@ mod tests {
         assert!(!patched.call_sequence_weights.contains_key("withdraw"));
     }
 
-    // ── FuzzerConfigArtifact (wraps FoundryConfig) ────────────────────────────
-
     #[test]
     fn patch_fuzzer_config_artifact() {
         let artifact = FuzzerConfigArtifact::Foundry(sample_config());
-        // FuzzerConfigArtifact serialises as { "Foundry": { ... } }
         let patched = apply_patches(
             artifact,
             &[upd(JsonPatchOp::Replace, "Foundry.depth", json!(500))],
@@ -454,11 +435,12 @@ mod tests {
         assert_eq!(cfg.depth, 500);
     }
 
-    // ── error cases ───────────────────────────────────────────────────────────
-
     #[test]
     fn error_on_empty_path() {
-        let result = apply_patches(sample_bodies(), &[upd(JsonPatchOp::Replace, "", json!("v"))]);
+        let result = apply_patches(
+            sample_bodies(),
+            &[upd(JsonPatchOp::Replace, "", json!("v"))],
+        );
         assert!(result.is_err());
         let msg = format!("{:#}", result.unwrap_err());
         assert!(msg.contains("empty"), "unexpected error: {}", msg);
@@ -466,7 +448,6 @@ mod tests {
 
     #[test]
     fn add_existing_key_upserts() {
-        // Add is treated as upsert so LLM can use Add even when the key already exists.
         let patched = apply_patches(
             sample_bodies(),
             &[upd(

@@ -56,27 +56,23 @@ fn extract_dependency_imports(contract_path: &str, source: &str) -> Vec<String> 
         if !t.starts_with("import") {
             continue;
         }
-        // Match: import {Sym[, Sym2]} from "./rel.sol";
-        // Also handles import {Sym} from "../path.sol";
         let from_pos = match t.find("from") {
             Some(p) => p,
             None => continue,
         };
-        let symbols = &t[..from_pos]; // "import {Token}"
-        let rest = t[from_pos + 4..].trim(); // `"./Token.sol";`
+        let symbols = &t[..from_pos];
+        let rest = t[from_pos + 4..].trim();
         let path_raw = rest
             .trim_start_matches('"')
             .trim_end_matches(';')
             .trim_end_matches('"');
         if !path_raw.starts_with('.') {
-            continue; // skip absolute / lib imports
+            continue;
         }
-        // Resolve relative path against the contract's directory
         let resolved = if dir.is_empty() {
             path_raw.trim_start_matches("./").to_string()
         } else {
             let combined = format!("{}/{}", dir, path_raw.trim_start_matches("./"));
-            // Normalize simple "../" components
             let mut parts: Vec<&str> = Vec::new();
             for seg in combined.split('/') {
                 if seg == ".." {
@@ -122,7 +118,6 @@ pub fn build_round_one_bodies_prompt(
     let handler_name = format!("{}Handler", contract_name);
     let test_name = format!("{}InvariantTest", contract_name);
 
-    // Import lines the LLM must use — derived by FuzzMing, not chosen by the LLM.
     let handler_target_import = format!("import {{{}}} from \"{}\";", contract_name, contract_path);
     let test_handler_import = format!(
         "import {{{}}} from \"./{}.sol\";",
@@ -130,7 +125,6 @@ pub fn build_round_one_bodies_prompt(
     );
     let test_std_import = "import {Test} from \"forge-std/Test.sol\";";
 
-    // Dependency imports derived from the contract's own import lines.
     let dep_imports = extract_dependency_imports(contract_path, source_code);
     let dep_imports_block = if dep_imports.is_empty() {
         String::new()

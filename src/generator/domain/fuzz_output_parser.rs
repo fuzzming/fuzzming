@@ -10,8 +10,7 @@ pub struct FailingInvariant {
 /// We further strip passing tests, box-drawing stack frames, sequence markers,
 /// and the suite result line — leaving only the signal the LLM needs.
 pub fn format_for_llm(raw: &str) -> String {
-    // Pass compile errors and dev-test failures through — they are already
-    // concise and specially formatted by run_fuzzer_session.
+    // Pass compile errors and dev-test failures through as-is.
     if raw.starts_with("COMPILATION ERROR") || raw.starts_with("TEST FAILED") {
         return raw.to_string();
     }
@@ -106,8 +105,6 @@ fn parse_failing_invariants(raw: &str) -> Vec<FailingInvariant> {
 
 /// Extract the assertion message from a [FAIL: <msg>] line.
 fn extract_fail_message(line: &str) -> String {
-    // "[FAIL: count should never exceed 100: 1000 > 100]"
-    //   → "count should never exceed 100: 1000 > 100"
     let inner = line
         .trim_start_matches('[')
         .trim_end_matches(']');
@@ -118,9 +115,6 @@ fn extract_fail_message(line: &str) -> String {
 }
 
 /// Format a forge call step into a readable string.
-///
-/// Input:  "sender=0xAAA calldata=handler_deposit(uint256) args=[1000]"
-/// Output: "handler_deposit(1000)  (sender: 0xAAA)"
 fn format_call_step(line: &str) -> String {
     let sender = extract_field(line, "sender=", " ");
     let calldata = extract_field(line, "calldata=", " ");
@@ -128,8 +122,7 @@ fn format_call_step(line: &str) -> String {
 
     let call = match (calldata, args_raw) {
         (Some(fn_sig), Some(args)) if !args.is_empty() => {
-            // Replace the parameter types with the actual arg values.
-            // "handler_deposit(uint256)" + "1000" → "handler_deposit(1000)"
+            // Replace parameter types with the actual argument values.
             let base = fn_sig.split('(').next().unwrap_or(fn_sig);
             format!("{base}({args})")
         }

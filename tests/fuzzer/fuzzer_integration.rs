@@ -15,8 +15,7 @@ use fuzzming::{
     },
 };
 
-// Serialize all tests that write to the fixture workspace so parallel test
-// threads don't race on forge invocations or temporary filesystem state.
+// Serialize tests that write to the fixture workspace to avoid filesystem races.
 static WORKSPACE_MUT: Mutex<()> = Mutex::new(());
 
 fn vault_project() -> PathBuf {
@@ -83,9 +82,12 @@ contract BrokenContractInvariantTest is Test {
 async fn create_broken_contract_dir(workspace: &PathBuf, name: &str) -> PathBuf {
     let dir = workspace.join("test/fuzzming").join(name);
     tokio::fs::create_dir_all(&dir).await.unwrap();
-    tokio::fs::write(dir.join(format!("{}Handler.sol", name)), broken_handler_source())
-        .await
-        .unwrap();
+    tokio::fs::write(
+        dir.join(format!("{}Handler.sol", name)),
+        broken_handler_source(),
+    )
+    .await
+    .unwrap();
     tokio::fs::write(
         dir.join(format!("{}InvariantTest.sol", name)),
         broken_invariant_source().replace("BrokenContract", name),
@@ -94,8 +96,6 @@ async fn create_broken_contract_dir(workspace: &PathBuf, name: &str) -> PathBuf 
     .unwrap();
     dir
 }
-
-// ── Happy-path tests ───────────────────────────────────────────────────────
 
 /// Correct Vault — all invariants hold → Pass
 #[tokio::test]
@@ -135,7 +135,10 @@ async fn fuzz_output_written_to_workspace() -> Result<()> {
     use_case.run(vec![signal(workspace.clone())]).await?;
 
     let output_path = workspace.join(".fuzzming/Vault/fuzz_output.txt");
-    assert!(output_path.exists(), ".fuzzming/Vault/fuzz_output.txt not found");
+    assert!(
+        output_path.exists(),
+        ".fuzzming/Vault/fuzz_output.txt not found"
+    );
 
     let content = std::fs::read_to_string(&output_path)?;
     assert!(
@@ -144,8 +147,6 @@ async fn fuzz_output_written_to_workspace() -> Result<()> {
     );
     Ok(())
 }
-
-// ── Error-handling tests ───────────────────────────────────────────────────
 
 /// A contract whose test files have a compile error → CompileError outcome.
 #[tokio::test]
@@ -162,9 +163,10 @@ async fn compile_error_gives_compile_error_outcome() -> Result<()> {
         workspace.clone(),
     );
 
-    let result = use_case.run(vec![signal_for("BrokenContract", workspace.clone())]).await;
+    let result = use_case
+        .run(vec![signal_for("BrokenContract", workspace.clone())])
+        .await;
 
-    // Always clean up before asserting so we don't poison the fixture.
     let _ = tokio::fs::remove_dir_all(&broken_dir).await;
 
     let reports = result?;
@@ -200,7 +202,6 @@ async fn healthy_contract_runs_when_peer_has_compile_error() -> Result<()> {
     let result = use_case.run(signals).await;
 
     let _ = tokio::fs::remove_dir_all(&broken_dir).await;
-    // Stash dir should have been cleaned up by the use-case itself; remove just in case.
     let _ = tokio::fs::remove_dir_all(workspace.join(".fuzzming-disabled/BrokenContract")).await;
 
     let reports = result?;
@@ -228,12 +229,10 @@ async fn leftover_disabled_dirs_are_restored() -> Result<()> {
     let _guard = WORKSPACE_MUT.lock().unwrap();
     let workspace = vault_project();
 
-    // Simulate a leftover from a previous crash: a dir that should be in
-    // test/fuzzming/ but was stranded in .fuzzming-disabled/.
+    // Simulate a leftover disabled dir from a previous crash.
     let stash_dir = workspace.join(".fuzzming-disabled/LeftoverContract");
     let original_dir = workspace.join("test/fuzzming/LeftoverContract");
 
-    // Ensure clean state.
     let _ = tokio::fs::remove_dir_all(&stash_dir).await;
     let _ = tokio::fs::remove_dir_all(&original_dir).await;
     tokio::fs::create_dir_all(&stash_dir).await?;
@@ -245,13 +244,10 @@ async fn leftover_disabled_dirs_are_restored() -> Result<()> {
         workspace.clone(),
     );
 
-    // Run with only the Vault signal — LeftoverContract is not a target but
-    // restore_leftover_disabled should move it back before forge runs.
     use_case.run(vec![signal(workspace.clone())]).await?;
 
     let was_restored = original_dir.exists();
 
-    // Clean up.
     let _ = tokio::fs::remove_dir_all(&original_dir).await;
     let _ = tokio::fs::remove_dir_all(&stash_dir).await;
 

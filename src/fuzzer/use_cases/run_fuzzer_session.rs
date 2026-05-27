@@ -24,7 +24,11 @@ impl RunFuzzerUseCase {
         output: Box<dyn FuzzerOutputPort>,
         workspace_root: PathBuf,
     ) -> Self {
-        Self { runner, output, workspace_root }
+        Self {
+            runner,
+            output,
+            workspace_root,
+        }
     }
 
     async fn process_results(
@@ -55,25 +59,30 @@ impl RunFuzzerUseCase {
                 (msg, FuzzOutcome::CompileError, vec![])
             } else {
                 let filtered = self.runner.filter_output(&fuzz_result.stdout, contract);
-                let (mut outcome, bugs) = evaluate_outcome_for_contract(&*self.runner, fuzz_result, contract);
-                // If forge ran other contracts but produced zero output for this one,
-                // the contract simply wasn't in the run (stashed or never generated).
-                // Declaring DevTestFailed would confuse the LLM — use CompileError instead.
+                let (mut outcome, bugs) =
+                    evaluate_outcome_for_contract(&*self.runner, fuzz_result, contract);
+                // If forge skipped this contract, treat it as CompileError to avoid false DevTestFailed.
                 if matches!(outcome, FuzzOutcome::DevTestFailed)
                     && filtered.is_empty()
                     && fuzz_result.stdout.contains("InvariantTest")
                 {
                     outcome = FuzzOutcome::CompileError;
                 }
-                let output = if matches!(outcome, FuzzOutcome::CompileError) && filtered.is_empty() {
+                let output = if matches!(outcome, FuzzOutcome::CompileError) && filtered.is_empty()
+                {
                     format!(
                         "COMPILATION ERROR — fix the Solidity before fuzzing can proceed:\n{}",
                         fuzz_result.stderr
                     )
                 } else if matches!(outcome, FuzzOutcome::DevTestFailed) && filtered.is_empty() {
                     let mut msg = String::from("TEST FAILED — fix the handler/invariant test:\n");
-                    if !fuzz_result.stderr.is_empty() { msg.push_str(&fuzz_result.stderr); }
-                    if !fuzz_result.stdout.is_empty() { msg.push('\n'); msg.push_str(&fuzz_result.stdout); }
+                    if !fuzz_result.stderr.is_empty() {
+                        msg.push_str(&fuzz_result.stderr);
+                    }
+                    if !fuzz_result.stdout.is_empty() {
+                        msg.push('\n');
+                        msg.push_str(&fuzz_result.stdout);
+                    }
                     msg
                 } else {
                     filtered
@@ -81,11 +90,17 @@ impl RunFuzzerUseCase {
                 (output, outcome, bugs)
             };
 
-            self.output.write_fuzz_output(contract, &contract_output).await?;
+            self.output
+                .write_fuzz_output(contract, &contract_output)
+                .await?;
             if matches!(outcome, FuzzOutcome::Pass) {
                 any_pass = true;
             }
-            reports.push(FuzzReport { outcome, bugs, lcov_path: None });
+            reports.push(FuzzReport {
+                outcome,
+                bugs,
+                lcov_path: None,
+            });
         }
 
         if any_pass {
@@ -123,7 +138,8 @@ impl FuzzerRunPort for RunFuzzerUseCase {
         let fuzz_result = run_fuzzer("fuzzming", &*self.runner).await?;
 
         if is_compile_error(&fuzz_result) {
-            let erroring = extract_erroring_contract_names(&fuzz_result.stderr, &fuzz_result.stdout);
+            let erroring =
+                extract_erroring_contract_names(&fuzz_result.stderr, &fuzz_result.stdout);
             let has_healthy = signals.iter().any(|s| !erroring.contains(&s.contract_name));
 
             if !erroring.is_empty() && has_healthy {
@@ -134,7 +150,7 @@ impl FuzzerRunPort for RunFuzzerUseCase {
                 let mut disabled: Vec<(PathBuf, PathBuf)> = Vec::new();
                 for name in &erroring {
                     let original = self.workspace_root.join("test").join("fuzzming").join(name);
-                    let hidden   = stash.join(name);
+                    let hidden = stash.join(name);
                     if original.exists() {
                         let _ = tokio::fs::rename(&original, &hidden).await;
                         disabled.push((hidden, original));
@@ -144,7 +160,10 @@ impl FuzzerRunPort for RunFuzzerUseCase {
                 // Re-run forge for the healthy contracts (erroring dirs stashed).
                 let healthy_result = run_fuzzer("fuzzming", &*self.runner).await;
                 let reports = match healthy_result {
-                    Ok(result) => self.process_results(&signals, &result, &erroring, &fuzz_result).await,
+                    Ok(result) => {
+                        self.process_results(&signals, &result, &erroring, &fuzz_result)
+                            .await
+                    }
                     Err(e) => Err(e),
                 };
 
@@ -161,7 +180,8 @@ impl FuzzerRunPort for RunFuzzerUseCase {
 
         // No compile error, or every contract is erroring — process normally.
         let empty = HashSet::new();
-        self.process_results(&signals, &fuzz_result, &empty, &fuzz_result).await
+        self.process_results(&signals, &fuzz_result, &empty, &fuzz_result)
+            .await
     }
 }
 
@@ -172,8 +192,8 @@ async fn restore_leftover_disabled(workspace_root: &PathBuf) {
         Err(_) => return,
     };
     while let Ok(Some(entry)) = dir.next_entry().await {
-        let hidden   = entry.path();
-        let name     = entry.file_name();
+        let hidden = entry.path();
+        let name = entry.file_name();
         let original = workspace_root.join("test").join("fuzzming").join(&name);
         if hidden.is_dir() && !original.exists() {
             let _ = tokio::fs::rename(&hidden, &original).await;

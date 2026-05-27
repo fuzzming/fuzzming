@@ -16,15 +16,16 @@ use crate::shared::models::{
     BodiesJson, BodiesMeta, BugInfo, ContractContext, CoverageContext, ExecutorInput,
     FoundryConfig, FuzzerConfigArtifact, GenerationUsage, HandlerBodies, InvariantTestBodies,
 };
-use crate::shared::ports::{ExecutorPort, FuzzerEnginePort, LlmEnginePort, OrchestratorPort, ReaderPort};
+use crate::shared::ports::{
+    ExecutorPort, FuzzerEnginePort, LlmEnginePort, OrchestratorPort, ReaderPort,
+};
 use crate::shared::requests::round_signal::RoundSignal;
 use crate::shared::responses::{
     fuzz_report::{FuzzOutcome, FuzzReport},
     llm_signal::{LlmSignal, LlmStatus},
 };
 
-// ── Mock LLM Engine ───────────────────────────────────────────────────────────
-
+/// Mock LLM engine used by the demo composition.
 pub struct MockLlmEngine;
 
 #[async_trait]
@@ -51,8 +52,7 @@ impl LlmEnginePort for MockLlmEngine {
     }
 }
 
-// ── Mock Executor ─────────────────────────────────────────────────────────────
-
+/// Mock executor used by the demo composition.
 pub struct MockExecutor;
 
 #[async_trait]
@@ -63,15 +63,17 @@ impl ExecutorPort for MockExecutor {
     }
 }
 
-// ── Mock Fuzzer Engine ────────────────────────────────────────────────────────
-
+/// Mock fuzzer engine used by the demo composition.
 pub struct MockFuzzerEngine;
 
 #[async_trait]
 impl FuzzerEnginePort for MockFuzzerEngine {
     async fn run(&self, signals: Vec<RoundSignal>) -> Result<Vec<FuzzReport>> {
         sleep(Duration::from_millis(1800)).await;
-        Ok(signals.iter().map(|s| scripted_report(&s.contract_name, s.round)).collect())
+        Ok(signals
+            .iter()
+            .map(|s| scripted_report(&s.contract_name, s.round))
+            .collect())
     }
 }
 
@@ -79,23 +81,29 @@ fn scripted_report(contract_name: &str, round: u32) -> FuzzReport {
     match (contract_name, round) {
         ("TokenVault", 1) => bug_report(vec![BugInfo {
             invariant_name: "invariant_solvency".to_string(),
-            call_sequence: "sender=0x1111...  calldata=withdraw(uint256) args=[1000000000000000000 [1e18]]".to_string(),
+            call_sequence:
+                "sender=0x1111...  calldata=withdraw(uint256) args=[1000000000000000000 [1e18]]"
+                    .to_string(),
         }]),
         ("TokenVault", 2) => bug_report(vec![BugInfo {
             invariant_name: "invariant_noReentrancy".to_string(),
             call_sequence: concat!(
                 "sender=0x2222...  calldata=deposit(uint256) args=[500000000000000000 [5e17]]\n",
                 "sender=0x2222...  calldata=withdraw(uint256) args=[500000000000000000 [5e17]]"
-            ).to_string(),
+            )
+            .to_string(),
         }]),
         ("TokenVault", _) => bug_report(vec![BugInfo {
             invariant_name: "invariant_solvency".to_string(),
-            call_sequence: "sender=0x3333...  calldata=ownerWithdraw(uint256) args=[9999999999 [9.999e9]]".to_string(),
+            call_sequence:
+                "sender=0x3333...  calldata=ownerWithdraw(uint256) args=[9999999999 [9.999e9]]"
+                    .to_string(),
         }]),
         ("StakingPool", 1) => pass_report("StakingPool"),
         ("StakingPool", _) => bug_report(vec![BugInfo {
             invariant_name: "invariant_rewardRateAccessControl".to_string(),
-            call_sequence: "sender=0x4444...  calldata=setRewardRate(uint256) args=[99999]".to_string(),
+            call_sequence: "sender=0x4444...  calldata=setRewardRate(uint256) args=[99999]"
+                .to_string(),
         }]),
         ("PriceOracle", _) => pass_report("PriceOracle"),
         _ => pass_report(contract_name),
@@ -103,24 +111,34 @@ fn scripted_report(contract_name: &str, round: u32) -> FuzzReport {
 }
 
 fn bug_report(bugs: Vec<BugInfo>) -> FuzzReport {
-    FuzzReport { outcome: FuzzOutcome::Bug, bugs, lcov_path: None }
+    FuzzReport {
+        outcome: FuzzOutcome::Bug,
+        bugs,
+        lcov_path: None,
+    }
 }
 
 fn pass_report(contract_name: &str) -> FuzzReport {
     FuzzReport {
         outcome: FuzzOutcome::Pass,
         bugs: vec![],
-        lcov_path: Some(PathBuf::from(format!(".fuzzming/{}/lcov.info", contract_name))),
+        lcov_path: Some(PathBuf::from(format!(
+            ".fuzzming/{}/lcov.info",
+            contract_name
+        ))),
     }
 }
 
-// ── Mock Reader ───────────────────────────────────────────────────────────────
-
+/// Mock reader used by the demo composition.
 pub struct MockReader;
 
 #[async_trait]
 impl ReaderPort for MockReader {
-    async fn get_contract_context(&self, path: &str, _include_comments: bool) -> Result<ContractContext> {
+    async fn get_contract_context(
+        &self,
+        path: &str,
+        _include_comments: bool,
+    ) -> Result<ContractContext> {
         let name = std::path::Path::new(path)
             .file_stem()
             .unwrap_or_default()
@@ -158,8 +176,6 @@ impl ReaderPort for MockReader {
         Ok(None)
     }
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn fake_bodies(contract_name: &str, contract_path: &str) -> BodiesJson {
     BodiesJson {
@@ -201,8 +217,7 @@ fn fake_foundry_config() -> FoundryConfig {
     }
 }
 
-// ── Demo Composition Root ─────────────────────────────────────────────────────
-
+/// Demo wiring that uses mock adapters instead of live engines.
 pub struct DemoCompositionRoot;
 
 impl DemoCompositionRoot {

@@ -11,7 +11,9 @@ use crate::orchestrator::use_cases::{
     run_round::run_round,
 };
 use crate::shared::models::{CoverageContext, FuzzerConfigArtifact, SessionState};
-use crate::shared::ports::{ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReaderPort, ReporterPort};
+use crate::shared::ports::{
+    ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReaderPort, ReporterPort,
+};
 use crate::shared::requests::{round_signal::RoundSignal, session_request::SessionRequest};
 use crate::shared::responses::{
     fuzz_report::{FuzzOutcome, FuzzReport},
@@ -37,7 +39,13 @@ impl RunSessionUseCase {
         reporter: Box<dyn ReporterPort>,
         reader: Box<dyn ReaderPort>,
     ) -> Self {
-        Self { llm_engine, fuzzer_engine, executor, reporter, reader }
+        Self {
+            llm_engine,
+            fuzzer_engine,
+            executor,
+            reporter,
+            reader,
+        }
     }
 }
 
@@ -56,25 +64,23 @@ impl OrchestratorRunPort for RunSessionUseCase {
 
         loop {
             state.current_round += 1;
-            info!(round = state.current_round, contracts = active.len(), "round started");
+            info!(
+                round = state.current_round,
+                contracts = active.len(),
+                "round started"
+            );
 
-            // 1. Read context for all active contracts in parallel.
-            let signals: Vec<RoundSignal> = try_join_all(
-                active.iter().map(|path| self.build_signal(path, &state)),
-            )
-            .await?;
+            let signals: Vec<RoundSignal> =
+                try_join_all(active.iter().map(|path| self.build_signal(path, &state))).await?;
 
-            // 2. LLM + Executor for all contracts in parallel.
-            let llm_signals = try_join_all(
-                signals.iter().map(|signal| {
-                    run_round(
-                        signal.clone(),
-                        self.llm_engine.as_ref(),
-                        self.executor.as_ref(),
-                        self.reporter.as_ref(),
-                    )
-                }),
-            )
+            let llm_signals = try_join_all(signals.iter().map(|signal| {
+                run_round(
+                    signal.clone(),
+                    self.llm_engine.as_ref(),
+                    self.executor.as_ref(),
+                    self.reporter.as_ref(),
+                )
+            }))
             .await?;
 
             for (signal, llm_signal) in signals.iter().zip(llm_signals.iter()) {
@@ -88,7 +94,6 @@ impl OrchestratorRunPort for RunSessionUseCase {
                 }
             }
 
-            // 3. One forge run for all contracts.
             self.reporter
                 .emit_stage_event(StageEvent {
                     contract_name: None,
@@ -103,8 +108,14 @@ impl OrchestratorRunPort for RunSessionUseCase {
             info!(round = state.current_round, "forge run finished");
             let fuzzer_summary = FuzzerRoundSummary {
                 bugs: reports.iter().filter(|r| !r.bugs.is_empty()).count(),
-                passed: reports.iter().filter(|r| matches!(r.outcome, FuzzOutcome::Pass)).count(),
-                compile_errors: reports.iter().filter(|r| matches!(r.outcome, FuzzOutcome::CompileError)).count(),
+                passed: reports
+                    .iter()
+                    .filter(|r| matches!(r.outcome, FuzzOutcome::Pass))
+                    .count(),
+                compile_errors: reports
+                    .iter()
+                    .filter(|r| matches!(r.outcome, FuzzOutcome::CompileError))
+                    .count(),
             };
             self.reporter
                 .emit_stage_event(StageEvent {
@@ -116,12 +127,9 @@ impl OrchestratorRunPort for RunSessionUseCase {
                 })
                 .await?;
 
-            // Decrement before termination check so the last round triggers Exhausted on Pass.
             state.rounds_remaining = state.rounds_remaining.saturating_sub(1);
 
-            // 4. Accumulate bugs, check termination, emit reports for contracts that are done.
             let mut next_active: Vec<String> = Vec::new();
-            // Forge compiles all contracts together — show the compile error only once per round.
             let mut compile_error_emitted = false;
 
             for ((path, signal), report) in active.iter().zip(signals.iter()).zip(reports.iter()) {
@@ -143,21 +151,26 @@ impl OrchestratorRunPort for RunSessionUseCase {
                     }
                 }
 
-                // Surface compile errors immediately so the user sees them in the terminal.
-                // Forge compiles the whole project at once, so all contracts share the same error;
-                // emit it only once to avoid identical messages repeating per contract.
+                // Emit compile errors once per round to avoid duplicate output.
                 if matches!(report.outcome, FuzzOutcome::CompileError) && !compile_error_emitted {
-                    let fuzz_output_path = format!(".fuzzming/{}/fuzz_output.txt", signal.contract_name);
+                    let fuzz_output_path =
+                        format!(".fuzzming/{}/fuzz_output.txt", signal.contract_name);
                     if let Ok(Some(msg)) = self.reader.get_fuzz_output(&fuzz_output_path).await {
-                        self.reporter.emit_compile_error(state.current_round, &msg).await?;
+                        self.reporter
+                            .emit_compile_error(state.current_round, &msg)
+                            .await?;
                         compile_error_emitted = true;
                     }
                 }
 
                 let decision = check_termination(report, &state);
                 let decision = if !decision.terminate {
-                    self.check_full_coverage_streak(&signal.contract_name, report, &mut state).await?
-                        .map(|reason| TerminationDecision { terminate: true, reason: Some(reason) })
+                    self.check_full_coverage_streak(&signal.contract_name, report, &mut state)
+                        .await?
+                        .map(|reason| TerminationDecision {
+                            terminate: true,
+                            reason: Some(reason),
+                        })
                         .unwrap_or(decision)
                 } else {
                     decision
@@ -165,7 +178,10 @@ impl OrchestratorRunPort for RunSessionUseCase {
 
                 if decision.terminate {
                     let reason = decision.reason.ok_or_else(|| {
-                        anyhow!("terminate=true but no reason for '{}'", signal.contract_name)
+                        anyhow!(
+                            "terminate=true but no reason for '{}'",
+                            signal.contract_name
+                        )
                     })?;
                     let all_bugs = state
                         .found_bugs
@@ -184,11 +200,14 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         contract_name: signal.contract_name.clone(),
                         rounds_completed: state.current_round,
                         bugs: all_bugs.to_vec(),
-                        coverage_snapshots: state.coverage_snapshots
+                        coverage_snapshots: state
+                            .coverage_snapshots
                             .remove(&signal.contract_name)
                             .unwrap_or_default(),
                     };
-                    let outcome_path = state.config.workspace_root
+                    let outcome_path = state
+                        .config
+                        .workspace_root
                         .join(format!(".fuzzming/{}/outcome.json", signal.contract_name));
                     if let Some(parent) = outcome_path.parent() {
                         tokio::fs::create_dir_all(parent).await?;
@@ -197,19 +216,25 @@ impl OrchestratorRunPort for RunSessionUseCase {
                     tokio::fs::write(&outcome_path, json).await?;
 
                     let contract_done_status = if outcome.bugs.is_empty()
-                        && !matches!(outcome.reason, TerminationReason::Bug | TerminationReason::DevTestFailed | TerminationReason::CompileError)
-                    {
+                        && !matches!(
+                            outcome.reason,
+                            TerminationReason::Bug
+                                | TerminationReason::DevTestFailed
+                                | TerminationReason::CompileError
+                        ) {
                         StageStatus::Finished
                     } else {
                         StageStatus::Failed
                     };
-                    self.reporter.emit_stage_event(StageEvent {
-                        contract_name: Some(signal.contract_name.clone()),
-                        round: state.current_round,
-                        stage: StageKind::ContractDone,
-                        status: contract_done_status,
-                        fuzzer_summary: None,
-                    }).await?;
+                    self.reporter
+                        .emit_stage_event(StageEvent {
+                            contract_name: Some(signal.contract_name.clone()),
+                            round: state.current_round,
+                            stage: StageKind::ContractDone,
+                            status: contract_done_status,
+                            fuzzer_summary: None,
+                        })
+                        .await?;
 
                     outcomes.push(outcome);
                 } else {
@@ -252,21 +277,23 @@ impl RunSessionUseCase {
         let bodies_path = format!(".fuzzming/{}/{}.bodies.json", contract_name, contract_name);
         let config_path = format!(".fuzzming/{}/{}.config.json", contract_name, contract_name);
 
-        let (contract_context, fuzz_output, coverage_context, existing_bodies, existing_config) =
-            tokio::try_join!(
-                self.reader.get_contract_context(contract_path, false),
-                self.reader.get_fuzz_output(&fuzz_output_path),
-                self.reader.get_coverage_context(&lcov_path),
-                self.reader.get_existing_bodies(&bodies_path),
-                self.reader.get_existing_config(&config_path),
-            )?;
+        let (contract_context, fuzz_output, coverage_context, existing_bodies, existing_config) = tokio::try_join!(
+            self.reader.get_contract_context(contract_path, false),
+            self.reader.get_fuzz_output(&fuzz_output_path),
+            self.reader.get_coverage_context(&lcov_path),
+            self.reader.get_existing_bodies(&bodies_path),
+            self.reader.get_existing_config(&config_path),
+        )?;
 
         let existing_foundry_config = existing_config.and_then(|c| match c {
             FuzzerConfigArtifact::Foundry(fc) => Some(fc),
         });
 
-        let confirmed_bugs =
-            state.found_bugs.get(&contract_name).cloned().unwrap_or_default();
+        let confirmed_bugs = state
+            .found_bugs
+            .get(&contract_name)
+            .cloned()
+            .unwrap_or_default();
 
         Ok(RoundSignal {
             round: state.current_round,
@@ -309,7 +336,10 @@ impl RunSessionUseCase {
             && (ctx.function_found == 0 || ctx.function_hit == ctx.function_found);
 
         if full {
-            let streak = state.full_coverage_streak.entry(contract_name.to_string()).or_insert(0);
+            let streak = state
+                .full_coverage_streak
+                .entry(contract_name.to_string())
+                .or_insert(0);
             *streak += 1;
             info!(contract = %contract_name, streak = *streak, threshold = state.config.full_coverage_rounds, "full coverage streak");
             if *streak >= state.config.full_coverage_rounds {

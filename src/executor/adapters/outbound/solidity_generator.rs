@@ -34,10 +34,14 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     for var in &h.state_vars {
         out.push(format!("    {}", var));
     }
-    // ghost_vars is LLM metadata (names only) — declarations already live in state_vars.
+    // ghost_vars is metadata only; declarations live in state_vars.
     out.push(String::new());
 
-    let sig = h.constructor_signature.trim().trim_end_matches('{').trim_end();
+    let sig = h
+        .constructor_signature
+        .trim()
+        .trim_end_matches('{')
+        .trim_end();
     out.push(format!("    {} {{", sig));
     for stmt in &h.constructor_body {
         out.push(format!("        {}", stmt));
@@ -45,21 +49,24 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     out.push("    }".into());
     out.push(String::new());
 
-    // Public arrays auto-generate a getter with the same name. Skip any hand-written
-    // function that would conflict with one of those getters.
+    // Skip hand-written functions that would conflict with public array getters.
     let auto_getters: std::collections::HashSet<String> = h
         .state_vars
         .iter()
         .filter(|v| v.contains("[]") && v.contains("public"))
-        .filter_map(|v| v.trim_end_matches(';').split_whitespace().last().map(str::to_string))
+        .filter_map(|v| {
+            v.trim_end_matches(';')
+                .split_whitespace()
+                .last()
+                .map(str::to_string)
+        })
         .collect();
 
     for (name, fn_body) in &h.functions {
         if auto_getters.contains(name) {
             continue;
         }
-        // LLM sometimes emits just a bare body (e.g. "return actors.length;") without
-        // the function signature. Skip those to prevent top-level statement errors.
+        // Skip bare bodies without a function signature.
         if !fn_body.trim_start().starts_with("function ") {
             continue;
         }
@@ -69,7 +76,10 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
 
     out.push("}".into());
 
-    let path = format!("test/fuzzming/{}/{}.sol", bodies.meta.contract, h.contract_name);
+    let path = format!(
+        "test/fuzzming/{}/{}.sol",
+        bodies.meta.contract, h.contract_name
+    );
     writer.write_file(&path, &out.join("\n")).await
 }
 
@@ -111,6 +121,9 @@ async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter)
 
     out.push("}".into());
 
-    let path = format!("test/fuzzming/{}/{}.sol", bodies.meta.contract, t.contract_name);
+    let path = format!(
+        "test/fuzzming/{}/{}.sol",
+        bodies.meta.contract, t.contract_name
+    );
     writer.write_file(&path, &out.join("\n")).await
 }

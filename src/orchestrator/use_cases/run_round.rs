@@ -43,16 +43,25 @@ pub async fn run_round(
         })
         .await?;
 
-    let result = llm_signal
-        .result
-        .as_mut()
-        .ok_or_else(|| anyhow!("LLM returned no result for contract '{}'", signal.contract_name))?;
+    let result = llm_signal.result.as_mut().ok_or_else(|| {
+        anyhow!(
+            "LLM returned no result for contract '{}'",
+            signal.contract_name
+        )
+    })?;
 
-    // Option B: deterministically strip confirmed-broken invariants from Full responses
-    // so forge never re-runs them and the LLM never sees stale failure signal for them.
+    // Strip confirmed-broken invariants to avoid reruns and stale failure signals.
     if let GenerationResponse::Full { ref mut bodies, .. } = result.response {
-        let stripped: Vec<&str> = signal.confirmed_bugs.iter()
-            .filter(|b| bodies.invariant_test.invariants.shift_remove(&b.invariant_name).is_some())
+        let stripped: Vec<&str> = signal
+            .confirmed_bugs
+            .iter()
+            .filter(|b| {
+                bodies
+                    .invariant_test
+                    .invariants
+                    .shift_remove(&b.invariant_name)
+                    .is_some()
+            })
             .map(|b| b.invariant_name.as_str())
             .collect();
         if !stripped.is_empty() {
@@ -87,22 +96,35 @@ pub async fn run_round(
     Ok(llm_signal)
 }
 
-fn build_executor_input(response: &GenerationResponse, signal: &RoundSignal) -> Result<ExecutorInput> {
+fn build_executor_input(
+    response: &GenerationResponse,
+    signal: &RoundSignal,
+) -> Result<ExecutorInput> {
     match response {
-        GenerationResponse::Full { bodies, foundry_config } => Ok(ExecutorInput::Full {
+        GenerationResponse::Full {
+            bodies,
+            foundry_config,
+        } => Ok(ExecutorInput::Full {
             bodies: bodies.clone(),
             fuzzer_config: FuzzerConfigArtifact::Foundry(foundry_config.clone()),
         }),
 
-        GenerationResponse::Patch { bodies_updates, foundry_config_updates } => {
-            let existing_bodies = signal
-                .existing_bodies
-                .clone()
-                .ok_or_else(|| anyhow!("patch response with no existing bodies for '{}'", signal.contract_name))?;
-            let existing_config = signal
-                .existing_foundry_config
-                .clone()
-                .ok_or_else(|| anyhow!("patch response with no existing foundry config for '{}'", signal.contract_name))?;
+        GenerationResponse::Patch {
+            bodies_updates,
+            foundry_config_updates,
+        } => {
+            let existing_bodies = signal.existing_bodies.clone().ok_or_else(|| {
+                anyhow!(
+                    "patch response with no existing bodies for '{}'",
+                    signal.contract_name
+                )
+            })?;
+            let existing_config = signal.existing_foundry_config.clone().ok_or_else(|| {
+                anyhow!(
+                    "patch response with no existing foundry config for '{}'",
+                    signal.contract_name
+                )
+            })?;
             Ok(ExecutorInput::Patch {
                 existing_bodies,
                 bodies_updates: bodies_updates.clone(),

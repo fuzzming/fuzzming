@@ -65,10 +65,8 @@ impl TestRunnerPort for ForgeRunner {
         Ok(CoverageResult { exit_code, lcov_content })
     }
 
-    /// Parse all failing invariants for a contract out of forge stdout.
-    ///
-    /// Forge prints results twice (body + "Failing tests:" summary).
-    /// We stop at the summary to avoid duplicates.
+    /// Parse failing invariants for a contract from forge stdout.
+    /// Forge prints results twice; stop at the summary to avoid duplicates.
     fn collect_bugs(&self, stdout: &str, contract_name: &str) -> Vec<BugInfo> {
         let section_marker = format!("{}InvariantTest", contract_name);
         let mut in_section = false;
@@ -144,7 +142,7 @@ impl TestRunnerPort for ForgeRunner {
         bugs
     }
 
-    /// Capture the forge output section for one contract.
+    /// Capture the forge output section for a single contract.
     fn filter_output(&self, stdout: &str, contract_name: &str) -> String {
         let section_marker = format!("{}InvariantTest", contract_name);
         let mut in_section = false;
@@ -169,7 +167,7 @@ impl TestRunnerPort for ForgeRunner {
         lines.join("\n")
     }
 
-    /// Extract only the LCOV records for a given contract.
+    /// Extract only the LCOV records for a single contract.
     fn filter_lcov(&self, lcov: &str, contract_name: &str) -> String {
         let mut keep = false;
         let mut out = Vec::<&str>::new();
@@ -194,7 +192,7 @@ mod tests {
         ForgeRunner::new(PathBuf::from("."))
     }
 
-    // Forge output format confirmed empirically: [FAIL and invariant_ on separate lines.
+    // Fixture covering multiple invariant failures.
     const MULTI_BUG_OUTPUT: &str = "\
 Ran 3 tests for test/invariants/VaultInvariantTest.sol:VaultInvariantTest
 [FAIL: count should never exceed 100: 1000 > 100]

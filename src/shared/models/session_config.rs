@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Language {
     Solidity,
-    // Rust,   — future
-    // Vyper,  — future
-    // Move,   — future
+    // Rust,   // Reserved for future support.
+    // Vyper,  // Reserved for future support.
+    // Move,   // Reserved for future support.
 }
 
 /// Fuzzing framework to use.
@@ -17,9 +17,9 @@ pub enum Language {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Fuzzer {
     Foundry,
-    // Echidna,   — future
-    // Medusa,    — future
-    // CargoFuzz, — future
+    // Echidna,   // Reserved for future support.
+    // Medusa,    // Reserved for future support.
+    // CargoFuzz, // Reserved for future support.
 }
 
 /// Selects how much guidance the prompt includes.

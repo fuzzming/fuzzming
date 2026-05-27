@@ -81,10 +81,7 @@ impl Default for TerminalOutput {
     }
 }
 
-// ── message helpers ───────────────────────────────────────────────────────────
-
 fn contract_label(name: &str) -> String {
-    // Truncate long names, then left-pad to a fixed width for alignment.
     let s = if name.len() > 20 { &name[..20] } else { name };
     format!("{:<22}", s)
 }
@@ -192,14 +189,11 @@ fn msg_fuzzer_done(ok: bool, summary: Option<&FuzzerRoundSummary>) -> String {
     }
 }
 
-// ── OutputPort impl ───────────────────────────────────────────────────────────
-
 #[async_trait]
 impl OutputPort for TerminalOutput {
     async fn write(&self, output: &str) -> Result<()> {
         let state = self.state.clone();
         let guard = state.lock().expect("progress lock");
-        // Use multi.println so spinners are not disturbed.
         guard.multi.println(output).ok();
         Ok(())
     }
@@ -215,7 +209,6 @@ impl OutputPort for TerminalOutput {
         let state = self.state.clone();
 
         match (&event.stage, &event.status) {
-            // ── LLM Started → new per-contract spinner + verb rotation ──────
             (StageKind::Llm, StageStatus::Started) => {
                 let contract = match &event.contract_name {
                     Some(c) => c.clone(),
@@ -229,7 +222,6 @@ impl OutputPort for TerminalOutput {
 
                 let spinner = multi.add(ProgressBar::new_spinner());
                 spinner.set_style(spinner_style());
-                // Slow tick: each dot frame lasts 600 ms → full cycle ≈ 2.4 s
                 spinner.enable_steady_tick(Duration::from_millis(600));
 
                 let label = contract_label(&contract);
@@ -261,7 +253,6 @@ impl OutputPort for TerminalOutput {
                 g.contracts.insert(contract, ContractProgress { bar: spinner, cancel });
             }
 
-            // ── LLM Done → stop verb rotation, show "Writing files" ─────────
             (StageKind::Llm, StageStatus::Finished) | (StageKind::Llm, StageStatus::Failed) => {
                 let contract = match &event.contract_name {
                     Some(c) => c.clone(),
@@ -275,10 +266,8 @@ impl OutputPort for TerminalOutput {
                 }
             }
 
-            // ── Executor Started → spinner already shows "Writing files" ────
             (StageKind::Executor, StageStatus::Started) => {}
 
-            // ── Executor Done → finish the spinner ──────────────────────────
             (StageKind::Executor, StageStatus::Finished) => {
                 let contract = match &event.contract_name {
                     Some(c) => c.clone(),
@@ -307,7 +296,6 @@ impl OutputPort for TerminalOutput {
                 }
             }
 
-            // ── Fuzzer Started → spinner with rotating verb messages ─────────
             (StageKind::Fuzzer, StageStatus::Started) => {
                 let multi = {
                     let g = state.lock().expect("progress lock");

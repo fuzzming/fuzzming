@@ -2,9 +2,7 @@ use std::path::Path;
 
 use crate::shared::models::CoverageContext;
 
-/// Populate source_context for every coverage gap by reading the surrounding
-/// source lines from disk.  Best-effort: gaps whose file cannot be read are
-/// left with an empty source_context.
+/// Populate source_context for each coverage gap from nearby source lines (best-effort).
 pub async fn enrich_coverage_context(coverage: &mut CoverageContext, workspace_root: &Path) {
     for gap in coverage.gaps.iter_mut() {
         if gap.file.is_empty() {
