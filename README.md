@@ -1,13 +1,15 @@
 <div align="center">
   <img src="assets/fuzzming-logo.png" alt="FuzzMing" width="200" />
   <h1>FuzzMing</h1>
-  <p><strong>AI-powered invariant fuzzer for Solidity smart contracts</strong></p>
-  <p>Point it at a Foundry project. It thinks, it fuzzes, it finds bugs.</p>
+  <p><strong>LLM-powered fuzzing assistant for any language, any fuzzer</strong></p>
+  <p>Point it at a project. It thinks, it fuzzes, it finds bugs.</p>
 </div>
 
 ---
 
-FuzzMing closes the loop between an LLM and Foundry's invariant fuzzer. It writes the handler and invariant test contracts, runs `forge test`, reads the output, and iterates round after round until it finds every bug, achieves full coverage, or exhausts its round budget.
+FuzzMing closes the loop between an LLM and a fuzzer. It generates test contracts, runs them, reads the output, and iterates round after round until it finds every bug, achieves full coverage, or exhausts its round budget.
+
+**Current stack: Solidity + Foundry.** The first supported target is Solidity smart contracts fuzzed with Foundry. But FuzzMing is not a Foundry tool, it is built on hexagonal architecture specifically so that new languages and fuzzers plug in as adapters without touching the core. Rust + cargo-fuzz, Vyper + Echidna, Move + any fuzzer: each is a set of adapters away. The orchestrator, session loop, LLM integration, and report format are language and fuzzer agnostic.
 
 ---
 
@@ -29,7 +31,7 @@ FuzzMing closes the loop between an LLM and Foundry's invariant fuzzer. It write
 | Requirement | Install |
 |---|---|
 | Rust stable (2021 edition) | [rustup.rs](https://rustup.rs) |
-| Foundry (`forge`) | `curl -L https://foundry.paradigm.xyz \| bash` |
+| Foundry (`forge`) — required for the Solidity stack | `curl -L https://foundry.paradigm.xyz \| bash` |
 | An LLM API key | OpenRouter, Groq, OpenAI, or Anthropic |
 
 ---
@@ -219,7 +221,7 @@ RUST_LOG=debug fuzzming run --targets src/Vault.sol ...
 
 ## Contributing
 
-FuzzMing is built on hexagonal architecture and is designed to absorb new languages and fuzzers without touching the core. The technical documentation for collaborators lives in [docs/](docs/):
+FuzzMing is built on hexagonal architecture so that every language and fuzzer is a first-class citizen. Adding a new stack (Rust, Vyper, Move, Echidna, Medusa, cargo-fuzz) means writing new adapters: the orchestrator, session loop, LLM integration, and report format never change. That is the core design bet. The technical documentation for collaborators lives in [docs/](docs/):
 
 | Document | What it covers |
 |---|---|
@@ -250,7 +252,7 @@ To add a new language or fuzzer, see the checklist in [docs/composition.md](docs
 Licensed under the [Apache License, Version 2.0](LICENSE).
 
 ```
-Copyright 2025 FuzzMing Contributors
+Copyright 2026 FuzzMing Contributors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
