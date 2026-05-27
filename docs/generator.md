@@ -34,7 +34,8 @@ src/generator/
 │   └── run.rs                              # GeneratorRunUseCase — owns outbound ports, implements GeneratorRunPort
 └── domain/
     ├── generation_response.rs              # GenerationResponse, GenerationResult, GenerationUsage
-    └── prompt.rs                           # Prompt domain type
+    ├── fuzz_output_parser.rs               # format_for_llm() — compacts raw forge output before sending to LLM
+    └── prompt.rs                           # Prompt domain type; unit-tested
 
 src/shared/
 ├── requests/round_signal.rs                # RoundSignal — input from orchestrator
@@ -129,6 +130,17 @@ Constructs the `Prompt` domain type and calls `into_assembled()`. `confirmed_bug
 | `LlmClientPort` | What the generation adapter calls — `complete(system, user) -> String` |
 
 `LlmClientPort` keeps the `Llm` prefix because it is specifically the contract for an LLM HTTP client — a technology-specific concept, not a domain one.
+
+### `PromptMode` — rule verbosity
+
+`LiteLlmGenerationAdapter` accepts a `PromptMode` at construction time:
+
+| Mode | Rules in system prompt | Best for |
+|---|---|---|
+| `Concise` (default) | 9 focused rules | Claude, GPT-4o, Gemini |
+| `Guided` | 18 explicit rules | Open-source models that need more direction |
+
+Both modes produce the same output JSON schema and stage structure. `Guided` adds additional explicit guidance (e.g., "Do not use for-in loops", "Bound all amounts to `type(uint128).max`") that capable models follow implicitly from the `Concise` rules.
 
 ### Outbound adapters — `adapters/outbound/`
 
@@ -240,6 +252,18 @@ From round 2 onwards, the model receives the assembled prompt (fuzz output + cov
 
 ---
 
+## Fuzz output compaction — `domain/fuzz_output_parser.rs`
+
+Before the raw forge output reaches the LLM it is compacted by `format_for_llm(raw)`:
+
+- Compile errors and dev-test failures pass through as-is (they are already minimal).
+- For passing tests, returns `"All invariants passed."`.
+- For failing tests, extracts only the failing invariant name, failure message, and shrunk call sequence — stripping passing tests, box-drawing characters, sequence markers, and the suite result line.
+
+The compacted output is what `RoundSignal.fuzz_output` carries. The full raw output is still written to `.fuzzming/{Contract}/fuzz_output.txt` for human inspection.
+
+---
+
 ## Retry and repair
 
 Each stage uses `MAX_ATTEMPTS = 3`. If the model returns invalid JSON:
@@ -280,8 +304,8 @@ anthropic/...   →  ANTHROPIC_API_KEY
 ## Wiring at startup
 
 ```rust
-let client    = Box::new(LiteLlmClient::new(model, Some(0.1), Some(4_096)));
-let adapter   = Box::new(LiteLlmGenerationAdapter::new(model, api_key, client));
+let client    = Box::new(LiteLlmClient::new(&model, Some(0.1), config.max_tokens, config.llm_timeout_secs));
+let adapter   = Box::new(LiteLlmGenerationAdapter::new(&model, &api_key, client, config.prompt_mode));
 let use_case  = Box::new(GeneratorRunUseCase::new(adapter));
 let generator = Generator::new(use_case);
 ```

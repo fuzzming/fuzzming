@@ -12,7 +12,7 @@ The entry point calls it like this:
 
 ```rust
 let orchestrator = CompositionRoot::build(config);
-let outcome = orchestrator.run(request).await?;
+let outcomes = orchestrator.run(request).await?;
 ```
 
 Everything behind `orchestrator` is fully wired and ready to run.
@@ -36,27 +36,31 @@ CompositionRoot::build(config)
 │   └─ GeneratorRunUseCase  (Box<dyn GeneratorRunPort>)
 │       └─ LiteLlmGenerationAdapter  (Box<dyn GenerationPort>)
 │           └─ LiteLlmClient  (Box<dyn LlmClientPort>)
+│               config.max_tokens, config.llm_timeout_secs passed here
+│           config.prompt_mode passed to adapter (selects Concise vs Guided system prompt)
 │
 ├─ FuzzerAdapter  (Box<dyn FuzzerEnginePort>)
 │   └─ RunFuzzerUseCase  (Box<dyn FuzzerRunPort>)
 │       ├─ ForgeRunner  (Box<dyn TestRunnerPort>)
-│       └─ FileSystemFuzzerOutput  (Box<dyn FuzzerOutputPort>)
+│       │     working_dir = config.workspace_root
+│       ├─ FileSystemFuzzerOutput  (Box<dyn FuzzerOutputPort>)
+│       │     workspace_root = config.workspace_root
+│       └─ workspace_root: PathBuf  (used for compile-error isolation stash/restore)
 │
 ├─ Executor  (Box<dyn ExecutorPort>)
 │   └─ ExecuteUseCase  (Box<dyn ExecutorRunPort>)
-│       ├─ FileSystemWriter
+│       ├─ FileSystemWriter  (base_path = config.workspace_root)
 │       ├─ SolidityGenerator  (Arc<dyn CodeGeneratorPort>)
 │       └─ FoundryConfigWriter  (Arc<dyn ConfigWriterPort>)
 │
 ├─ Reader  (Box<dyn ReaderPort>)
 │   └─ ReadUseCase  (Box<dyn ReaderRunPort>)
 │       ├─ SolidityContractReader  (Arc<dyn ContractReaderPort>)
-│       ├─ FoundryCoverageReader  (Arc<dyn CoverageReaderPort>)
 │       └─ FileSystemReader  (Arc — shared by both readers and the use case)
+│             base_path = config.workspace_root
 │
 ├─ Reporter  (Box<dyn ReporterPort>)
-│   └─ TerminalOutput | PrCommentOutput  (Box<dyn OutputPort>)
-│       selected by config.output_format
+│   └─ TerminalOutput  (Box<dyn OutputPort>)
 │
 └─ Orchestrator  (Box<dyn OrchestratorPort>)
     └─ RunSessionUseCase  (Box<dyn OrchestratorRunPort>)
@@ -65,25 +69,51 @@ CompositionRoot::build(config)
 
 ---
 
-## Reporter output selection
+## `LiteLlmClient` configuration
 
-The output adapter is the only runtime branch in the composition root:
+The LLM client receives three config values at construction time:
 
 ```rust
-let output: Box<dyn OutputPort> = match config.output_format {
-    OutputFormat::Ci => {
-        let token  = std::env::var("GITHUB_TOKEN").unwrap_or_default();
-        let repo   = std::env::var("GITHUB_REPOSITORY").unwrap_or_default();
-        let pr_num = std::env::var("PR_NUMBER").ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(0);
-        Box::new(PrCommentOutput::new(token, repo, pr_num))
-    }
-    OutputFormat::Terminal => Box::new(TerminalOutput::new()),
-};
+let llm_client = Box::new(LiteLlmClient::new(
+    &model,
+    Some(0.1),              // temperature — fixed; not user-configurable
+    config.max_tokens,      // Option<u32>; None = no output token limit
+    config.llm_timeout_secs, // u64; default 120
+));
 ```
 
-CI mode reads GitHub Actions standard env vars. The CLI and CI/CD entry points do not need to know about them.
+`max_tokens` being `None` (or the value `0` from `fuzzming.config`) means the provider's default limit applies.
+
+---
+
+## `LiteLlmGenerationAdapter` — prompt mode
+
+```rust
+let generation_adapter = Box::new(LiteLlmGenerationAdapter::new(
+    &model,
+    &api_key,
+    llm_client,
+    prompt_mode,  // PromptMode::Concise or PromptMode::Guided
+));
+```
+
+`PromptMode` is resolved at startup and passed through to the adapter. It controls how many design rules are included in the system prompt — not the JSON output schema, which is always the same.
+
+---
+
+## `RunFuzzerUseCase` — compile-error isolation
+
+The fuzzer use case receives `workspace_root` as a third argument alongside the two outbound ports:
+
+```rust
+let fuzzer_use_case = Box::new(RunFuzzerUseCase::new(
+    forge_runner,
+    fuzzer_output,
+    workspace.clone(), // needed for stash/restore of compile-erroring test dirs
+));
+```
+
+When a compile error is detected the use case moves erroring `test/fuzzming/<Contract>/` directories to `.fuzzming-disabled/<Contract>/`, re-runs forge without them, assigns `CompileError` to those contracts, and restores all stashed directories before returning.
 
 ---
 
@@ -91,14 +121,20 @@ CI mode reads GitHub Actions standard env vars. The CLI and CI/CD entry points d
 
 The composition root is where new stacks are activated. To add, for example, **Rust + cargo-fuzz**:
 
-1. Implement the required adapters (see [README.md](../README.md#adding-a-new-language-or-fuzzer) checklist).
+1. Implement the required adapters (see the checklist in [README.md](../README.md#contributing)):
+   - `src/reader/adapters/rust_reader.rs` implementing `ContractReaderPort`
+   - `src/executor/adapters/outbound/rust_generator.rs` implementing `CodeGeneratorPort`
+   - `src/executor/adapters/outbound/cargo_fuzz_config_writer.rs` implementing `ConfigWriterPort`
+   - `src/fuzzer/adapters/outbound/cargo_fuzz_runner.rs` implementing `TestRunnerPort`
 2. Add `Language::Rust` and `Fuzzer::CargoFuzz` variants to `SessionConfig`.
-3. Add match arms in `CompositionRoot::build` to wire the new adapters when those variants are selected.
+3. Add `CargoFuzzConfig` to `src/shared/models/` and a `CargoFuzz` variant to `FuzzerConfigArtifact`.
+4. Add a Rust-flavoured prompt template to the generator.
+5. Add match arms in `CompositionRoot::build` to wire the new adapters when those variants are selected.
 
-No other file in the codebase needs to change.
+No other file in the codebase needs to change: orchestrator, reporter, session loop, and all shared ports are language/fuzzer-agnostic.
 
 ---
 
 ## Hard rule
 
-`CompositionRoot` is the **only** file allowed to import concrete adapter types from multiple components. Any import of a concrete type outside this file is an architectural violation.
+`CompositionRoot` is the **only** file allowed to import concrete adapter types from multiple components. Any import of a concrete type from another component's `adapters/` directory outside this file is an architectural violation.

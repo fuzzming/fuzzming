@@ -111,8 +111,10 @@ Pure function. Maps a `FuzzReport` outcome to a `TerminationDecision`.
 | `FullCoverage` | any | terminate → `FullCoverage` |
 | `Pass` | 0 | terminate → `Exhausted` |
 | `Pass` | > 0 | continue |
+| `CompileError` | 0 | terminate → `CompileError` |
+| `CompileError` | > 0 | **continue**: let LLM repair and retry |
 
-`Bug`, `CompileError`, and `DevTestFailed` are not immediate terminal states — the session continues while rounds remain. All three terminate when the round budget is used up.
+`Bug`, `CompileError`, and `DevTestFailed` are not immediate terminal states — the session continues while rounds remain. Each terminates with its own `TerminationReason` when the round budget is exhausted: `Bug` → `Exhausted`, `CompileError` → `CompileError`, `DevTestFailed` → `DevTestFailed`.
 
 ### `run_session` (main loop)
 
@@ -150,12 +152,18 @@ loop:
     for each (contract, report):
         if report.bugs not empty:
             state.found_bugs[contract].extend(report.bugs)   ← accumulate
+        if report.outcome == Pass:
+            state.coverage_snapshots[contract].push(coverage_summary)
         check_termination(report, state) → TerminationDecision
         if terminate:
             all_bugs = state.found_bugs[contract]            ← all rounds
-            read ReportArtifacts from disk
-            build call_sequences from all_bugs (not just last round)
-            reporter.emit(SessionOutcome)
+            reporter.emit(SessionOutcome {
+                reason,
+                contract_name,
+                rounds_completed,
+                bugs: all_bugs,
+                coverage_snapshots: state.coverage_snapshots[contract],
+            })
             remove contract from active
 
     if active is empty → break
@@ -174,8 +182,6 @@ pub struct SessionRequest {
     pub target_paths: Vec<String>,   // e.g. ["src/Vault.sol", "src/Token.sol"]
     pub max_rounds:   u32,
     pub config:       SessionConfig,
-    pub output_format: OutputFormat,
-    pub ci_mode:      bool,
 }
 ```
 
@@ -216,15 +222,27 @@ pub struct RoundSignal {
 
 ```rust
 pub struct SessionOutcome {
-    pub reason:           TerminationReason,
-    pub contract_name:    String,
-    pub rounds_completed: u32,
-    pub bugs:             Vec<BugInfo>,      // all bugs found across all rounds
-    pub artifacts:        ReportArtifacts,
+    pub reason:              TerminationReason,
+    pub contract_name:       String,
+    pub rounds_completed:    u32,
+    pub bugs:                Vec<BugInfo>,        // all bugs found across all rounds
+    pub coverage_snapshots:  Vec<String>,         // per-round coverage summary strings
 }
 ```
 
-`bugs` carries every `BugInfo` accumulated across all rounds. `ReportArtifacts.call_sequences` contains the same data formatted as strings for the report. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination.
+`bugs` carries every `BugInfo` accumulated across all rounds. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination.
+
+`coverage_snapshots` accumulates one coverage summary string per round that produced a passing `forge coverage` result. These are forwarded to the reporter for display in the `FullCoverage` and `Exhausted` reports.
+
+`TerminationReason` now includes `CompileError` as a distinct terminal state (entered when the round budget is exhausted while the generated code has never compiled):
+
+| Reason | Meaning |
+|---|---|
+| `Bug` | At least one invariant was falsified |
+| `Exhausted` | Round budget used up; may or may not include bugs |
+| `FullCoverage` | Full line/branch coverage sustained for `full_coverage_rounds` consecutive rounds |
+| `DevTestFailed` | Developer tests failed (setUp revert, runtime panic) |
+| `CompileError` | Generated code never compiled; rounds exhausted |
 
 ---
 
@@ -234,10 +252,12 @@ The orchestrator reads and writes artifacts under a `.fuzzming/` directory at th
 
 | Artifact | Path |
 |---|---|
-| LLM-generated bodies | `.fuzzming/{contract}/{contract}.bodies.json` |
-| Fuzzer config (JSON) | `.fuzzming/{contract}/{contract}.config.json` |
-| Forge fuzz output | `.fuzzming/{contract}/fuzz_output.txt` |
-| LCOV coverage | `.fuzzming/{contract}/lcov.info` |
+| LLM-generated bodies | `.fuzzming/{Contract}/{Contract}.bodies.json` |
+| Fuzzer config (JSON) | `.fuzzming/{Contract}/{Contract}.config.json` |
+| Forge fuzz output | `.fuzzming/{Contract}/fuzz_output.txt` |
+| Coverage context (JSON) | `.fuzzming/{Contract}/coverage_context.json` |
+| LCOV coverage (raw) | `.fuzzming/{Contract}/lcov.info` |
+| Session outcome (JSON) | `.fuzzming/{Contract}/outcome.json` |
 
 ---
 

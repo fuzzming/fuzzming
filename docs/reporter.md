@@ -1,6 +1,6 @@
 # Reporter Component
 
-The Reporter is the **output gateway** of FuzzMing. It receives a `SessionOutcome` (which already carries all fuzzing artifacts), formats a human-readable message, and writes it to one or more outputs (terminal or GitHub PR comment). It never runs forge, never calls the LLM, never writes Solidity files, and never reads from disk.
+The Reporter is the **output gateway** of FuzzMing. It receives a `SessionOutcome` (which already carries all fuzzing results), formats a human-readable message, and writes it to the terminal. It never runs forge, never calls the LLM, never writes Solidity files, and never reads from disk.
 
 ---
 
@@ -18,16 +18,17 @@ src/reporter/
 │   ├── inbound/
 │   │   └── reporter.rs                  # Inbound adapter — implements ReporterPort, wires formatters + output
 │   └── outbound/
-│       ├── terminal_output.rs           # TerminalOutput — prints to stdout
-│       └── pr_comment_output.rs         # PrCommentOutput — posts to GitHub PR via REST API
+│       └── terminal_output.rs           # TerminalOutput — prints to stdout
 ├── ports/
 │   └── outbound/
 │       └── output_port.rs              # OutputPort — outbound contract for writing the final message
 └── use_cases/
     ├── format_bug_report.rs            # formats Bug termination
+    ├── format_compile_error.rs         # formats CompileError termination
     ├── format_coverage_report.rs       # formats FullCoverage termination
     ├── format_dev_test_failure.rs      # formats DevTestFailed termination
-    └── format_exhausted_report.rs      # formats Exhausted termination
+    ├── format_exhausted_report.rs      # formats Exhausted termination
+    └── format_round_usage.rs           # shared helper — formats per-round LLM token usage
 ```
 
 ---
@@ -36,7 +37,7 @@ src/reporter/
 
 ```
 Orchestrator
-    │  builds SessionOutcome (with artifacts already populated)
+    │  builds SessionOutcome (bugs + coverage_snapshots already populated)
     │
     └─ ReporterPort (shared/ports)
            │
@@ -44,7 +45,7 @@ Orchestrator
            │
            └─ OutputPort (ports/outbound)    ← outbound contract for writing the message
                    │
-           TerminalOutput / PrCommentOutput  ← concrete output destinations
+           TerminalOutput                    ← prints to stdout
 ```
 
 ### Inbound adapter — `adapters/inbound/reporter.rs`
@@ -59,7 +60,7 @@ pub trait ReporterPort: Send + Sync {
 }
 ```
 
-Called by the orchestrator at the end of every session, once per contract.
+Called by the orchestrator at the end of each contract's session, once per contract.
 
 ### Outbound port — `ports/outbound/output_port.rs`
 
@@ -77,39 +78,33 @@ Each formatter is a pure function `fn(&SessionOutcome) -> String`. No I/O, no si
 
 | Formatter | Trigger | Headline |
 |---|---|---|
-| `format_bug_report` | `TerminationReason::Bug` | `## FuzzMing: N bug(s) found in \`{contract}\` (round {n})` |
-| `format_coverage_report` | `TerminationReason::FullCoverage` | `## FuzzMing: Full Coverage Achieved for \`{contract}\` (round {n})` |
-| `format_dev_test_failure` | `TerminationReason::DevTestFailed` | `## FuzzMing: Forge Tests Failed for \`{contract}\` (round {n})` |
+| `format_bug_report` | `TerminationReason::Bug` | `## FuzzMing: N bug(s) found in \`{contract}\`` |
+| `format_compile_error_outcome` | `TerminationReason::CompileError` | `## FuzzMing: Compile Error — \`{contract}\` never ran` |
+| `format_coverage_report` | `TerminationReason::FullCoverage` | `## FuzzMing: Full Coverage Achieved for \`{contract}\`` |
+| `format_dev_test_failure` | `TerminationReason::DevTestFailed` | `## FuzzMing: Forge Tests Failed for \`{contract}\`` |
 | `format_exhausted_report` | `TerminationReason::Exhausted` | `## FuzzMing: Rounds Exhausted for \`{contract}\` ({n} rounds, X bugs found)` |
 
-**Bug report** renders one numbered block per failing invariant (`**Bug 1:**`, `**Bug 2:**`, …), each showing the invariant's call sequence from `outcome.artifacts.call_sequences`. If no bugs were captured, the block reads `(no call sequences captured)`. The raw forge output follows (truncated to 3 000 chars).
+**Bug report** renders one numbered block per failing invariant (`**Bug 1:**`, `**Bug 2:**`, …), each showing the invariant name and call sequence from `outcome.bugs`. If no bugs were captured, the block reads `(no call sequences captured)`.
 
-`call_sequences` is populated by the orchestrator from `FuzzReport.bugs`: each `BugInfo` becomes `"{invariant_name}:\n{call_sequence}"` — structured data from the fuzzer's state machine parser, not raw stdout.
+**CompileError report** explains that the generated test code never compiled and the contract was never exercised. The raw compiler error is included (truncated to 3 000 chars) so the problem is visible without digging into `.fuzzming/`.
 
-**Exhausted report** uses `outcome.bugs` to show a count and bulleted list of every bug found across all rounds. If no bugs were found the summary reads "no bugs found"; otherwise it reads "X bugs found" with one `- \`invariant_name\`: call_sequence` line per bug. A coverage summary follows from `outcome.artifacts.coverage_summary`.
+**Exhausted report** shows a count and bulleted list of every bug found across all rounds using `outcome.bugs`. If no bugs were found the summary reads "no bugs found"; otherwise it reads "X bugs found" with one `- \`invariant_name\`` line per bug. Coverage snapshots from `outcome.coverage_snapshots` are included when present.
 
-**Coverage report** includes a coverage summary from `outcome.artifacts.coverage_summary`.
+**Coverage report** includes the coverage snapshot summary.
 
 **DevTestFailed report** includes the raw forge output (truncated to 3 000 chars).
 
+### `format_round_usage`
+
+A shared helper used by `format_exhausted_report` and `format_coverage_report` to render per-round LLM token usage when the generator returned usage data.
+
 ---
 
-## Outbound adapters
-
-### `TerminalOutput`
+## Outbound adapter — `TerminalOutput`
 
 Prints the formatted message to stdout via `println!`. No configuration required.
 
-### `PrCommentOutput`
-
-Posts the formatted message as a GitHub PR comment via the REST API:
-
-```
-POST https://api.github.com/repos/{repo}/issues/{pr_number}/comments
-Authorization: Bearer {github_token}
-```
-
-Requires three fields at construction time: `github_token`, `repo` (`owner/name`), `pr_number`.
+Previously the reporter also had a `PrCommentOutput` adapter for posting results as GitHub PR comments. This was removed — CI integration is now handled by checking the exit code (exit 1 when bugs are found) rather than posting comments.
 
 ---
 
@@ -119,28 +114,17 @@ Requires three fields at construction time: `github_token`, `repo` (`owner/name`
 
 ```rust
 pub struct SessionOutcome {
-    pub reason: TerminationReason,   // Bug | FullCoverage | DevTestFailed | Exhausted
+    pub reason: TerminationReason,   // Bug | FullCoverage | DevTestFailed | Exhausted | CompileError
     pub contract_name: String,
     pub rounds_completed: u32,
     pub bugs: Vec<BugInfo>,          // all bugs found across all rounds
-    pub artifacts: ReportArtifacts,
+    pub coverage_snapshots: Vec<String>, // per-round coverage summary strings
 }
 ```
 
-### `ReportArtifacts`
+`bugs` carries every `BugInfo` accumulated across all rounds. The `Bug` report uses `bugs` to render one block per failing invariant. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination reason.
 
-```rust
-pub struct ReportArtifacts {
-    pub fuzz_output: String,
-    pub coverage_summary: Option<String>,  // None when lcov.info is absent
-    pub call_sequences: Vec<String>,
-}
-```
-
-`ReportArtifacts` is populated by the orchestrator:
-- `fuzz_output` — read from `.fuzzming/{Contract}/fuzz_output.txt` via `ReaderPort::get_fuzz_output`
-- `coverage_summary` — read from `.fuzzming/{Contract}/lcov.info` via `ReaderPort::get_coverage_context`
-- `call_sequences` — mapped from `FuzzReport.bugs`: each `BugInfo` becomes `"{invariant_name}:\n{call_sequence}"`
+`coverage_snapshots` is populated by the orchestrator with one string per round that produced a passing `forge coverage` result.
 
 ---
 
@@ -149,41 +133,44 @@ pub struct ReportArtifacts {
 ```
 Orchestrator
   │
-  ├─ ReaderPort::get_fuzz_output(path)               ← existing reader component
-  ├─ ReaderPort::get_coverage_context(path)          ← existing reader component
+  ├─ accumulates BugInfo across rounds → outcome.bugs
+  ├─ accumulates coverage strings     → outcome.coverage_snapshots
   │
-  ├─ builds ReportArtifacts { fuzz_output, coverage_summary, call_sequences }
-  ├─ builds SessionOutcome { reason, contract_name, rounds_completed, artifacts }
-  │
-  └─ Reporter::emit(outcome)                         ← ReporterPort
+  └─ Reporter::emit(outcome)                          ← ReporterPort
        │
        ├─ match outcome.reason → format_*(&outcome) → message: String
        │
        └─ OutputPort::write(&message)
              TerminalOutput  → println!
-             PrCommentOutput → POST GitHub API
 ```
+
+---
+
+## Session summary (CLI runner)
+
+After `orchestrator.run()` returns all outcomes, `CliRunner::print_aggregate_summary` prints a coloured session summary to the terminal — this is not part of the Reporter component. It is rendered by the entry point after all per-contract reports have been emitted.
+
+The summary shows:
+- Total contracts, passed, with bugs, not tested
+- Compile errors and setup failures as sub-counts of "not tested"
+- Total rounds and total bugs across all contracts
 
 ---
 
 ## Wiring at startup
 
 ```rust
-// pick one output:
-let output = Box::new(TerminalOutput::new());
-// or:
-let output = Box::new(PrCommentOutput::new(github_token, repo, pr_number));
-
-let reporter = Reporter::new(output);
+let output   = Box::new(TerminalOutput::new());
+let reporter = Box::new(Reporter::new(output));
 ```
 
-`Reporter` never imports `TerminalOutput` or `PrCommentOutput`. All concrete types are resolved at the entry point only.
+`Reporter` never imports `TerminalOutput`. All concrete types are resolved at the entry point only.
 
 ---
 
 ## Hard rules
 
-- `Reporter` never reads from disk — artifacts arrive pre-populated in `SessionOutcome`.
+- `Reporter` never reads from disk — all data arrives pre-populated in `SessionOutcome`.
 - `Reporter` never runs forge subprocesses — that is the Fuzzer's job.
 - `Reporter` never calls the LLM — that is the Generator's job.
 - `Reporter` never writes Solidity files — that is the Executor's job.

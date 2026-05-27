@@ -1,47 +1,45 @@
 # Integration Tests
 
-End-to-end tests that verify each component works correctly with real adapters. No external services are called — the file system is the only real I/O, and the LLM HTTP client is replaced with a mock.
+End-to-end tests that verify each component works correctly with real adapters. No external LLM calls are made — the file system is the only real I/O. The fuzzer integration tests spawn real `forge` subprocesses.
 
 ## How to run
 
 ```bash
-# All tests
+# All tests (unit + integration)
 cargo test
 
-# Individual suites
+# Individual integration suites
 cargo test --test executor_integration
 cargo test --test reader_integration
-cargo test --test generation_adapter_test
 cargo test --test fuzzer_integration
+
+# Unit tests only (no forge required)
+cargo test --lib
 ```
 
-> **Note:** The fuzzer integration tests require forge to be installed (`~/.foundry/bin/forge`). `ForgeRunner` adds `~/.foundry/bin` to the subprocess PATH automatically, so the tests work even when forge is not in the system PATH.
+> **Note:** The fuzzer integration tests require Foundry (`forge`). `ForgeRunner` automatically prepends `~/.foundry/bin` to the subprocess `PATH`, so the tests work even when `forge` is not in the system `PATH`.
 
 ---
 
 ## Executor — `executor/executor_integration.rs`
 
-Verifies the executor write pipeline: `BodiesJson` → JSON file + Solidity files on disk.
+Verifies the executor write pipeline: `BodiesJson` → JSON artifact + Solidity files on disk.
 
-Uses real `FileSystemWriter` and `SolidityGenerator` writing to `tests/output/`.
+Uses real `FileSystemWriter` and `SolidityGenerator` writing to `tests/output/`. Input is loaded from `tests/fixtures/Vault.bodies.json`.
 
-| Assertion | What is checked |
+### Tests
+
+| Test | What is checked |
 |---|---|
-| `test/Vault.bodies.json` exists and round-trips through serde | bodies JSON is written correctly |
-| `VaultHandler.sol` contains `contract VaultHandler is Test {` and all handler function signatures | Solidity handler inherits from `Test` and is generated from `BodiesJson` |
-| `VaultInvariantTest.sol` contains the contract declaration, `setUp`, and the correct function count | Solidity invariant test is generated from `BodiesJson` |
+| `executor_generates_vault_files` | Full write pipeline: bodies JSON, Handler `.sol`, InvariantTest `.sol` |
 
-After the test passes, inspect the generated files:
+### Assertions
 
-```
-tests/output/
-└── test/
-    ├── Vault.bodies.json
-    ├── handlers/
-    │   └── VaultHandler.sol
-    └── invariants/
-        └── VaultInvariantTest.sol
-```
+| Artifact | Assertion |
+|---|---|
+| `.fuzzming/Vault/Vault.bodies.json` | File exists and round-trips through `serde_json` without data loss |
+| `test/fuzzming/Vault/VaultHandler.sol` | Contract declaration `VaultHandler is Test {` is present; all handler function names appear |
+| `test/fuzzming/Vault/VaultInvariantTest.sol` | Contract declaration present; `setUp` present; function count matches `invariants.len() + 1` |
 
 The `tests/output/` directory is gitignored — safe to delete and regenerate at any time.
 
@@ -49,131 +47,107 @@ The `tests/output/` directory is gitignored — safe to delete and regenerate at
 
 ## Reader — `reader/reader_integration.rs`
 
-Verifies that the reader correctly cleans Solidity source before passing it to the generator.
+Verifies that the reader correctly cleans Solidity source code and loads coverage context artifacts.
 
 Uses real `SolidityContractReader` and `FileSystemReader` against a `TempDir`.
-
-| Assertion | What is checked |
-|---|---|
-| `// single line`, `/* block */`, and inline `//` comments are absent from the output | All three Solidity comment forms are stripped when `include_comments: false` |
-| `function deposit` is still present | The actual code is not lost during comment stripping |
-
----
-
-## Generator — `generator/generation_adapter_test.rs`
-
-Verifies that `LiteLlmGenerationAdapter` correctly orchestrates the 3-stage LLM call chain.
-
-The `LlmClientPort` is replaced with a `MockLlmClient` that returns pre-loaded responses in sequence — no HTTP calls are made.
-
-| Assertion | What is checked |
-|---|---|
-| 3 sequential mock responses (analysis → bodies → config) produce a `GenerationResponse::Full` | The full stage chain completes without error |
-
----
-
-## Patch Applier — `executor::use_cases::apply_patch` (unit tests)
-
-Verifies `apply_patches<T>()` — the dot-path JSON patch engine used by the executor to apply round-N LLM updates to existing `BodiesJson` and `FoundryConfig` artifacts.
-
-Run with:
-
-```bash
-cargo test apply_patch
-```
-
-### BodiesJson patches
-
-| Test | What is checked |
-|---|---|
-| `replace_existing_function_body` | Replace a handler function body; other functions untouched |
-| `add_new_function` | Add a new key to `handler.functions`; map grows by 1 |
-| `remove_function` | Remove a key from `handler.functions`; map shrinks by 1 |
-| `add_new_invariant` | Add a new entry to `invariantTest.invariants` |
-| `replace_meta_field` | Replace a scalar field at `meta.solidity` |
-| `replace_array_element_by_index` | Replace `handler.stateVars.0` by numeric index |
-| `add_to_array_appends` | `Add` on an array always appends; the last path segment is ignored |
-| `remove_array_element_by_index` | Remove `handler.stateVars.0`; array becomes empty |
-| `multiple_patches_applied_in_order` | Add then Replace on the same key — second patch wins |
-| `bracket_navigation_syntax` | Navigate an intermediate array segment via numeric index |
-
-### FoundryConfig patches
-
-| Test | What is checked |
-|---|---|
-| `replace_depth` | Replace scalar field at root level |
-| `replace_runs` | Replace another root-level scalar |
-| `add_call_sequence_weight` | Add a new key into `call_sequence_weights` |
-| `replace_call_sequence_weight` | Overwrite an existing weight value |
-| `remove_call_sequence_weight` | Remove a weight entry from the map |
-
-### FuzzerConfigArtifact
-
-| Test | What is checked |
-|---|---|
-| `patch_fuzzer_config_artifact` | Path navigates through the enum variant name (`"Foundry.depth"`) |
-
-### Error cases
-
-| Test | What is checked |
-|---|---|
-| `error_on_empty_path` | Empty string path is rejected immediately |
-| `error_on_add_duplicate_key` | `Add` to an existing key fails with "already exists" |
-| `error_on_remove_missing_key` | `Remove` on a missing key fails with "not found" |
-| `error_on_missing_intermediate_key` | Navigation through a nonexistent intermediate key fails |
-| `error_on_array_index_out_of_bounds` | Index past end of array fails with "out of bounds" |
-
----
-
----
-
-## Fuzzer — `fuzzer/fuzzer_integration.rs`
-
-Runs real `forge test` and `forge coverage` against a self-contained Foundry project in `tests/fixtures/foundry_vault/`. Requires forge to be installed.
-
-Run with:
-
-```bash
-cargo test --test real_fuzzer_integration
-```
-
-### Foundry fixture — `tests/fixtures/foundry_vault/`
-
-A complete Foundry project with no external dependencies beyond forge-std:
-
-| File | Description |
-|---|---|
-| `src/Token.sol` | Minimal ERC20 token with a `mint` function |
-| `src/Vault.sol` | Single-asset vault — 1:1 shares, deposit cap of 1,000,000 tokens (no bug) |
-| `src/EasyBank.sol` | Simple bank — **bug**: `unchecked { totalDeposits -= amount + 1 }` off-by-one per withdrawal |
-| `src/MediumVault.sol` | Share-based vault with 1% fee — **bug**: fee not subtracted from `totalAssets`, causing accounting drift |
-| `src/HardStaking.sol` | Proportional reward staking — **bug**: `stake()` missing `_updateReward()`, new stakers receive retroactive rewards |
-| `test/handlers/VaultHandler.sol` | Invariant handler for Vault — 3 actors, ghost vars tracking deposits and withdrawals |
-| `test/invariants/VaultInvariantTest.sol` | Two invariants: `totalAssets == deposits - withdrawals` and `totalAssets <= depositCap` |
-| `test/fuzzming/EasyBank/` | LLM-generated handler and invariant test for EasyBank |
-| `test/fuzzming/MediumVault/` | LLM-generated handler and invariant test for MediumVault |
-| `test/fuzzming/HardStaking/` | LLM-generated handler and invariant test for HardStaking |
-| `foundry.toml` | `fuzzming` profile (1000 runs, depth 400) and `coverage` profile |
-
-The three buggy contracts (`EasyBank`, `MediumVault`, `HardStaking`) serve as difficulty-graded regression targets to verify the system can autonomously find bugs of increasing complexity:
-
-| Contract | Difficulty | Minimum sequence to trigger |
-|---|---|---|
-| `EasyBank` | Easy | deposit → withdraw (1 withdrawal) |
-| `MediumVault` | Medium | deposit → withdraw (fee accounting checked) |
-| `HardStaking` | Hard | stake → addRewards → stake (multi-actor, 3 steps) |
 
 ### Tests
 
 | Test | What is checked |
 |---|---|
-| `correct_vault_invariants_pass` | Real `forge test --profile fuzzming` passes both invariants → `FuzzOutcome::Pass` |
-| `fuzz_output_written_to_workspace` | `.fuzzming/fuzz_output.txt` is written to the workspace and contains forge's `Suite result` line |
+| `get_contract_context_strips_comments` | All three Solidity comment forms stripped; function body preserved |
+| `get_coverage_context_returns_none_when_file_missing` | Returns `None` instead of an error when the artifact file does not exist |
+| `get_coverage_context_reads_enriched_json` | Reads a pre-written `CoverageContext` JSON file and deserialises all fields correctly |
 
-The `foundry_vault/out/`, `cache/`, `lib/`, `.fuzzming/`, and `lcov.info` are gitignored — forge regenerates them on each run.
+### Comment stripping assertions (`get_contract_context`)
+
+| Input | Expected output |
+|---|---|
+| `// single line comment` | Absent |
+| `/* block comment */` | Absent |
+| `// inline comment` after a statement | Absent |
+| `function deposit() external {}` | Present — code is not lost |
+
+### Coverage context assertions (`get_coverage_context_reads_enriched_json`)
+
+The reader now loads coverage context from a pre-serialised `CoverageContext` JSON artifact (written by `FoundryCoverageReader` at the end of the previous round), not directly from `lcov.info`. The test writes a `CoverageContext` struct to a temp file and verifies:
+
+- `line_found`, `line_hit` counters round-trip correctly
+- `gaps` array has the correct length
+- Individual gap fields (`line`, `gap_type`, `source_context`) deserialise correctly
+
+---
+
+## Fuzzer — `fuzzer/fuzzer_integration.rs`
+
+Runs real `forge test` and (where applicable) `forge coverage` against a self-contained Foundry project in `tests/fixtures/foundry_vault/`. Requires Foundry to be installed.
+
+All tests in this suite share a `WORKSPACE_MUT` mutex to prevent filesystem races when writing to the shared fixture workspace.
+
+### Foundry fixture — `tests/fixtures/foundry_vault/`
+
+A complete Foundry project with no external dependencies beyond `forge-std`:
+
+| File | Description |
+|---|---|
+| `src/Vault.sol` | Single-asset vault — 1:1 shares, deposit cap of 1,000,000 tokens, no intentional bug |
+| `test/fuzzming/Vault/VaultHandler.sol` | Invariant handler — ghost vars tracking deposits and withdrawals |
+| `test/fuzzming/Vault/VaultInvariantTest.sol` | Two invariants: `totalAssets == deposits - withdrawals` and `totalAssets <= depositCap` |
+| `foundry.toml` | `fuzzming` profile (invariant fuzzer config) and `coverage` profile |
+
+### Tests
+
+| Test | What is checked |
+|---|---|
+| `correct_vault_invariants_pass` | Real `forge test` passes all invariants → `FuzzOutcome::Pass` |
+| `fuzz_output_written_to_workspace` | `.fuzzming/Vault/fuzz_output.txt` is written and contains `VaultInvariantTest` |
+| `compile_error_gives_compile_error_outcome` | A handler with a deliberate syntax error produces `FuzzOutcome::CompileError` |
+| `healthy_contract_runs_when_peer_has_compile_error` | When one contract's code won't compile, its peer is temporarily stashed, forge runs without it, and the peer still gets `FuzzOutcome::Pass` while the erroring contract gets `FuzzOutcome::CompileError` |
+| `leftover_disabled_dirs_are_restored` | A `.fuzzming-disabled/` stash left by a previous crashed session is restored to `test/fuzzming/` before the next forge run |
+
+### Compile error isolation
+
+When forge encounters a compile error, the entire workspace fails to build. FuzzMing's isolation strategy:
+
+1. Identifies the contracts with compile errors by repeatedly disabling one `test/fuzzming/<Contract>/` directory at a time (moving it to `.fuzzming-disabled/<Contract>/`) until forge compiles.
+2. Runs `forge test` without the erroring contracts.
+3. Restores all stashed directories after the run.
+
+The `healthy_contract_runs_when_peer_has_compile_error` test verifies this full stash-run-restore cycle.
+
+---
+
+## Unit tests (in-module)
+
+The following unit tests live inside source files and run with `cargo test --lib`:
+
+### `ForgeRunner` — `src/fuzzer/adapters/outbound/forge_runner.rs`
+
+Verifies forge output parsing against a hardcoded multi-bug forge stdout fixture.
+
+| Test | What is checked |
+|---|---|
+| `detects_all_three_bugs` | `collect_bugs` finds all 3 failing invariants in a multi-bug output |
+| `call_sequence_extracted_per_bug` | Each `BugInfo` carries the correct call sequence lines |
+| `no_duplicate_bugs_from_summary_section` | The forge summary block (printed twice) does not produce duplicate bugs |
+| `empty_bugs_for_non_invariant_failure` | A regular test failure (not an invariant) returns an empty bug list |
+| `filter_output_captures_contract_section` | `filter_output` captures the full section for the target contract and no other |
+| `filter_lcov_keeps_matching_sf_records` | `filter_lcov` keeps only `SF:` blocks whose path contains the contract name |
+
+### `Prompt` — `src/generator/domain/prompt.rs`
+
+Verifies that prompt assembly includes the correct sections.
+
+| Test | What is checked |
+|---|---|
+| `assembled_prompt_includes_context_sections_and_messages` | Two messages (system + user); `fuzz_output` and `coverage` appear in `context_sections`; user message contains `Round: N`, `FUZZ OUTPUT`, `COVERAGE SUMMARY` |
+| `round_one_prompt_includes_full_generation_instruction` | Round 1 user message includes the full-generation instruction; `context_sections` is empty |
+| `confirmed_bugs_appear_in_prompt_and_context_sections` | `confirmed_bugs` is non-empty → `CONFIRMED BUGS` appears in user message; `confirmed_bugs` appears in `context_sections` |
 
 ---
 
 ## Fixtures
 
-`tests/fixtures/Vault.bodies.json` — a complete `BodiesJson` for a Vault contract with two handler functions and two invariants. Used by both the executor and generator tests.
+`tests/fixtures/Vault.bodies.json` — a complete `BodiesJson` for a Vault contract with two handler functions and two invariants. Used by the executor integration test.
+
+`tests/fixtures/foundry_vault/` — a self-contained Foundry project used by the fuzzer integration tests. The `out/`, `cache/`, `.fuzzming/`, and `lcov.info` artifacts are gitignored — forge regenerates them on each run.

@@ -59,11 +59,7 @@ Orchestrator
     │      │
     │  SolidityContractReader (adapters/outbound)   ← implements ContractReaderPort
     │
-    ├─ CoverageReaderPort (ports/outbound)          ← outbound contract
-    │      │
-    │  FoundryCoverageReader (adapters/outbound)    ← implements CoverageReaderPort
-    │
-    └─ FileSystemReader (adapters/outbound)         ← raw I/O boundary, injected into outbound adapters
+    └─ FileSystemReader (adapters/outbound)         ← raw I/O boundary, injected into SolidityContractReader and ReadUseCase
 ```
 
 ### Inbound adapter — `adapters/inbound/reader.rs`
@@ -114,11 +110,18 @@ ContractContext { source_code: "contract Vault { ... }" }
 
 On rounds 2+ the orchestrator asks for the last round's `BodiesJson` and `FuzzerConfigArtifact` from `.fuzzming/{Contract}/{Contract}.bodies.json` and `.fuzzming/{Contract}/{Contract}.config.json`. Both return `None` on round 1 (files do not exist yet). When the LLM returns a `Patch` response, the executor uses these as the base to apply diff operations. When it returns a `Full` response, they are ignored.
 
-### 3. `get_coverage_context(lcov_path)` → uncovered locations with source snippets
+### 3. `get_coverage_context(path)` → uncovered locations with source snippets
 
-Reads the per-contract `lcov.info` written by the fuzzer to `.fuzzming/{Contract}/lcov.info` and returns every line, branch, and function that was never executed. Returns `None` if the file does not exist yet (first round).
+Reads a pre-serialised `CoverageContext` JSON artifact written by `FoundryCoverageReader` at the end of the previous round. The path is `.fuzzming/{Contract}/coverage_context.json`. Returns `None` if the file does not exist yet (first round).
 
-**How `parse_lcov` works:**
+**Why a JSON artifact instead of parsing lcov every round?**
+
+`FoundryCoverageReader` enriches each coverage gap with surrounding source lines at the point of capture. Storing the enriched `CoverageContext` as JSON means the reader just deserialises it — no source file reads are needed in the read path, and the gap-to-source mapping is always correct even if the source file has since changed.
+
+**How `FoundryCoverageReader` builds the artifact (write path):**
+
+1. Reads the per-contract `lcov.info` written by the fuzzer.
+2. Parses it with `parse_lcov` into `CoverageGap` records:
 
 | LCOV record | What it means | Kept if |
 |-------------|--------------|---------|
@@ -128,9 +131,7 @@ Reads the per-contract `lcov.info` written by the fuzzer to `.fuzzming/{Contract
 | `FNDA:0,withdraw` | function withdraw never called | hits == 0 |
 | `end_of_record` | end of file block | resets current file |
 
-**How `FoundryCoverageReader` enriches gaps:**
-
-For each gap it opens the source file and attaches the 3 lines before and 3 lines after the gap line:
+3. For each gap, opens the source file and attaches the 3 lines before and 3 lines after the gap line:
 
 ```
 "40:     uint256 shares = ...",
@@ -139,6 +140,8 @@ For each gap it opens the source file and attaches the 3 lines before and 3 line
 "43:     }",
 "44:     token.transfer(msg.sender, amount);",
 ```
+
+4. Serialises the enriched `CoverageContext` to `.fuzzming/{Contract}/coverage_context.json`.
 
 ---
 
@@ -163,10 +166,9 @@ Orchestrator
              │     FileSystemReader reads .fuzzming/{Contract}/{Contract}.config.json
              │     → None (round 1) or FuzzerConfigArtifact (round N)
              │
-             └─ get_coverage_context(lcov_path)
-                   FoundryCoverageReader reads .fuzzming/{Contract}/lcov.info
-                   parse_lcov() finds all 0-hit records
-                   enriches each gap with ±3 lines of source
+             └─ get_coverage_context(path)
+                   FileSystemReader reads .fuzzming/{Contract}/coverage_context.json
+                   deserialises pre-enriched CoverageContext
                    → None (first round) or CoverageContext { gaps, line_found, line_hit, ... }
 ```
 
@@ -177,10 +179,11 @@ Orchestrator
 ```rust
 let fs_reader       = Arc::new(FileSystemReader::new(workspace_root)); // PathBuf
 let contract_reader = Arc::new(SolidityContractReader::new(Arc::clone(&fs_reader)));
-let coverage_reader = Arc::new(FoundryCoverageReader::new(Arc::clone(&fs_reader)));
-let use_case        = Box::new(ReadUseCase::new(contract_reader, coverage_reader, fs_reader));
+let use_case        = Box::new(ReadUseCase::new(contract_reader, Arc::clone(&fs_reader)));
 let reader          = Reader::new(use_case);
 ```
+
+Coverage context is now loaded from a pre-serialised JSON artifact — `FoundryCoverageReader` is no longer injected into `ReadUseCase`; it is invoked by the orchestrator/fuzzer pipeline at the end of each passing round and writes to `.fuzzming/{Contract}/coverage_context.json`.
 
 `Reader` never imports `ReadUseCase`. All concrete types are resolved at the entry point only.
 
