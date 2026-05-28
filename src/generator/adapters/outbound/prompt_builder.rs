@@ -53,7 +53,8 @@ pub fn build_round_one_analysis_prompt() -> String {
        \"vulnerability_analysis\": [\"string — one entry per finding\"],\n\
        \"handler_logic_pseudocode\": \"string describing what state the handler must track\",\n\
        \"invariant_mathematical_proofs\": [\"string — one entry per invariant\"],\n\
-       \"critical_invariants\": [\"string\"]\n\
+       \"critical_invariants\": [\"string\"],\n\
+       \"tx_origin_paths\": [\"string — one entry per code path that reads tx.origin. Each entry must name: (1) the function, (2) what tx.origin gates, (3) the ghost variable name to store the result, (4) the invariant to assert on that ghost. Leave empty array [] if tx.origin is not used.\"]\n\
      }"
     .to_string()
 }
@@ -197,8 +198,22 @@ transfer, or mint on a token), use EXACTLY these pre-resolved import lines — d
 18. ACTORS ARRAY IS THE ONLY SOURCE OF ADDRESSES: Every address the target interacts with MUST be deployed and pushed into `actors` in the constructor. In handler functions pick with `actors[seed % actors.length]`. Never derive addresses via keccak256 or uint160 casts — they are unregistered and every call using them reverts silently.\n\
 19. ASCII ONLY IN STRINGS: All Solidity string literals must use only plain ASCII characters (codes 0-127). Never use Unicode dashes, smart quotes, ellipsis, or any non-ASCII glyph. Use plain hyphen (-) or colon (:) instead. One non-ASCII character in a string causes a parse error and wastes a full round.\n\
 20. MATCH REQUIRE BOUNDS EXACTLY: For every handler function that calls a target function, read ALL require statements in that target function and enforce the exact same constraints in your bound() calls. Copy the exact constants — if the target has require(_fee <= MAX_BASE_FEE || _fee == ZERO_FEE_INDICATOR), the handler must bound to [0, MAX_BASE_FEE] or explicitly use ZERO_FEE_INDICATOR. A handler that lets values outside the target require range through causes false-positive invariant failures.\n\
-21. TX.ORIGIN PATTERN: If the target reads tx.origin anywhere in its source, that path CANNOT be tested from a view invariant function. Use this pattern: (a) in a handler function call vm.prank(actor, actor) - the two-argument form sets BOTH msg.sender and tx.origin; (b) call the target and record the result in a ghost variable; (c) write an invariant that asserts the ghost. Never call a tx.origin-dependent target function from inside an invariant expecting tx.origin to equal a discounted address.\n\
+21. TX.ORIGIN PATTERN: If the target reads tx.origin anywhere in its source, that path CANNOT be tested from a view invariant function. Follow this pattern exactly — no variations:\n\
+    (a) Declare a ghost variable in stateVars to store the result: `uint256 public ghost_feeForDiscountedActor;`\n\
+    (b) Write a handler function that: registers the actor as discounted, calls vm.prank(actor, actor) — the TWO-argument form sets BOTH msg.sender AND tx.origin — then calls the target and saves the result to the ghost variable:\n\
+        `function handle_getFeeAsDiscountedActor(uint256 actorSeed) external {`\n\
+        `    address actor = actors[actorSeed % actors.length];`\n\
+        `    target.registerDiscounted(actor, 100000);`\n\
+        `    vm.prank(actor, actor);`\n\
+        `    ghost_feeForDiscountedActor = target.getFee(pool);`\n\
+        `}`\n\
+    (c) Write an invariant that reads ONLY the ghost variable — never call the target directly from an invariant when tx.origin matters:\n\
+        `function invariant_discountedFeeNeverExceedsFullFee() external view {`\n\
+        `    assertLe(uint256(ghost_feeForDiscountedActor), uint256(target.MAX_FEE_CAP()), \"discounted fee exceeds cap\");`\n\
+        `}`\n\
+    Never call a tx.origin-dependent function directly from inside an invariant — tx.origin will always be the test contract address, the discounted mapping will always return 0, and the bug will never fire.\n\
 22. FUZZABLE MOCK STATE: Mock contracts must have mutable state, not hardcoded return values. For every value the mock returns that the target branches on (e.g. currentTick, observationCardinality, lastObsTimestamp), add a public state variable and a setter. Write handler functions (e.g. handle_setMockCurrentTick) that fuzz those values with bounded inputs. A static mock makes entire code branches invisible to the fuzzer.\n\
+23. PATCH CONSTRUCTORBODY REQUIRES PATCHING STATEVARS: When a patch round adds or changes any variable assignment in constructorBody (e.g. `swapFeeManager = address(this)`, `mockFactory = new MockFactory()`), you MUST also add the corresponding state variable declaration to stateVars in the same patch. Every variable ASSIGNED in constructorBody that is not DECLARED in stateVars causes an \"Undeclared identifier\" compile error that wastes the entire round. Rule: for every new name on the left-hand side of an assignment in constructorBody, there must be a matching `type public name;` line in stateVars.\n\
 ".to_string()
     } else {
         "STRICT DESIGN RULES:\n\
@@ -236,6 +251,7 @@ not explicitly exist in the provided source code.\n\
 27. AVOID STACK-TOO-DEEP (Solidity 0.7.x): Each function body must declare at most 4 local variables. Split complex invariants into multiple small functions — one property each. Never destructure more than 2 tuple values at once.\n\
 28. MOCK EXTERNAL DEPENDENCIES: If the target constructor accepts an address it later calls functions on, write a minimal mock using `handler.helperContracts`. Steps: (1) scan the source for every call the target makes on that dependency (e.g. `factory.swapFeeManager()`, `factory.isPool(pool)`); (2) write the full `contract MockDep { ... }` definition as a single string in `handler.helperContracts` — it is placed before the Handler in the same file, so no import is needed and no separate .sol file should be created; (3) add `MockDep public mock;` to stateVars; (4) in constructorBody: `mock = new MockDep(); target = new TargetContract(address(mock), ...);`. NEVER import a mock from a separate file. NEVER cast a raw address like `address(0x123)`, `address(this)`, or `address(handler)` to a contract type — those addresses hold no code and every call silently reverts.\n\
 29. ACTORS ARRAY IS THE ONLY SOURCE OF ADDRESSES: Any address the target contract will interact with (pools, users, tokens) MUST be deployed or registered in the constructor and immediately pushed into `actors`. In handler functions, always select addresses using `actors[seed % actors.length]` — NEVER generate addresses with `keccak256`, `address(uint160(...))`, or any other derivation. An address not in `actors` was never registered with mock dependencies and every target call using it will revert silently, making the entire fuzz run useless.\n\
+30. PATCH CONSTRUCTORBODY REQUIRES PATCHING STATEVARS: When a patch round adds or changes any variable assignment in constructorBody (e.g. `swapFeeManager = address(this)`, `mockFactory = new MockFactory()`), you MUST also add the corresponding state variable declaration to stateVars in the same patch. Every variable ASSIGNED in constructorBody that is not DECLARED in stateVars causes an \"Undeclared identifier\" compile error that wastes the entire round. Rule: for every new name on the left-hand side of an assignment in constructorBody, there must be a matching `type public name;` line in stateVars.\n\
 ".to_string()
     };
 
