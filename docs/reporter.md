@@ -84,11 +84,11 @@ Each formatter is a pure function `fn(&SessionOutcome) -> String`. No I/O, no si
 | `format_dev_test_failure` | `TerminationReason::DevTestFailed` | `## FuzzMing: Forge Tests Failed for \`{contract}\`` |
 | `format_exhausted_report` | `TerminationReason::Exhausted` | `## FuzzMing: Rounds Exhausted for \`{contract}\` ({n} rounds, X bugs found)` |
 
-**Bug report** renders one numbered block per failing invariant (`**Bug 1:**`, `**Bug 2:**`, …), each showing the invariant name and call sequence from `outcome.bugs`. If no bugs were captured, the block reads `(no call sequences captured)`.
+**Bug report** deduplicates `outcome.bugs` by invariant name and renders one numbered block per unique failing invariant (`**Bug 1:**`, `**Bug 2:**`, …), each showing the invariant name and call sequence. Empty call sequences are omitted rather than shown as empty code fences.
 
 **CompileError report** explains that the generated test code never compiled and the contract was never exercised. The raw compiler error is included (truncated to 3 000 chars) so the problem is visible without digging into `.fuzzming/`.
 
-**Exhausted report** shows a count and bulleted list of every bug found across all rounds using `outcome.bugs`. If no bugs were found the summary reads "no bugs found"; otherwise it reads "X bugs found" with one `- \`invariant_name\`` line per bug. Coverage snapshots from `outcome.coverage_snapshots` are included when present.
+**Exhausted report** shows a count and bulleted list of bugs using `outcome.bugs` (already deduplicated at accumulation — one entry per unique invariant name). Each entry shows the invariant name and its call sequence if one was captured. Coverage snapshots from `outcome.coverage_snapshots` are included when present.
 
 **Coverage report** includes the coverage snapshot summary.
 
@@ -127,7 +127,7 @@ pub struct SessionOutcome {
 
 `coverage_snapshots` is populated by the orchestrator with one string per round that produced a passing `forge coverage` result.
 
-`security_analysis` is populated by the orchestrator when the optional security analyzer is wired. The Reporter does not render it; the CLI runner prints it after all per-contract reports.
+`security_analysis` is populated by the orchestrator when the optional security analyzer is wired. The Reporter does not render it; the CLI runner prints a clean **Findings** section after all per-contract reports, showing each unique bug's invariant name and call sequence directly from `outcome.bugs` — not the raw AI analysis text.
 
 ---
 
@@ -151,9 +151,11 @@ Orchestrator
 
 ## Session summary (CLI runner)
 
-After `orchestrator.run()` returns all outcomes, `CliRunner::print_aggregate_summary` prints a coloured session summary to the terminal — this is not part of the Reporter component. It is rendered by the entry point after all per-contract reports have been emitted.
+After `orchestrator.run()` returns all outcomes, the CLI runner renders two additional sections — neither is part of the Reporter component:
 
-The summary shows:
+**Findings section** (`print_security_analyses`): printed for any contract that has at least one confirmed bug. Shows each unique breaking invariant name (deduplicated) with its call sequence indented below. The raw AI analysis text is never shown here.
+
+**Aggregate summary** (`print_aggregate_summary`): coloured session totals —
 - Total contracts, passed, with bugs, not tested
 - Compile errors and setup failures as sub-counts of "not tested"
 - Total rounds and total bugs across all contracts

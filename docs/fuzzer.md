@@ -28,7 +28,7 @@ src/fuzzer/
 │       └── fuzzer_output_port.rs           # FuzzerOutputPort — outbound contract for writing per-contract files
 └── use_cases/
     ├── run_fuzzer_session.rs               # RunFuzzerUseCase — implements FuzzerRunPort, owns both outbound ports; contains private evaluate_outcome_for_contract
-    ├── run_fuzzer.rs                       # Thin wrapper: calls runner.run_test()
+    ├── run_fuzzer.rs                       # Pre-flight forge build check, then run_test()
     └── run_coverage.rs                     # Thin wrapper: calls runner.run_coverage()
 ```
 
@@ -128,18 +128,27 @@ Returns the absolute path to the written `lcov.info` so the use case can populat
 
 ### Outbound adapter — `adapters/outbound/forge_runner.rs`
 
-`ForgeRunner` is the single process boundary — the only struct allowed to spawn forge. Profile is selected via `FOUNDRY_PROFILE` env var (forge 1.x has no `--profile` flag):
+`ForgeRunner` is the single process boundary — the only struct allowed to spawn forge. Profile is selected via `FOUNDRY_PROFILE` env var (forge 1.x has no `--profile` flag). The `[profile.fuzzming]` section written by the Executor sets `test = "test/fuzzming"`, so forge automatically scopes itself to the generated tests with no CLI flags:
 
 ```rust
+// Pre-flight compile check — fast fail before spending the test run budget
 tokio::process::Command::new("forge")
-    .args(["test"])
+    .args(["build"])             // test = "test/fuzzming" from foundry.toml profile
     .env("FOUNDRY_PROFILE", profile_name)
-    .current_dir(&self.working_dir)  // working_dir: PathBuf
+    .current_dir(&self.working_dir)
+    .output()
+    .await
+
+// Full invariant test run (only reached when build passes)
+tokio::process::Command::new("forge")
+    .args(["test"])              // test = "test/fuzzming" from foundry.toml profile
+    .env("FOUNDRY_PROFILE", profile_name)
+    .current_dir(&self.working_dir)
     .output()
     .await
 ```
 
-`run_test` captures stdout, stderr, and exit code into `RunnerResult`.
+`run_build` and `run_test` both capture stdout, stderr, and exit code into `RunnerResult`.
 
 `run_coverage` spawns `forge coverage --report lcov`, then reads `lcov.info` from `self.working_dir` and returns the raw content in `CoverageResult.lcov_content` (or `None` if the file was not written).
 
@@ -245,7 +254,8 @@ Orchestrator
        └─ RunFuzzerUseCase::run(signals)           ← FuzzerRunPort (use case)
              │
              ├─ run_fuzzer("fuzzming", runner)
-             │     FOUNDRY_PROFILE=fuzzming forge test
+             │     FOUNDRY_PROFILE=fuzzming forge build  (pre-flight; aborts if compile error)
+             │     FOUNDRY_PROFILE=fuzzming forge test   (scoped to test/fuzzming via profile)
              │     → RunnerResult { stdout, stderr, exit_code }
              │
              ├─ for each contract:
@@ -325,6 +335,8 @@ let fuzzer   = Fuzzer::new(use_case);
 - `ForgeRunner` is the only struct that knows forge's output format.
 - `FileSystemFuzzerOutput` is the only struct that performs filesystem writes for the fuzzer.
 - The use case contains no forge-specific parsing and no direct filesystem I/O.
+- Forge is always scoped to `test/fuzzming/` via the profile's `test` key — no `--match-path` flag is ever passed.
+- `run_fuzzer.rs` runs `forge build` before `forge test`; if the build fails the test is skipped and the compile error is returned immediately.
 - Coverage is only run when at least one contract outcome is `Pass` — not on Bug, DevTestFailed, or CompileError rounds.
 - Missing `lcov.info` after coverage is silently tolerated — `CoverageResult.lcov_content` is `None`, `lcov_path` stays `None`.
 - For `DevTestFailed` with empty filtered output, the fuzzer writes full `stderr + stdout` so the LLM always receives actionable error context.

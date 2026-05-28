@@ -173,7 +173,9 @@ loop:
     ── Bug accumulation + termination check (per contract) ───────────────
     for each (contract, report):
         if report.bugs not empty:
-            state.found_bugs[contract].extend(report.bugs)   ← accumulate
+            for each bug in report.bugs:              ← deduplicate by invariant name
+                if bug.invariant_name not in found_bugs[contract]:
+                    state.found_bugs[contract].push(bug)
         if report.outcome == Pass && lcov_path is Some:
             state.coverage_snapshots[contract].push(coverage_summary)
         decision = check_termination(report, state)
@@ -219,6 +221,7 @@ pub struct SessionState {
     pub current_round:        u32,
     pub config:               SessionConfig,
     /// All bugs found so far, keyed by contract name. Grows across rounds; never cleared.
+    /// Deduplicated by invariant name — each unique invariant appears at most once.
     pub found_bugs:           HashMap<String, Vec<BugInfo>>,
     /// Consecutive full-coverage round count per contract.
     pub full_coverage_streak: HashMap<String, u32>,
@@ -271,7 +274,7 @@ pub struct SessionOutcome {
 }
 ```
 
-`bugs` carries every `BugInfo` accumulated across all rounds. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination.
+`bugs` carries every `BugInfo` accumulated across all rounds, deduplicated by invariant name — each unique invariant appears at most once regardless of how many rounds it fired. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination.
 
 `coverage_snapshots` accumulates one coverage summary string per round that produced a passing `forge coverage` result. These are forwarded to the reporter for display in the `FullCoverage` and `Exhausted` reports.
 

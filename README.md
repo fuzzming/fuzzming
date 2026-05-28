@@ -19,9 +19,11 @@ FuzzMing is an open source tool that closes the loop between an LLM and a fuzzer
 - **Continuous audit:** bugs don't stop the session, FuzzMing strips broken invariants, keeps hunting, and accumulates every finding across all rounds
 - **Multi-contract sessions:** target multiple contracts in one run, each gets its own concurrent fuzzing lane
 - **Any capable LLM:** OpenRouter, Groq, OpenAI, Anthropic, one flag switches providers
-- **Compile error recovery:** if the generated code doesn't compile, FuzzMing feeds the compiler output back to the LLM and retries automatically
+- **Compile error recovery:** a pre-flight `forge build` catches compile errors immediately before the full test run; the error is fed back to the LLM and retried next round
+- **Isolated test execution:** the `[profile.fuzzming]` section in `foundry.toml` sets `test = "test/fuzzming"` so forge only runs FuzzMing-generated tests — your existing suite is never touched
+- **Bug deduplication:** each unique breaking invariant is recorded once regardless of how many rounds it fires; the final report is never inflated with duplicates
 - **Coverage feedback:** after each passing round, LCOV coverage gaps are fed back to the LLM so it writes better invariants next time
-- **Iterative security analysis:** patch rounds include a dedicated LLM audit pass that reviews fuzz output + confirmed bugs and prints a final security analysis at the end of the session
+- **Iterative security analysis:** patch rounds include a dedicated LLM audit pass that reviews fuzz output + confirmed bugs and prints a clean findings summary at the end of the session
 - **Interactive or headless:** guided prompts for first-time users, `--defaults` / `--from-config` for CI pipelines
 - **Non-destructive config patching:** only updates the fuzzming profiles in `foundry.toml`, preserving the rest of your config
 - **Demo mode:** `fuzzming run --demo` runs the full UI with mock adapters, no LLM calls, no tokens spent
@@ -178,13 +180,15 @@ fuzzming config --reset
 Each fuzzing round follows this sequence:
 
 ```
-1. Reader   — reads the target contract + previous-round artifacts
-2. Security analysis (round 2+ only) — separate LLM pass that reviews fuzz output + confirmed bugs and feeds insights into the next generation
-3. Generator — assembles a prompt, calls the LLM, parses the response
-4. Executor  — writes generated Handler.sol + InvariantTest.sol + foundry.toml patch
-5. Fuzzer    — runs `forge test --profile fuzzming` across all contracts
-6. Orchestrator — accumulates bugs, strips confirmed invariants, checks termination
-7. Reporter  — emits a formatted result when a contract's session ends
+1. Reader      — reads the target contract + previous-round artifacts
+2. Security analysis (round 2+ only) — separate LLM pass that reviews fuzz output + confirmed bugs
+3. Generator   — assembles a prompt, calls the LLM, parses the response
+4. Executor    — writes Handler.sol + InvariantTest.sol; patches foundry.toml with
+                 `test = "test/fuzzming"` so forge only sees generated tests
+5. Fuzzer      — runs `forge build` (fast compile check), then `forge test`
+                 both scoped to `test/fuzzming/` via the profile's `test` key
+6. Orchestrator — accumulates bugs (one entry per unique invariant name), strips confirmed invariants, checks termination
+7. Reporter    — emits a formatted findings summary when a contract's session ends
 ```
 
 The session ends on **full coverage or round exhaustion** — not on the first bug. When an invariant breaks, FuzzMing records it, removes it from the next round's test, and keeps hunting for more bugs.

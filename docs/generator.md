@@ -139,10 +139,19 @@ Constructs the `Prompt` domain type and calls `into_assembled()`. `confirmed_bug
 
 | Mode | Rules in system prompt | Best for |
 |---|---|---|
-| `Concise` (default) | 18 focused rules | Claude, GPT-4o, Gemini |
+| `Concise` (default) | 22 focused rules | Claude, GPT-4o, Gemini |
 | `Guided` | 29 explicit rules | Open-source models that need more direction |
 
 Both modes produce the same output JSON schema and stage structure. `Guided` adds additional explicit guidance (e.g., "Do not use for-in loops", "Bound all amounts to `type(uint128).max`") that capable models follow implicitly from the `Concise` rules.
+
+The four rules added to `Concise` (rules 19–22):
+
+| Rule | What it prevents |
+|---|---|
+| ASCII-only strings | Non-ASCII characters (smart quotes, em-dashes) causing solc parse errors |
+| Match require bounds exactly | Handler feeding values outside the contract's own `require` range, creating false-positive invariant failures |
+| `tx.origin` pattern | `tx.origin`-dependent code paths being invisible in `view` invariants; mandates `vm.prank(actor, actor)` + ghost state in handler functions |
+| Fuzzable mock state | Static mocks hiding entire code branches; mocks must have mutable fields and setter handler functions |
 
 ### Outbound adapters — `adapters/outbound/`
 
@@ -208,7 +217,10 @@ A single prompt asking for security analysis + Solidity generation + Foundry con
 
 **Stage 1 — Security analysis**
 
-Prompt: analyze the contract for all invariant-breaking vulnerability classes — state corruption, arithmetic errors, asset accounting drift, access control violations, and business logic properties.
+Prompt: analyze the contract for all invariant-breaking vulnerability classes — state corruption, arithmetic errors, asset accounting drift, access control violations, and business logic properties. Two additional checks are always included:
+
+- **Reset/clear completeness**: for every function named `reset*`, `clear*`, `delete*`, or `disable*`, list all fields in the affected struct or mapping; call out any field that is not modified as a potential bug (e.g. a missing `baseFee` clear after `resetDynamicFee`).
+- **`tx.origin` detection**: search the source for any use of `tx.origin`; flag every affected code path and note that those paths cannot be tested from `view` invariant functions — the generator must use `vm.prank(actor, actor)` in a handler function and record the result in ghost state.
 
 Returns `AnalysisStage`:
 ```json
