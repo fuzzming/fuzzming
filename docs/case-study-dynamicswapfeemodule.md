@@ -227,16 +227,113 @@ These sequences can be dropped directly into a Foundry test, run in CI, and used
 
 ---
 
-## Remaining Limitations
+## Why We Missed Them — And How FuzzMing Could Be Enhanced
 
-FuzzMing is a complementary tool, not a full replacement for human audit. The gaps visible in this run:
+### L-01 — Discount rounding (identified but not confirmed)
 
-| Limitation | Class |
-|---|---|
-| Chain-specific constants (L-02) | Requires deployment context — fuzzing is chain-agnostic |
-| Adversarial transaction ordering (L-03) | Requires multi-actor sandwich simulation beyond single-round invariant testing |
-| `tx.origin` paths not fully covered | Foundry view invariants cannot set `tx.origin`; requires ghost pattern, partially implemented |
-| 5 of 10 rounds lost to compile errors | ASCII rule violated in round 6; cascading errors in rounds 7–10 |
+**Why we missed it**
+
+The discount check in the contract reads:
+```solidity
+if (discounted[tx.origin] > 0) {
+    uint256 discount = FullMath.mulDivRoundingUp(...);
+    totalFee = totalFee - discount;
+}
+```
+
+`tx.origin` is the original human wallet that started the transaction. When a user swaps through a DEX, `tx.origin` is their wallet address.
+
+In Foundry invariant tests, when the test contract calls `target.getFee()`, Foundry puts the **test contract's own address** as `tx.origin` — not any real user wallet. The test contract is never registered in the `discounted` mapping, so `discounted[tx.origin]` is always 0, and the entire discount block is skipped every single time. More rounds do not fix this — the same wrong address is used in round 1 and round 1000.
+
+**How we could fix it**
+
+The solution is to call `getFee` from inside a handler function instead of from the invariant directly. Foundry has a two-argument version of `vm.prank(sender, origin)` that lets you set both the direct caller and `tx.origin` to the same discounted address. The handler would:
+1. Call `vm.prank(discountedAddress, discountedAddress)`
+2. Call `target.getFee(pool)` and store the result in a ghost variable
+3. The invariant then checks the ghost variable rather than calling `getFee` itself
+
+FuzzMing already has Rule 21 in its prompt that instructs the AI to use this pattern whenever `tx.origin` is detected in the source. This run did not fully trigger the pattern but the infrastructure is in place — a future run on the same contract would attempt it.
+
+---
+
+### M-01 — Cardinality check uses wrong variable (identified but not confirmed)
+
+**Why we missed it**
+
+The buggy line is:
+```solidity
+if (observationCardinality < _secondsAgo / MIN_SECONDS_AGO) return 0;
+```
+
+The bug: it uses `observationCardinality` (number of observation slots allocated) instead of `observationIndex` (number of observations actually written), and even the correct variable wouldn't reliably predict whether `observe()` reverts.
+
+But immediately after this line:
+```solidity
+try ICLPool(_pool).observe(sa) returns (...) {
+    // success
+} catch {
+    return 0;  // handles the failure anyway
+}
+```
+
+Think of it as a faulty alarm on a door, but the door itself is still locked. Even if the alarm fires at the wrong time or not at all, you still can't open the door. The bug in the alarm is real, but it has no visible consequence because the lock always works correctly.
+
+FuzzMing cannot write an invariant that fails here because there is no state where the buggy pre-check produces a different outcome than if it were correct. The try/catch absorbs every case.
+
+**How we could fix it**
+
+This class of bug — a redundant check that uses the wrong variable — is not detectable through property fuzzing at all. It requires **static analysis**: reading the code structure and spotting that two consecutive code paths produce identical results. FuzzMing could add a static analysis step that flags: "this early-return condition and the catch block below it return the same value — the condition is redundant." That would be a new capability beyond fuzzing, closer to a code linter or formal verifier. Integrating a tool like Slither or Semgrep as a pre-analysis step would catch this class of finding.
+
+---
+
+### L-02 — `MIN_SECONDS_AGO` wrong for BNB Chain (not found)
+
+**Why we missed it**
+
+The contract has:
+```solidity
+uint32 public constant MIN_SECONDS_AGO = 2;
+```
+
+The comment says *"it must be set to the block time."* BNB Chain's block time is 0.45 seconds, not 2. This constant is used to calculate observation thresholds — getting it wrong makes the cardinality check wildly inaccurate for BNB.
+
+FuzzMing copied this constant directly from the contract and used it in tests. It had no way to know the constant was wrong because that knowledge lives outside the contract — it's a fact about the real-world blockchain this code will run on. The fuzzer tests the contract as written, not as it should be written for a specific chain.
+
+**How we could fix it**
+
+FuzzMing needs **chain context as input**. Concretely:
+
+- Add a `--chain` flag (`fuzzming run --chain bnb`) that loads known parameters: block time, block gas limit, oracle cardinality patterns for typical pools on that chain
+- When chain context is provided, the AI analysis stage could compare hardcoded constants against the known chain values and flag mismatches
+- The LLM already has knowledge of major chains' properties — it just needs to be told which chain to validate against
+
+This would be a small configuration addition that unlocks an entire class of chain-specific finding.
+
+---
+
+### L-03 — `slot0` price manipulation (not found)
+
+**Why we missed it**
+
+The dynamic fee formula computes:
+```
+fee = |currentTick - twAvgTick| × scalingFactor
+```
+
+`currentTick` is the spot price right now. `twAvgTick` is the 10-minute average price. Normally they are close and the dynamic fee is small. But an attacker can execute a large swap in the same block as a victim's swap, pushing `currentTick` far from `twAvgTick`, which inflates the fee the victim pays. The attacker loses money on the swap but causes the victim to overpay.
+
+This attack requires two actors: an attacker who moves the price, and a victim who swaps right after. FuzzMing's invariant testing works by one actor calling functions randomly and checking that properties hold. It does not model "actor A deliberately tries to hurt actor B." No matter how many rounds run, the single-actor model cannot discover this.
+
+**How we could fix it**
+
+This requires a fundamentally different testing mode: **adversarial multi-actor scenario testing**. Concretely:
+
+- Generate a second actor (the attacker) whose explicit goal is to maximize fees for the victim
+- The attacker gets handler functions that move pool state adversarially: large swaps, price manipulation, front-running
+- The victim actor then executes a swap and checks they did not pay above a reasonable fee threshold
+- This is closer to a game-theoretic simulation than a property invariant
+
+FuzzMing could add a `griefing` mode that generates this two-actor pattern. The AI would be prompted to think in terms of "what can actor A do before actor B's transaction to cause B to pay more/receive less?" This is a significant product extension — essentially adding economic attack simulation on top of property testing.
 
 ---
 
