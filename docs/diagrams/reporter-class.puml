@@ -164,4 +164,12 @@ format_dev_test_failure ..>  SessionOutcome : formats
 format_round_usage      ..>  RoundUsage     : formats
 TerminalOutput          ..>  StageEvent     : handles
 
+legend bottom left
+  **Legend**
+  ----
+  <color:#7F77DD>- - ▷</color>  **..|>**  implements / realizes interface
+  <color:#7F77DD>◆ ──▶</color>  ***-->**  composition — struct owns a port or field
+  <color:#7F77DD>- - ▶</color>  **..>**   calls · receives · produces
+endlegend
+
 @enduml

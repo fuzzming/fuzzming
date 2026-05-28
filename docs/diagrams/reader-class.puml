@@ -165,4 +165,12 @@ ReadUseCase       ..>   CoverageContext        : returns
 ReadUseCase       ..>   BodiesJson             : returns
 ReadUseCase       ..>   FuzzerConfigArtifact   : returns
 
+legend bottom left
+  **Legend**
+  ----
+  <color:#7F77DD>- - ▷</color>  **..|>**  implements / realizes interface
+  <color:#7F77DD>◆ ──▶</color>  ***-->**  composition — struct owns a port or field
+  <color:#7F77DD>- - ▶</color>  **..>**   calls · receives · produces
+endlegend
+
 @enduml
