@@ -39,11 +39,13 @@ fn signal_for(contract_name: &str, workspace: PathBuf) -> RoundSignal {
         contract_name: contract_name.to_string(),
         contract_path: format!("src/{contract_name}.sol"),
         source_code: String::new(),
+        source_pragma: String::new(),
         fuzz_output: None,
         coverage_context: None,
         existing_bodies: None,
         existing_foundry_config: None,
         confirmed_bugs: vec![],
+        security_analysis: None,
     }
 }
 

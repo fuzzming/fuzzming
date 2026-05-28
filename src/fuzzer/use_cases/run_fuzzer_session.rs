@@ -46,15 +46,17 @@ impl RunFuzzerUseCase {
             let contract = &signal.contract_name;
 
             let (contract_output, outcome, bugs) = if erroring.contains(contract) {
+                let details = compile_error_details(&error_result.stdout, &error_result.stderr);
                 let msg = format!(
                     "COMPILATION ERROR — fix the Solidity before fuzzing can proceed:\n{}",
-                    error_result.stderr
+                    details
                 );
                 (msg, FuzzOutcome::CompileError, vec![])
             } else if compile_error {
+                let details = compile_error_details(&fuzz_result.stdout, &fuzz_result.stderr);
                 let msg = format!(
                     "COMPILATION ERROR — fix the Solidity before fuzzing can proceed:\n{}",
-                    fuzz_result.stderr
+                    details
                 );
                 (msg, FuzzOutcome::CompileError, vec![])
             } else {
@@ -68,11 +70,25 @@ impl RunFuzzerUseCase {
                 {
                     outcome = FuzzOutcome::CompileError;
                 }
-                let output = if matches!(outcome, FuzzOutcome::CompileError) && filtered.is_empty()
-                {
+                // setUp reverts silently: forge exits 0 but every invariant ran 0 calls.
+                let setup_failed =
+                    matches!(outcome, FuzzOutcome::Pass) && all_invariants_zero_calls(&filtered);
+                if setup_failed {
+                    outcome = FuzzOutcome::CompileError;
+                }
+                let output = if setup_failed {
+                    format!(
+                        "SETUP FAILURE — setUp() is reverting silently. Every invariant ran \
+                         with 0 calls, meaning the fuzzer never exercised the contract.\n\
+                         Check that setUp() deploys all mocks without reverting, creates the \
+                         target contract, and calls targetContract(address(handler)).\n\
+                         Forge output:\n{filtered}"
+                    )
+                } else if matches!(outcome, FuzzOutcome::CompileError) && filtered.is_empty() {
+                    let details = compile_error_details(&fuzz_result.stdout, &fuzz_result.stderr);
                     format!(
                         "COMPILATION ERROR — fix the Solidity before fuzzing can proceed:\n{}",
-                        fuzz_result.stderr
+                        details
                     )
                 } else if matches!(outcome, FuzzOutcome::DevTestFailed) && filtered.is_empty() {
                     let mut msg = String::from("TEST FAILED — fix the handler/invariant test:\n");
@@ -218,6 +234,16 @@ fn extract_erroring_contract_names(stderr: &str, stdout: &str) -> HashSet<String
     names
 }
 
+/// Forge emits detailed solc errors to stdout, not stderr.
+/// Return stdout when it has diagnostic content, else fall back to stderr.
+fn compile_error_details<'a>(stdout: &'a str, stderr: &'a str) -> &'a str {
+    if stdout.contains("Error (") || stdout.contains("Compiler run failed") || stdout.contains("TypeError") {
+        stdout
+    } else {
+        stderr
+    }
+}
+
 fn is_compile_error(result: &RunnerResult) -> bool {
     result.exit_code != 0
         && (result.stderr.contains("Compiler run failed")
@@ -239,4 +265,32 @@ fn evaluate_outcome_for_contract(
         return (FuzzOutcome::Bug, bugs);
     }
     (FuzzOutcome::DevTestFailed, vec![])
+}
+
+/// Returns true when the filtered forge output contains at least one invariant
+/// result line AND every one of them shows `calls: 0` — the signature of a
+/// silently-reverting setUp().
+fn all_invariants_zero_calls(output: &str) -> bool {
+    let mut found_any = false;
+    for line in output.lines() {
+        if !line.contains("(runs:") || !line.contains(", calls:") {
+            continue;
+        }
+        found_any = true;
+        // Extract the number after "calls: "
+        let calls_nonzero = line
+            .find(", calls: ")
+            .and_then(|pos| {
+                line[pos + 9..]
+                    .split(',')
+                    .next()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+            })
+            .map(|n| n > 0)
+            .unwrap_or(true); // if we can't parse, assume non-zero (don't false-positive)
+        if calls_nonzero {
+            return false;
+        }
+    }
+    found_any
 }
