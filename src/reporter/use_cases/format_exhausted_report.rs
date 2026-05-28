@@ -3,7 +3,7 @@ use crate::shared::responses::session_outcome::SessionOutcome;
 pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
     let cov_section = format_coverage_snapshots(&outcome.coverage_snapshots);
 
-    let bug_count = outcome.bugs.len();
+    let bug_count = outcome.bugs.len(); // already deduplicated at accumulation
     let summary = if bug_count == 0 {
         "no bugs found".to_string()
     } else {
@@ -15,41 +15,21 @@ pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
     };
 
     let bugs_section = if bug_count > 0 {
-        // Group by invariant name, preserving first-seen order.
-        let mut order: Vec<String> = Vec::new();
-        let mut groups: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        for b in &outcome.bugs {
-            if !groups.contains_key(&b.invariant_name) {
-                order.push(b.invariant_name.clone());
-            }
-            groups
-                .entry(b.invariant_name.clone())
-                .or_default()
-                .push(b.call_sequence.clone());
-        }
-
-        let list = order
+        let list = outcome
+            .bugs
             .iter()
-            .map(|name| {
-                let seqs = &groups[name];
-                let count = seqs.len();
-                let label = if count > 1 {
-                    format!("- `{name}` ({count} occurrences):")
+            .map(|b| {
+                if b.call_sequence.is_empty() {
+                    format!("- `{}`", b.invariant_name)
                 } else {
-                    format!("- `{name}`:")
-                };
-                let body = seqs
-                    .iter()
-                    .map(|seq| {
-                        seq.lines()
-                            .map(|line| format!("  {line}"))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                format!("{label}\n{body}")
+                    let seq = b
+                        .call_sequence
+                        .lines()
+                        .map(|line| format!("  {line}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    format!("- `{}`\n{}", b.invariant_name, seq)
+                }
             })
             .collect::<Vec<_>>()
             .join("\n");

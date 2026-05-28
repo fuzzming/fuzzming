@@ -166,35 +166,50 @@ fn print_outcome_reports(outcomes: &[SessionOutcome]) {
 }
 
 fn print_security_analyses(outcomes: &[SessionOutcome]) {
-    let analyses: Vec<_> = outcomes
+    let with_bugs: Vec<_> = outcomes
         .iter()
-        .filter_map(|o| {
-            o.security_analysis
-                .as_deref()
-                .map(|a| (&o.contract_name, a))
-        })
+        .filter(|o| !o.bugs.is_empty() || o.security_analysis.is_some())
         .collect();
-    if analyses.is_empty() {
+    if with_bugs.is_empty() {
         return;
     }
 
     let header_st = Style::new().fg(Color::Color256(99)).bold();
     let label_st = Style::new().fg(Color::Color256(75)).bold();
     let muted = Style::new().fg(Color::Color256(245));
+    let bug_st = Style::new().fg(Color::Red).bold();
+    let seq_st = Style::new().fg(Color::Color256(244));
 
     println!();
-    println!("{}", header_st.apply_to("  ◆ FuzzMing: Security Analysis"));
+    println!("{}", header_st.apply_to("  ◆ FuzzMing: Findings"));
     println!(
         "{}",
         muted.apply_to("  ──────────────────────────────────────────")
     );
 
-    for (contract_name, analysis) in analyses {
+    for outcome in with_bugs {
         println!();
-        println!("  {}", label_st.apply_to(contract_name));
-        println!();
-        for line in analysis.lines() {
-            println!("  {line}");
+        println!("  {}", label_st.apply_to(&outcome.contract_name));
+
+        if outcome.bugs.is_empty() {
+            println!();
+            println!("  {}", muted.apply_to("no confirmed invariant failures"));
+        } else {
+            let mut seen = std::collections::HashSet::new();
+            for bug in &outcome.bugs {
+                if !seen.insert(&bug.invariant_name) {
+                    continue;
+                }
+                println!();
+                println!("  {}  {}", bug_st.apply_to("✗"), bug.invariant_name);
+                if !bug.call_sequence.is_empty() {
+                    for line in bug.call_sequence.lines() {
+                        if !line.trim().is_empty() {
+                            println!("     {}", seq_st.apply_to(line));
+                        }
+                    }
+                }
+            }
         }
     }
     println!();
