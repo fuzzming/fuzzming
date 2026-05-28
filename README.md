@@ -21,7 +21,9 @@ FuzzMing is an open source tool that closes the loop between an LLM and a fuzzer
 - **Any capable LLM:** OpenRouter, Groq, OpenAI, Anthropic, one flag switches providers
 - **Compile error recovery:** if the generated code doesn't compile, FuzzMing feeds the compiler output back to the LLM and retries automatically
 - **Coverage feedback:** after each passing round, LCOV coverage gaps are fed back to the LLM so it writes better invariants next time
+- **Iterative security analysis:** patch rounds include a dedicated LLM audit pass that reviews fuzz output + confirmed bugs and prints a final security analysis at the end of the session
 - **Interactive or headless:** guided prompts for first-time users, `--defaults` / `--from-config` for CI pipelines
+- **Non-destructive config patching:** only updates the fuzzming profiles in `foundry.toml`, preserving the rest of your config
 - **Demo mode:** `fuzzming run --demo` runs the full UI with mock adapters, no LLM calls, no tokens spent
 
 ---
@@ -177,11 +179,12 @@ Each fuzzing round follows this sequence:
 
 ```
 1. Reader   — reads the target contract + previous-round artifacts
-2. Generator — assembles a prompt, calls the LLM, parses the response
-3. Executor  — writes generated Handler.sol + InvariantTest.sol + foundry.toml patch
-4. Fuzzer    — runs `forge test --profile fuzzming` across all contracts
-5. Orchestrator — accumulates bugs, strips confirmed invariants, checks termination
-6. Reporter  — emits a formatted result when a contract's session ends
+2. Security analysis (round 2+ only) — separate LLM pass that reviews fuzz output + confirmed bugs and feeds insights into the next generation
+3. Generator — assembles a prompt, calls the LLM, parses the response
+4. Executor  — writes generated Handler.sol + InvariantTest.sol + foundry.toml patch
+5. Fuzzer    — runs `forge test --profile fuzzming` across all contracts
+6. Orchestrator — accumulates bugs, strips confirmed invariants, checks termination
+7. Reporter  — emits a formatted result when a contract's session ends
 ```
 
 The session ends on **full coverage or round exhaustion** — not on the first bug. When an invariant breaks, FuzzMing records it, removes it from the next round's test, and keeps hunting for more bugs.

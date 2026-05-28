@@ -28,13 +28,13 @@ src/reader/
 │   └── outbound/
 │       ├── file_system_reader.rs          # FileSystemReader — only place that calls tokio::fs::read
 │       ├── solidity_contract_reader.rs    # Implements ContractReaderPort — reads .sol, strips comments
-│       └── foundry_coverage_reader.rs     # Implements CoverageReaderPort — parses LCOV + attaches source lines
+│       └── foundry_coverage_reader.rs     # Legacy adapter (unused by ReadUseCase)
 ├── ports/
 │   ├── inbound/
 │   │   └── reader_run_port.rs             # ReaderRunPort — inbound contract between adapter and use case
 │   └── outbound/
 │       ├── contract_reader_port.rs        # ContractReaderPort — read a .sol file
-│       └── coverage_reader_port.rs        # CoverageReaderPort — read an LCOV file
+│       └── coverage_reader_port.rs        # Legacy port (unused by ReadUseCase)
 └── use_cases/
     ├── read.rs                            # ReadUseCase — owns outbound ports, implements ReaderRunPort
     └── parse_lcov.rs                      # Pure function: LCOV text → list of CoverageGap
@@ -85,7 +85,6 @@ pub trait ReaderRunPort: Send + Sync {
 ```rust
 pub struct ReadUseCase {
     contract_reader: Arc<dyn ContractReaderPort>,
-    coverage_reader: Arc<dyn CoverageReaderPort>,
     fs_reader: Arc<FileSystemReader>,
 }
 ```
@@ -112,15 +111,15 @@ On rounds 2+ the orchestrator asks for the last round's `BodiesJson` and `Fuzzer
 
 ### 3. `get_coverage_context(path)` → uncovered locations with source snippets
 
-Reads a pre-serialised `CoverageContext` JSON artifact written by `FoundryCoverageReader` at the end of the previous round. The path is `.fuzzming/{Contract}/coverage_context.json`. Returns `None` if the file does not exist yet (first round).
+Reads a pre-serialised `CoverageContext` JSON artifact written by the fuzzer at the end of the previous round. The path is `.fuzzming/{Contract}/coverage_context.json`. Returns `None` if the file does not exist yet (first round).
 
 **Why a JSON artifact instead of parsing lcov every round?**
 
-`FoundryCoverageReader` enriches each coverage gap with surrounding source lines at the point of capture. Storing the enriched `CoverageContext` as JSON means the reader just deserialises it — no source file reads are needed in the read path, and the gap-to-source mapping is always correct even if the source file has since changed.
+The fuzzer enriches each coverage gap with nearby source lines at the point of capture. Storing the enriched `CoverageContext` as JSON means the reader just deserialises it — no extra source file reads are needed in the read path, and the gap-to-source mapping is stable even if the source file later changes.
 
-**How `FoundryCoverageReader` builds the artifact (write path):**
+**How the artifact is built (fuzzer write path):**
 
-1. Reads the per-contract `lcov.info` written by the fuzzer.
+1. The fuzzer reads the per-contract `lcov.info` it just wrote.
 2. Parses it with `parse_lcov` into `CoverageGap` records:
 
 | LCOV record | What it means | Kept if |
@@ -131,14 +130,12 @@ Reads a pre-serialised `CoverageContext` JSON artifact written by `FoundryCovera
 | `FNDA:0,withdraw` | function withdraw never called | hits == 0 |
 | `end_of_record` | end of file block | resets current file |
 
-3. For each gap, opens the source file and attaches the 3 lines before and 3 lines after the gap line:
+3. For each gap, opens the source file and attaches one line before and one line after the gap line (best-effort):
 
 ```
-"40:     uint256 shares = ...",
 "41:     if (amount == 0) {",
 "42:         revert ZeroAmount();",    ← gap
 "43:     }",
-"44:     token.transfer(msg.sender, amount);",
 ```
 
 4. Serialises the enriched `CoverageContext` to `.fuzzming/{Contract}/coverage_context.json`.
@@ -183,7 +180,7 @@ let use_case        = Box::new(ReadUseCase::new(contract_reader, Arc::clone(&fs_
 let reader          = Reader::new(use_case);
 ```
 
-Coverage context is now loaded from a pre-serialised JSON artifact — `FoundryCoverageReader` is no longer injected into `ReadUseCase`; it is invoked by the orchestrator/fuzzer pipeline at the end of each passing round and writes to `.fuzzming/{Contract}/coverage_context.json`.
+Coverage context is loaded from a pre-serialised JSON artifact written by the fuzzer at the end of each passing round. `ReadUseCase` reads `.fuzzming/{Contract}/coverage_context.json` directly via `FileSystemReader`.
 
 `Reader` never imports `ReadUseCase`. All concrete types are resolved at the entry point only.
 

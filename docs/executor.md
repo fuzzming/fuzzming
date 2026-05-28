@@ -82,7 +82,7 @@ pub struct ExecuteUseCase {
 }
 ```
 
-Sequences four write operations: bodies JSON, config JSON, generated Solidity files, Foundry config patch.
+Sequences four write operations: bodies JSON, config JSON, generated Solidity files, Foundry config patch. Before writing, it sets `bodies.meta.solidity` from `ExecutorInput.source_pragma` so the LLM never controls the pragma version. `SolidityGenerator` then re-reads the target source file (best-effort) to enforce the same pragma and to inject ABIEncoderV2 for Solidity 0.7.x.
 
 ### Outbound ports — `ports/outbound/`
 
@@ -95,16 +95,16 @@ Sequences four write operations: bodies JSON, config JSON, generated Solidity fi
 
 `FileSystemWriter` is the single I/O boundary — the only struct allowed to call `tokio::fs`. Both `SolidityGenerator` and `FoundryConfigWriter` receive it as a parameter. It takes a `PathBuf` base path and enforces a path traversal guard on every write.
 
-`SolidityGenerator` implements `CodeGeneratorPort`. Derives output paths from `bodies.meta.contract` — the LLM never decides where files go:
+`SolidityGenerator` implements `CodeGeneratorPort`. It writes helper contracts (from `handler.helper_contracts`) above the Handler contract, injects `pragma experimental ABIEncoderV2;` for Solidity 0.7.x, and derives output paths from `bodies.meta.contract` — the LLM never decides where files go:
 
 | File | Path |
 |---|---|
-| Handler | `test/fuzzming/{Contract}/{ContractName}.sol` |
-| Invariant test | `test/fuzzming/{Contract}/{ContractName}.sol` |
+| Handler | `test/fuzzming/{Contract}/{ContractName}Handler.sol` |
+| Invariant test | `test/fuzzming/{Contract}/{ContractName}InvariantTest.sol` |
 
 The `test/fuzzming/` namespace isolates generated files from the developer's own `test/` code.
 
-`FoundryConfigWriter` implements `ConfigWriterPort`. Builds the `[profile.fuzzming]` and `[profile.fuzzming.invariant]` TOML sections from `FoundryConfig` fields — all fuzzing parameters (`runs`, `depth`, `seed`, `max_test_rejects`, `dictionary_weight`) are placed under the `invariant` subsection where Foundry expects them. Patches `foundry.toml` using replace-or-append logic.
+`FoundryConfigWriter` implements `ConfigWriterPort`. Builds the `[profile.fuzzming]` and `[profile.fuzzming.invariant]` TOML sections from `FoundryConfig` fields — all fuzzing parameters (`runs`, `depth`, `seed`, `max_test_rejects`, `dictionary_weight`) are placed under the `invariant` subsection where Foundry expects them. It reads the existing `foundry.toml` from disk, replaces only the fuzzming/coverage sections (including their sub-tables), and preserves everything else.
 
 `SolidityGenerator` strips any trailing `{` from `constructorSignature` before appending its own opening brace, preventing double-brace errors when the LLM includes the brace in the signature string.
 
@@ -187,7 +187,6 @@ let executor       = Executor::new(use_case);
 
 ## Hard rules
 
-- `Executor` never reads files — that is the Reader's job.
-- `Executor` never touches developer-owned files — only fuzzming-managed paths.
-- `FileSystemWriter` is the only struct that calls `tokio::fs`.
+- `Executor` reads only two developer-owned files: the target contract source (to preserve its pragma) and `foundry.toml` (to preserve non-fuzzming sections). All other reads and writes are confined to fuzzming-managed paths.
+- `FileSystemWriter` is the only struct that calls `tokio::fs` for writing.
 - The LLM never controls file paths — all paths are derived from `contract_name`.

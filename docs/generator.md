@@ -92,7 +92,7 @@ pub struct GeneratorRunUseCase {
 }
 ```
 
-Contains all the business logic: calls `assemble_prompt` (passing `signal.confirmed_bugs`), builds the `GenerationRequest`, calls the outbound port, maps the response into an `LlmSignal`.
+Contains all the business logic: calls `assemble_prompt` (passing `signal.confirmed_bugs` and `signal.security_analysis`), builds the `GenerationRequest`, calls the outbound port, maps the response into an `LlmSignal`.
 
 ### `assemble_prompt` — `use_cases/assemble_prompt.rs`
 
@@ -103,6 +103,7 @@ pub fn assemble_prompt(
     fuzz_output: Option<String>,
     coverage_context: Option<CoverageContext>,
     confirmed_bugs: Vec<BugInfo>,
+    security_analysis: Option<String>,
 ) -> Result<AssembledPrompt>
 ```
 
@@ -113,14 +114,15 @@ Constructs the `Prompt` domain type and calls `into_assembled()`. `confirmed_bug
 `Prompt` builds the system and user messages:
 
 - **System message** — contract source code + four strict operational rules: no for-in loops (use ghost actor array), ghost state must mirror every external mutation, no hallucinated function calls, handlers are wrappers not re-implementations.
-- **User message** — assembled from up to four sections in order:
+- **User message** — assembled from up to five sections in order:
   1. `Round: {n}`
   2. `CONFIRMED BUGS` — rendered only when `confirmed_bugs` is non-empty; lists invariant names the model must not re-generate.
   3. `FUZZ OUTPUT` — rendered only on round ≥ 2.
   4. `COVERAGE GAPS` — rendered only when coverage context is present.
-  5. Instruction: full generation (round 1) or patch/rewrite (round N).
+    5. `SECURITY ANALYSIS` — rendered only when the orchestrator provided analysis for this round.
+    6. Instruction: full generation (round 1) or patch/rewrite (round N).
 
-`AssembledPrompt.context_sections` records which optional sections were included (`"confirmed_bugs"`, `"fuzz_output"`, `"coverage"`) — used for observability.
+`AssembledPrompt.context_sections` records which optional sections were included (`"confirmed_bugs"`, `"fuzz_output"`, `"coverage"`, `"security_analysis"`) — used for observability.
 
 ### Outbound ports — `ports/outbound/`
 
@@ -137,8 +139,8 @@ Constructs the `Prompt` domain type and calls `into_assembled()`. `confirmed_bug
 
 | Mode | Rules in system prompt | Best for |
 |---|---|---|
-| `Concise` (default) | 9 focused rules | Claude, GPT-4o, Gemini |
-| `Guided` | 18 explicit rules | Open-source models that need more direction |
+| `Concise` (default) | 18 focused rules | Claude, GPT-4o, Gemini |
+| `Guided` | 29 explicit rules | Open-source models that need more direction |
 
 Both modes produce the same output JSON schema and stage structure. `Guided` adds additional explicit guidance (e.g., "Do not use for-in loops", "Bound all amounts to `type(uint128).max`") that capable models follow implicitly from the `Concise` rules.
 
@@ -167,7 +169,7 @@ Orchestrator
              │
              ├─ assemble_prompt()
              │     builds system message: contract source + rules
-             │     builds user message:   round number + confirmed bugs + fuzz output + coverage gaps
+             │     builds user message:   round number + confirmed bugs + fuzz output + coverage gaps + security analysis
              │     → AssembledPrompt
              │
              ├─ GenerationRequest {
@@ -227,9 +229,8 @@ The prompt tells the LLM exactly:
 - The required import lines (derived by FuzzMing from `contract_name` and `contract_path`)
 - **Pre-resolved dependency imports** — FuzzMing parses the target contract's own `import` statements, resolves relative paths (`./Token.sol` → `src/Token.sol`), and provides the exact import lines the LLM must use if it needs to interact with a dependency. This prevents the LLM from guessing paths and re-exporting symbols from the wrong file.
 - That both Handler and InvariantTest **must inherit from `Test`** — providing `vm`, `bound`, `deal`, etc.
-- The `pragma solidity` version extracted from the source contract — the LLM must not choose its own
 - The file layout (`test/fuzzming/{Contract}/`)
-- Eleven design rules: external calls only, no hallucinations, no redundancies, use pre-resolved imports only, `targetSelectors` always empty string, no redefining Test helpers, no raw bytecode, iterate actors via `actorsLength()`/`actors(i)`, ASCII-only string literals (no Unicode dashes or smart quotes), no unused variable declarations, bound all amounts to `type(uint128).max` to prevent overflow masking real bugs
+- 18 design rules (concise) / 29 rules (guided): external calls only (never reimplement target logic, never import internal libs), no hallucinations, use pre-resolved imports only, `targetSelectors` always empty string, no redefining Test helpers, no raw bytecode, iterate actors via `actorsLength()`/`actors(i)`, ASCII-only string literals, no unused variables, bound amounts to `type(uint128).max`, always cast to `uint256` before calling `bound()`, mock external dependencies via `helperContracts`, addresses must come from `actors` array only (never keccak256-derived)
 
 Returns `BodiesStage { bodies: BodiesJson }`.
 

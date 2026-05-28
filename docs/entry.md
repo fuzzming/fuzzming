@@ -94,8 +94,8 @@ The `prompt_mode` key in `fuzzming.config` controls how verbose the LLM prompt r
 
 | Value | Rules | Best for |
 |---|---|---|
-| `concise` | 9 focused rules | Claude, GPT-4o, Gemini (capable models) |
-| `guided` | 18 explicit rules | Open-source models that need more direction |
+| `concise` | 18 focused rules | Claude, GPT-4o, Gemini (capable models) |
+| `guided` | 29 explicit rules | Open-source models that need more direction |
 
 ---
 

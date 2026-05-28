@@ -119,12 +119,15 @@ pub struct SessionOutcome {
     pub rounds_completed: u32,
     pub bugs: Vec<BugInfo>,          // all bugs found across all rounds
     pub coverage_snapshots: Vec<String>, // per-round coverage summary strings
+    pub security_analysis: Option<String>, // optional analysis text from SecurityAnalysisPort
 }
 ```
 
 `bugs` carries every `BugInfo` accumulated across all rounds. The `Bug` report uses `bugs` to render one block per failing invariant. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination reason.
 
 `coverage_snapshots` is populated by the orchestrator with one string per round that produced a passing `forge coverage` result.
+
+`security_analysis` is populated by the orchestrator when the optional security analyzer is wired. The Reporter does not render it; the CLI runner prints it after all per-contract reports.
 
 ---
 

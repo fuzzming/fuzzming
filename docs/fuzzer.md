@@ -85,7 +85,7 @@ Sequences the full round:
 1. Guard against empty signals.
 2. Run `forge test` once — covers all contracts.
 3. For each contract: ask `runner` to filter stdout and collect bugs; ask `output` to write `fuzz_output.txt`; evaluate outcome.
-4. If any contract passed: run `forge coverage` once; the runner returns filtered lcov content per contract via `CoverageResult`; ask `output` to write per-contract `lcov.info`; set `FuzzReport.lcov_path`.
+4. If any contract passed: run `forge coverage` once; the runner returns raw lcov content via `CoverageResult`; filter per contract; write per-contract `lcov.info`; parse and enrich coverage gaps with nearby source lines; write `.fuzzming/{Contract}/coverage_context.json`; set `FuzzReport.lcov_path`.
 5. Return `Vec<FuzzReport>`.
 
 The use case contains no forge-specific parsing and performs no filesystem I/O directly.
@@ -120,6 +120,7 @@ pub struct CoverageResult {
 pub trait FuzzerOutputPort: Send + Sync {
     async fn write_fuzz_output(&self, contract_name: &str, content: &str) -> Result<()>;
     async fn write_lcov(&self, contract_name: &str, content: &str) -> Result<PathBuf>;
+    async fn write_coverage_context(&self, contract_name: &str, context: &CoverageContext) -> Result<()>;
 }
 ```
 
@@ -187,13 +188,15 @@ pub struct FileSystemFuzzerOutput {
 }
 ```
 
-Both methods create the per-contract directory if it does not exist before writing.
+All methods create the per-contract directory if it does not exist before writing. In addition to `fuzz_output.txt` and `lcov.info`, the adapter writes `coverage_context.json` after the fuzzer enriches coverage gaps with nearby source lines.
 
 ---
 
 ## Outcome evaluation
 
-`RunFuzzerUseCase` first checks whether forge's output indicates a **compilation error** (exit code non-zero and stderr/stdout contains `Compiler run failed` or `error[`). If so, every contract in the batch receives `CompileError` and the compiler output is written directly as their `fuzz_output.txt` — the LLM repairs the code next round.
+`RunFuzzerUseCase` first checks whether forge's output indicates a **compilation error** (exit code non-zero and stderr/stdout contains `Compiler run failed` or `error[`). Forge emits detailed solc errors to stdout, so the compile-error message prefers stdout when it contains `Error (` or `TypeError` and falls back to stderr otherwise.
+
+If only some contracts fail to compile, the use case temporarily moves their `test/fuzzming/<Contract>/` directories to `.fuzzming-disabled/`, re-runs forge for the healthy contracts, and restores the stashed dirs before returning. The erroring contracts receive `CompileError` with the compiler output in `fuzz_output.txt` so the LLM can repair them next round.
 
 Otherwise `evaluate_outcome_for_contract` delegates bug collection to the runner port:
 
@@ -205,6 +208,8 @@ Otherwise `evaluate_outcome_for_contract` delegates bug collection to the runner
 | Exit code non-zero, `runner.collect_bugs()` returns empty | `DevTestFailed` | `[]` |
 
 `CompileError` and `DevTestFailed` do **not** terminate the session — the orchestrator continues to the next round so the LLM can fix the generated Solidity.
+
+**Setup failure detection:** forge can exit 0 even when `setUp()` reverts and every invariant runs with 0 calls. When that happens, the outcome is coerced to `CompileError` and the fuzzer writes a `SETUP FAILURE` message to `fuzz_output.txt` so the LLM can fix constructor mocks and `targetContract` wiring.
 
 **`DevTestFailed` output capture**: `filter_output` looks for the `{Contract}InvariantTest` section header in forge stdout. For `DevTestFailed` (setUp revert, runtime panic, unused variable error), the error appears outside that section and `filter_output` returns an empty string. In that case the fuzzer falls back to writing the full `stderr + stdout` with a `"TEST FAILED — fix the handler/invariant test:"` header, so the LLM receives the actual error rather than an empty feedback.
 
@@ -220,11 +225,14 @@ Coverage (`forge coverage`) is only triggered when at least one contract's outco
 └── .fuzzming/
     └── {ContractName}/
         ├── fuzz_output.txt               ← filtered forge test stdout (written by FileSystemFuzzerOutput)
-        └── lcov.info                     ← filtered forge coverage output (written by FileSystemFuzzerOutput)
+        ├── lcov.info                     ← filtered forge coverage output (written by FileSystemFuzzerOutput)
+        ├── coverage_context.json         ← enriched coverage gaps (written by FileSystemFuzzerOutput)
+        ├── {Contract}.bodies.json        ← LLM bodies artifact (written by Executor)
+        ├── {Contract}.config.json        ← fuzzer config artifact (written by Executor)
+        └── outcome.json                  ← final session outcome (written by Orchestrator)
 ```
 
 The root `lcov.info` is forge's raw output; it is read by `ForgeRunner` and never accessed by the use case. Per-contract `lcov.info` files are filtered copies written by `FileSystemFuzzerOutput`.
-
 ---
 
 ## Data flow
@@ -255,7 +263,10 @@ Orchestrator
                    for each passing contract:
                      runner.filter_lcov(lcov_content, contract) → filtered string
                      output.write_lcov(contract, filtered) → PathBuf
-                     FuzzReport.lcov_path = Some(path)
+                                         parse_lcov(filtered) → CoverageContext
+                                         enrich_coverage_context(...) → add source_context
+                                         output.write_coverage_context(contract, context)
+                                         FuzzReport.lcov_path = Some(path)
 ```
 
 ---

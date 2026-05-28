@@ -35,8 +35,8 @@ CompositionRoot::build(config)
 ├─ Generator  (Box<dyn LlmEnginePort>)
 │   └─ GeneratorRunUseCase  (Box<dyn GeneratorRunPort>)
 │       └─ LiteLlmGenerationAdapter  (Box<dyn GenerationPort>)
-│           └─ LiteLlmClient  (Box<dyn LlmClientPort>)
-│               config.max_tokens, config.llm_timeout_secs passed here
+│           └─ LiteLlmClient  (Arc<dyn LlmClientPort>)
+│               api key, config.max_tokens, config.llm_timeout_secs passed here
 │           config.prompt_mode passed to adapter (selects Concise vs Guided system prompt)
 │
 ├─ FuzzerAdapter  (Box<dyn FuzzerEnginePort>)
@@ -65,19 +65,21 @@ CompositionRoot::build(config)
 └─ Orchestrator  (Box<dyn OrchestratorPort>)
     └─ RunSessionUseCase  (Box<dyn OrchestratorRunPort>)
         receives all five components above as Box<dyn Port>
+        optional SecurityAnalysisPort wired via with_security_analyzer()
 ```
 
 ---
 
 ## `LiteLlmClient` configuration
 
-The LLM client receives three config values at construction time:
+The LLM client receives the API key and two config values at construction time:
 
 ```rust
-let llm_client = Box::new(LiteLlmClient::new(
+let llm_client: Arc<dyn LlmClientPort> = Arc::new(LiteLlmClient::new(
     &model,
-    Some(0.1),              // temperature — fixed; not user-configurable
-    config.max_tokens,      // Option<u32>; None = no output token limit
+    Some(api_key.as_str()),  // provider API key
+    Some(0.1),               // temperature — fixed; not user-configurable
+    config.max_tokens,       // Option<u32>; None = no output token limit
     config.llm_timeout_secs, // u64; default 120
 ));
 ```
@@ -98,6 +100,15 @@ let generation_adapter = Box::new(LiteLlmGenerationAdapter::new(
 ```
 
 `PromptMode` is resolved at startup and passed through to the adapter. It controls how many design rules are included in the system prompt — not the JSON output schema, which is always the same.
+
+---
+
+## `LiteLlmSecurityAnalysisAdapter` — optional analyzer
+
+The security analyzer shares the same `LiteLlmClient` as the generator. It is wired into the
+orchestrator via `RunSessionUseCase::with_security_analyzer()` so patch rounds can request a
+separate analysis pass before generation. The analyzer is optional; if it is not wired, the
+session proceeds without the extra analysis stage.
 
 ---
 
