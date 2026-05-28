@@ -182,6 +182,26 @@ impl OrchestratorRunPort for RunSessionUseCase {
                 }
             }
 
+            // Build a set of contracts whose LLM call failed this round.
+            // For those contracts the executor wrote nothing new — running
+            // forge would fuzz stale files from a previous session and report
+            // the same old bugs again, polluting the deduplication map.
+            let llm_failed_contracts: std::collections::HashSet<String> = signals
+                .iter()
+                .zip(llm_signals.iter())
+                .filter(|(_, ls)| {
+                    matches!(ls.status, crate::shared::responses::llm_signal::LlmStatus::Failed)
+                })
+                .map(|(s, _)| s.contract_name.clone())
+                .collect();
+
+            // Only fuzz contracts where the LLM succeeded.
+            let fuzzable_signals: Vec<RoundSignal> = signals
+                .iter()
+                .filter(|s| !llm_failed_contracts.contains(&s.contract_name))
+                .cloned()
+                .collect();
+
             self.reporter
                 .emit_stage_event(StageEvent {
                     contract_name: None,
@@ -192,8 +212,34 @@ impl OrchestratorRunPort for RunSessionUseCase {
                 })
                 .await?;
             info!(round = state.current_round, "forge run started");
-            let reports: Vec<FuzzReport> = self.fuzzer_engine.run(signals.clone()).await?;
+            let fuzz_reports: Vec<FuzzReport> = if fuzzable_signals.is_empty() {
+                vec![]
+            } else {
+                self.fuzzer_engine.run(fuzzable_signals.clone()).await?
+            };
             info!(round = state.current_round, "forge run finished");
+
+            // Re-expand to the full signals list: failed contracts get a
+            // CompileError placeholder so downstream logic stays consistent.
+            let mut fuzz_iter = fuzz_reports.into_iter();
+            let reports: Vec<FuzzReport> = signals
+                .iter()
+                .map(|s| {
+                    if llm_failed_contracts.contains(&s.contract_name) {
+                        FuzzReport {
+                            outcome: FuzzOutcome::CompileError,
+                            bugs: vec![],
+                            lcov_path: None,
+                        }
+                    } else {
+                        fuzz_iter.next().unwrap_or(FuzzReport {
+                            outcome: FuzzOutcome::CompileError,
+                            bugs: vec![],
+                            lcov_path: None,
+                        })
+                    }
+                })
+                .collect();
             let fuzzer_summary = FuzzerRoundSummary {
                 bugs: reports.iter().filter(|r| !r.bugs.is_empty()).count(),
                 passed: reports
@@ -220,10 +266,17 @@ impl OrchestratorRunPort for RunSessionUseCase {
             let mut next_active: Vec<String> = Vec::new();
             let mut compile_error_emitted = false;
 
-            for ((path, signal), report) in active.iter().zip(signals.iter()).zip(reports.iter()) {
+            for (((path, signal), report), llm_signal) in active
+                .iter()
+                .zip(signals.iter())
+                .zip(reports.iter())
+                .zip(llm_signals.iter())
+            {
                 // Accumulate bugs found this round — one entry per unique invariant name.
                 // The same invariant can fire in multiple rounds; only keep the first
                 // occurrence so the final report doesn't repeat the same finding N times.
+                // Invariant code is read from final_bodies (the bodies forge just executed)
+                // so the full Solidity function is preserved in the report.
                 if !report.bugs.is_empty() {
                     let entry = state
                         .found_bugs
@@ -231,7 +284,19 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         .or_default();
                     for bug in &report.bugs {
                         if !entry.iter().any(|b| b.invariant_name == bug.invariant_name) {
-                            entry.push(bug.clone());
+                            let mut bug_with_code = bug.clone();
+                            if bug_with_code.invariant_code.is_empty() {
+                                if let Some(bodies) = &llm_signal.final_bodies {
+                                    if let Some(code) = bodies
+                                        .invariant_test
+                                        .invariants
+                                        .get(&bug.invariant_name)
+                                    {
+                                        bug_with_code.invariant_code = code.clone();
+                                    }
+                                }
+                            }
+                            entry.push(bug_with_code);
                         }
                     }
                 } else if let Some(lcov_path) = &report.lcov_path {
@@ -246,7 +311,12 @@ impl OrchestratorRunPort for RunSessionUseCase {
                 }
 
                 // Emit compile errors once per round to avoid duplicate output.
-                if matches!(report.outcome, FuzzOutcome::CompileError) && !compile_error_emitted {
+                // Skip LLM-failed contracts — their CompileError is a placeholder;
+                // reading fuzz_output.txt would show stale output from a previous session.
+                if matches!(report.outcome, FuzzOutcome::CompileError)
+                    && !compile_error_emitted
+                    && !llm_failed_contracts.contains(&signal.contract_name)
+                {
                     let fuzz_output_path =
                         format!(".fuzzming/{}/fuzz_output.txt", signal.contract_name);
                     if let Ok(Some(msg)) = self.reader.get_fuzz_output(&fuzz_output_path).await {
