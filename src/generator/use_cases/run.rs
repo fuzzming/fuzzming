@@ -28,6 +28,7 @@ impl GeneratorRunPort for GeneratorRunUseCase {
             signal.fuzz_output.clone(),
             signal.coverage_context.clone(),
             signal.confirmed_bugs.clone(),
+            signal.security_analysis.clone(),
         )?;
 
         let request = GenerationRequest {
@@ -40,7 +41,16 @@ impl GeneratorRunPort for GeneratorRunUseCase {
             existing_foundry_config: signal.existing_foundry_config.clone(),
         };
 
-        let response = self.gateway.generate(request).await?;
+        let response = match self.gateway.generate(request).await {
+            Ok(r) => r,
+            Err(e) => {
+                return Ok(LlmSignal {
+                    status: LlmStatus::Failed,
+                    result: None,
+                    reason: Some(e.to_string()),
+                });
+            }
+        };
 
         Ok(LlmSignal { status: LlmStatus::Done, result: Some(response), reason: None })
     }

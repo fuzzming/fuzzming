@@ -135,6 +135,7 @@ async fn handle_run(args: RunArgs, ui: &CliUi) -> Result<()> {
     };
 
     print_outcome_reports(&outcomes);
+    print_security_analyses(&outcomes);
     print_aggregate_summary(&outcomes);
 
     let has_bugs = outcomes.iter().any(|o| {
@@ -166,6 +167,37 @@ fn print_outcome_reports(outcomes: &[SessionOutcome]) {
         println!("{msg}");
         println!();
     }
+}
+
+fn print_security_analyses(outcomes: &[SessionOutcome]) {
+    let analyses: Vec<_> = outcomes
+        .iter()
+        .filter_map(|o| o.security_analysis.as_deref().map(|a| (&o.contract_name, a)))
+        .collect();
+    if analyses.is_empty() {
+        return;
+    }
+
+    let header_st = Style::new().fg(Color::Color256(99)).bold();
+    let label_st = Style::new().fg(Color::Color256(75)).bold();
+    let muted = Style::new().fg(Color::Color256(245));
+
+    println!();
+    println!("{}", header_st.apply_to("  ◆ FuzzMing: Security Analysis"));
+    println!(
+        "{}",
+        muted.apply_to("  ──────────────────────────────────────────")
+    );
+
+    for (contract_name, analysis) in analyses {
+        println!();
+        println!("  {}", label_st.apply_to(contract_name));
+        println!();
+        for line in analysis.lines() {
+            println!("  {line}");
+        }
+    }
+    println!();
 }
 
 fn print_aggregate_summary(outcomes: &[SessionOutcome]) {
@@ -813,6 +845,7 @@ async fn run_demo() -> Result<()> {
     };
 
     print_outcome_reports(&outcomes);
+    print_security_analyses(&outcomes);
     print_aggregate_summary(&outcomes);
     Ok(())
 }

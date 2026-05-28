@@ -19,4 +19,6 @@ pub struct SessionOutcome {
     pub rounds_completed: u32,
     pub bugs: Vec<BugInfo>,
     pub coverage_snapshots: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security_analysis: Option<String>,
 }

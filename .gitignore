@@ -14,4 +14,5 @@ examples/
 # Local editor context
 .context
 
-.cache/
+.cache/fuzzming.config
+fuzzming.config

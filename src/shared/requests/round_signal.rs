@@ -12,6 +12,9 @@ pub struct RoundSignal {
     /// Path to the target contract relative to workspace_root, e.g. "src/Vault.sol".
     pub contract_path: String,
     pub source_code: String,
+    /// Pragma version extracted from the source file by the reader, e.g. `"=0.7.6"`.
+    /// Always set from the source — never comes from the LLM.
+    pub source_pragma: String,
     pub fuzz_output: Option<String>,
     pub coverage_context: Option<CoverageContext>,
     pub existing_bodies: Option<BodiesJson>,
@@ -20,4 +23,7 @@ pub struct RoundSignal {
     /// The LLM uses these to avoid re-generating broken invariants;
     /// the executor strips them deterministically from Full responses.
     pub confirmed_bugs: Vec<BugInfo>,
+    /// Security analysis from the LLM run before this round's generation call.
+    /// None for round 1 (the generator runs its own 3-stage analysis there).
+    pub security_analysis: Option<String>,
 }

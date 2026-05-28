@@ -14,6 +14,7 @@ const MAX_HTTP_RETRIES: u32 = 3;
 
 pub struct LiteLlmClient {
     model: String,
+    api_key: Option<String>,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
     timeout_secs: u64,
@@ -22,12 +23,14 @@ pub struct LiteLlmClient {
 impl LiteLlmClient {
     pub fn new(
         model: impl Into<String>,
+        api_key: Option<impl Into<String>>,
         temperature: Option<f32>,
         max_tokens: Option<u32>,
         timeout_secs: u64,
     ) -> Self {
         Self {
             model: model.into(),
+            api_key: api_key.map(Into::into),
             temperature,
             max_tokens,
             timeout_secs,
@@ -153,6 +156,7 @@ impl LiteLlmClient {
         CompletionOptions {
             temperature: self.temperature,
             max_tokens: self.max_tokens,
+            api_key: self.api_key.clone(),
             extra_params,
             ..Default::default()
         }

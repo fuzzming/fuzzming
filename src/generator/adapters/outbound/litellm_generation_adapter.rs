@@ -1,4 +1,6 @@
-use anyhow::{bail, Context, Result};
+use std::sync::Arc;
+
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 
@@ -19,12 +21,12 @@ const MAX_ATTEMPTS: usize = 3;
 pub struct LiteLlmGenerationAdapter {
     model: String,
     api_key: String,
-    client: Box<dyn LlmClientPort>,
+    pub client: Arc<dyn LlmClientPort>,
     prompt_mode: PromptMode,
 }
 
 impl LiteLlmGenerationAdapter {
-    pub fn new(model: impl Into<String>, api_key: impl Into<String>, client: Box<dyn LlmClientPort>, prompt_mode: PromptMode) -> Self {
+    pub fn new(model: impl Into<String>, api_key: impl Into<String>, client: Arc<dyn LlmClientPort>, prompt_mode: PromptMode) -> Self {
         Self {
             model: model.into(),
             api_key: api_key.into(),
@@ -75,12 +77,10 @@ impl LiteLlmGenerationAdapter {
             Self::merge_usage(usage_total, usage);
             let payload = extract_json_payload(&content)?;
 
-            match serde_json::from_str::<T>(&payload)
-                .with_context(|| format!("failed to parse {stage_name} payload: {payload}"))
-            {
+            match serde_json::from_str::<T>(&payload) {
                 Ok(parsed) => return Ok(parsed),
                 Err(err) => {
-                    last_error = err.to_string();
+                    last_error = format!("JSON parse error: {err}");
                     if attempt == MAX_ATTEMPTS {
                         break;
                     }

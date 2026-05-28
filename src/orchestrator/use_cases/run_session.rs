@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use futures::future::try_join_all;
+use futures::future::{join_all, try_join_all};
 use tracing::info;
 
 use crate::orchestrator::ports::inbound::OrchestratorRunPort;
@@ -12,7 +12,8 @@ use crate::orchestrator::use_cases::{
 };
 use crate::shared::models::{CoverageContext, FuzzerConfigArtifact, SessionState};
 use crate::shared::ports::{
-    ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReaderPort, ReporterPort,
+    ExecutorPort, FuzzerEnginePort, LlmEnginePort, ReaderPort, ReporterPort, SecurityAnalysisPort,
+    SecurityAnalysisRequest,
 };
 use crate::shared::requests::{round_signal::RoundSignal, session_request::SessionRequest};
 use crate::shared::responses::{
@@ -29,6 +30,7 @@ pub struct RunSessionUseCase {
     pub executor: Box<dyn ExecutorPort>,
     pub reporter: Box<dyn ReporterPort>,
     pub reader: Box<dyn ReaderPort>,
+    pub security_analyzer: Option<Box<dyn SecurityAnalysisPort>>,
 }
 
 impl RunSessionUseCase {
@@ -45,7 +47,13 @@ impl RunSessionUseCase {
             executor,
             reporter,
             reader,
+            security_analyzer: None,
         }
+    }
+
+    pub fn with_security_analyzer(mut self, sa: Box<dyn SecurityAnalysisPort>) -> Self {
+        self.security_analyzer = Some(sa);
+        self
     }
 }
 
@@ -70,8 +78,73 @@ impl OrchestratorRunPort for RunSessionUseCase {
                 "round started"
             );
 
-            let signals: Vec<RoundSignal> =
+            let mut signals: Vec<RoundSignal> =
                 try_join_all(active.iter().map(|path| self.build_signal(path, &state))).await?;
+
+            // Inject any LLM parse failure from the previous round so the model can self-correct.
+            for signal in &mut signals {
+                if let Some(err) = state.llm_failures.remove(&signal.contract_name) {
+                    let prev = signal.fuzz_output.take().unwrap_or_default();
+                    signal.fuzz_output = Some(format!(
+                        "LLM PARSE FAILURE — your previous response could not be parsed. \
+                         Fix your output format and try again.\nError: {err}\n\n\
+                         Previous fuzz output (if any):\n{prev}"
+                    ));
+                }
+            }
+
+            // Security analysis — runs before generation for patch rounds (existing_bodies is Some).
+            // Round 1 already has a 3-stage analysis built into the generator; skip it there.
+            // Also skip when the previous round produced a compile/setup/LLM error: the model
+            // should focus on fixing the error, not on new vulnerability suggestions.
+            if let Some(sa) = &self.security_analyzer {
+                let patch_indices: Vec<usize> = signals
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, s)| {
+                        let is_patch = s.existing_bodies.is_some();
+                        let has_error = s.fuzz_output.as_deref().map(|o| {
+                            o.contains("COMPILATION ERROR")
+                                || o.contains("SETUP FAILURE")
+                                || o.contains("LLM PARSE FAILURE")
+                        }).unwrap_or(false);
+                        (is_patch && !has_error).then_some(i)
+                    })
+                    .collect();
+
+                let reqs: Vec<SecurityAnalysisRequest> = patch_indices
+                    .iter()
+                    .map(|&i| SecurityAnalysisRequest {
+                        contract_name: signals[i].contract_name.clone(),
+                        source_code: signals[i].source_code.clone(),
+                        confirmed_bugs: signals[i].confirmed_bugs.clone(),
+                        fuzz_output: signals[i].fuzz_output.clone(),
+                        rounds_completed: state.current_round.saturating_sub(1),
+                        previous_analysis: state
+                            .security_analyses
+                            .get(&signals[i].contract_name)
+                            .cloned(),
+                    })
+                    .collect();
+
+                let results = join_all(reqs.into_iter().map(|req| sa.analyze(req))).await;
+
+                for (&i, result) in patch_indices.iter().zip(results.into_iter()) {
+                    match result {
+                        Ok(analysis) => {
+                            state
+                                .security_analyses
+                                .insert(signals[i].contract_name.clone(), analysis.clone());
+                            signals[i].security_analysis = Some(analysis);
+                        }
+                        Err(e) => tracing::warn!(
+                            contract = %signals[i].contract_name,
+                            error = %e,
+                            "security analysis failed"
+                        ),
+                    }
+                }
+            }
 
             let llm_signals = try_join_all(signals.iter().map(|signal| {
                 run_round(
@@ -91,6 +164,12 @@ impl OrchestratorRunPort for RunSessionUseCase {
                         usage: result.usage.clone(),
                     };
                     self.reporter.emit_round_usage(usage).await?;
+                }
+                // Record parse failures for injection into the next round.
+                if matches!(llm_signal.status, crate::shared::responses::llm_signal::LlmStatus::Failed) {
+                    if let Some(reason) = &llm_signal.reason {
+                        state.llm_failures.insert(signal.contract_name.clone(), reason.clone());
+                    }
                 }
             }
 
@@ -204,6 +283,10 @@ impl OrchestratorRunPort for RunSessionUseCase {
                             .coverage_snapshots
                             .remove(&signal.contract_name)
                             .unwrap_or_default(),
+                        security_analysis: state
+                            .security_analyses
+                            .get(&signal.contract_name)
+                            .cloned(),
                     };
                     let outcome_path = state
                         .config
@@ -262,10 +345,10 @@ impl OrchestratorRunPort for RunSessionUseCase {
         }
 
         if outcomes.is_empty() {
-            Err(anyhow!("session produced no outcome"))
-        } else {
-            Ok(outcomes)
+            return Err(anyhow!("session produced no outcome"));
         }
+
+        Ok(outcomes)
     }
 }
 
@@ -295,17 +378,22 @@ impl RunSessionUseCase {
             .cloned()
             .unwrap_or_default();
 
+        let source_code = contract_context.source_code;
+        let source_pragma = extract_pragma_from_source(&source_code);
+
         Ok(RoundSignal {
             round: state.current_round,
             config: state.config.clone(),
             contract_name,
             contract_path: contract_path.to_string(),
-            source_code: contract_context.source_code,
+            source_code,
+            source_pragma,
             fuzz_output,
             coverage_context,
             existing_bodies,
             existing_foundry_config,
             confirmed_bugs,
+            security_analysis: None,
         })
     }
 
@@ -372,4 +460,19 @@ fn format_coverage_summary(ctx: CoverageContext) -> String {
         ctx.function_found,
         ctx.gaps.len(),
     )
+}
+
+
+fn extract_pragma_from_source(source: &str) -> String {
+    for line in source.lines() {
+        let t = line.trim();
+        if t.starts_with("pragma solidity") {
+            return t
+                .trim_end_matches(';')
+                .trim_start_matches("pragma solidity")
+                .trim()
+                .to_string();
+        }
+    }
+    "^0.8.20".to_string()
 }

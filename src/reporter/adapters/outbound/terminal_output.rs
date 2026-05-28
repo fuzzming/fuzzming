@@ -253,7 +253,7 @@ impl OutputPort for TerminalOutput {
                 g.contracts.insert(contract, ContractProgress { bar: spinner, cancel });
             }
 
-            (StageKind::Llm, StageStatus::Finished) | (StageKind::Llm, StageStatus::Failed) => {
+            (StageKind::Llm, StageStatus::Finished) => {
                 let contract = match &event.contract_name {
                     Some(c) => c.clone(),
                     None => return Ok(()),
@@ -263,6 +263,21 @@ impl OutputPort for TerminalOutput {
                     cp.cancel.notify_one();
                     let label = contract_label(&contract);
                     cp.bar.set_message(msg_writing(&label));
+                }
+            }
+
+            (StageKind::Llm, StageStatus::Failed) => {
+                let contract = match &event.contract_name {
+                    Some(c) => c.clone(),
+                    None => return Ok(()),
+                };
+                let mut g = state.lock().expect("progress lock");
+                if let Some(cp) = g.contracts.remove(&contract) {
+                    cp.cancel.notify_one();
+                    let label = contract_label(&contract);
+                    let msg = msg_done(&label, false);
+                    cp.bar.finish_and_clear();
+                    g.multi.println(msg).ok();
                 }
             }
 

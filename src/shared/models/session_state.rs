@@ -15,4 +15,10 @@ pub struct SessionState {
     pub full_coverage_streak: HashMap<String, u32>,
     /// Per-round coverage snapshots for clean (bug-free) rounds, keyed by contract name.
     pub coverage_snapshots: HashMap<String, Vec<String>>,
+    /// LLM parse failures from the previous round, keyed by contract name.
+    /// Injected as fuzz_output context so the next round's LLM can fix its output format.
+    pub llm_failures: HashMap<String, String>,
+    /// Latest security analysis per contract. Passed as previous_analysis into the next round's
+    /// security analysis call so the LLM refines rather than restarts each time.
+    pub security_analyses: HashMap<String, String>,
 }

@@ -5,13 +5,23 @@ use crate::generator::domain::generation_response::GenerationResponse;
 pub fn extract_json_payload(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
 
-    if trimmed.starts_with("```") {
-        let stripped = trimmed
+    // Find the first ```json or ``` fence anywhere in the response (handles prose preambles).
+    let fence_start = trimmed
+        .find("```json")
+        .or_else(|| trimmed.find("```"));
+
+    if let Some(start) = fence_start {
+        let after_fence = &trimmed[start..];
+        let stripped = after_fence
             .trim_start_matches("```json")
             .trim_start_matches("```")
-            .trim_end_matches("```")
             .trim();
-        return Ok(stripped.to_string());
+        // Remove closing fence if present.
+        let content = stripped
+            .find("```")
+            .map(|end| stripped[..end].trim())
+            .unwrap_or(stripped);
+        return Ok(content.to_string());
     }
 
     Ok(trimmed.to_string())

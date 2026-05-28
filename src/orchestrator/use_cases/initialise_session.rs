@@ -12,5 +12,7 @@ pub fn initialise_session(request: &SessionRequest) -> Result<SessionState> {
         found_bugs: HashMap::new(),
         full_coverage_streak: HashMap::new(),
         coverage_snapshots: HashMap::new(),
+        llm_failures: HashMap::new(),
+        security_analyses: HashMap::new(),
     })
 }

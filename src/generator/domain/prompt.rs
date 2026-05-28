@@ -15,6 +15,7 @@ pub struct Prompt {
     fuzz_output: Option<String>,
     coverage_context: Option<CoverageContext>,
     confirmed_bugs: Vec<BugInfo>,
+    security_analysis: Option<String>,
 }
 
 impl Prompt {
@@ -24,8 +25,9 @@ impl Prompt {
         fuzz_output: Option<String>,
         coverage_context: Option<CoverageContext>,
         confirmed_bugs: Vec<BugInfo>,
+        security_analysis: Option<String>,
     ) -> Self {
-        Self { source_code, round, fuzz_output, coverage_context, confirmed_bugs }
+        Self { source_code, round, fuzz_output, coverage_context, confirmed_bugs, security_analysis }
     }
 
     pub fn system_message(&self) -> String {
@@ -66,6 +68,13 @@ impl Prompt {
             sections.push(Self::format_coverage(coverage));
         }
 
+        if let Some(analysis) = &self.security_analysis {
+            sections.push(format!(
+                "SECURITY ANALYSIS (AI-identified vulnerabilities — use these insights \
+                 to strengthen or add invariants):\n{analysis}"
+            ));
+        }
+
         if self.round == 1 {
             sections.push(
                 "Generate the full handler and invariant test suite for this contract.".to_string(),
@@ -89,6 +98,9 @@ impl Prompt {
         }
         if self.coverage_context.is_some() {
             context_sections.push("coverage".to_string());
+        }
+        if self.security_analysis.is_some() {
+            context_sections.push("security_analysis".to_string());
         }
 
         let system = self.system_message();
@@ -177,6 +189,7 @@ mod tests {
             Some("revert".to_string()),
             Some(coverage),
             vec![],
+            None,
         )
         .into_assembled();
 
@@ -193,7 +206,7 @@ mod tests {
     #[test]
     fn round_one_prompt_includes_full_generation_instruction() {
         let assembled =
-            Prompt::new(1, "contract C {}".to_string(), None, None, vec![]).into_assembled();
+            Prompt::new(1, "contract C {}".to_string(), None, None, vec![], None).into_assembled();
 
         assert!(assembled.messages[1]
             .content
@@ -208,7 +221,7 @@ mod tests {
             call_sequence: "handler_deposit()".to_string(),
         };
         let assembled =
-            Prompt::new(3, "contract C {}".to_string(), None, None, vec![bug]).into_assembled();
+            Prompt::new(3, "contract C {}".to_string(), None, None, vec![bug], None).into_assembled();
 
         assert!(assembled.context_sections.contains(&"confirmed_bugs".to_string()));
         assert!(assembled.messages[1].content.contains("CONFIRMED BUGS"));

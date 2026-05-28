@@ -7,7 +7,9 @@ use crate::fuzzer::adapters::inbound::Fuzzer as FuzzerAdapter;
 use crate::fuzzer::adapters::outbound::{FileSystemFuzzerOutput, ForgeRunner};
 use crate::fuzzer::use_cases::RunFuzzerUseCase;
 use crate::generator::adapters::inbound::Generator;
-use crate::generator::adapters::outbound::{LiteLlmClient, LiteLlmGenerationAdapter};
+use crate::generator::adapters::outbound::{
+    LiteLlmClient, LiteLlmGenerationAdapter, LiteLlmSecurityAnalysisAdapter,
+};
 use crate::generator::use_cases::GeneratorRunUseCase;
 use crate::orchestrator::adapters::inbound::Orchestrator;
 use crate::orchestrator::use_cases::RunSessionUseCase;
@@ -28,10 +30,13 @@ impl CompositionRoot {
         let api_key = config.llm_key.clone();
         let prompt_mode = config.prompt_mode.clone();
 
+        // Single shared LLM client — used by both the generator and the security analyzer.
+        let llm_client: Arc<dyn crate::generator::ports::outbound::LlmClientPort> =
+            Arc::new(LiteLlmClient::new(&model, Some(api_key.as_str()), Some(0.1), config.max_tokens, config.llm_timeout_secs));
+
         // Generator (LLM engine)
-        let llm_client = Box::new(LiteLlmClient::new(&model, Some(0.1), config.max_tokens, config.llm_timeout_secs));
         let generation_adapter =
-            Box::new(LiteLlmGenerationAdapter::new(&model, &api_key, llm_client, prompt_mode));
+            Box::new(LiteLlmGenerationAdapter::new(&model, &api_key, Arc::clone(&llm_client), prompt_mode));
         let generator_use_case = Box::new(GeneratorRunUseCase::new(generation_adapter));
         let generator = Box::new(Generator::new(generator_use_case));
 
@@ -59,10 +64,15 @@ impl CompositionRoot {
             Box::new(TerminalOutput::new());
         let reporter = Box::new(Reporter::new(output));
 
+        // Security analyzer shares the same LLM client as the generator.
+        let security_analyzer =
+            Box::new(LiteLlmSecurityAnalysisAdapter::new(Arc::clone(&llm_client)));
+
         // Orchestrator
-        let run_session = Box::new(RunSessionUseCase::new(
-            generator, fuzzer, executor, reporter, reader,
-        ));
+        let run_session = Box::new(
+            RunSessionUseCase::new(generator, fuzzer, executor, reporter, reader)
+                .with_security_analyzer(security_analyzer),
+        );
         Box::new(Orchestrator::new(run_session))
     }
 }

@@ -48,6 +48,19 @@ pub fn build_round_one_analysis_prompt() -> String {
 /// ready-to-use import strings with paths resolved relative to the contract file.
 /// E.g. contract_path="src/EasyBank.sol", source has `import {Token} from "./Token.sol"`
 /// → returns `["import {Token} from \"src/Token.sol\";"]`
+fn resolve_relative_path(dir: &str, raw: &str) -> String {
+    let combined = format!("{}/{}", dir, raw.trim_start_matches("./"));
+    let mut parts: Vec<&str> = Vec::new();
+    for seg in combined.split('/') {
+        if seg == ".." {
+            parts.pop();
+        } else if seg != "." {
+            parts.push(seg);
+        }
+    }
+    parts.join("/")
+}
+
 fn extract_dependency_imports(contract_path: &str, source: &str) -> Vec<String> {
     let dir = contract_path.rfind('/').map_or("", |i| &contract_path[..i]);
     let mut imports = Vec::new();
@@ -56,54 +69,63 @@ fn extract_dependency_imports(contract_path: &str, source: &str) -> Vec<String> 
         if !t.starts_with("import") {
             continue;
         }
-        let from_pos = match t.find("from") {
-            Some(p) => p,
-            None => continue,
-        };
-        let symbols = &t[..from_pos];
-        let rest = t[from_pos + 4..].trim();
-        let path_raw = rest
-            .trim_start_matches('"')
-            .trim_end_matches(';')
-            .trim_end_matches('"');
-        if !path_raw.starts_with('.') {
-            continue;
-        }
-        let resolved = if dir.is_empty() {
-            path_raw.trim_start_matches("./").to_string()
-        } else {
-            let combined = format!("{}/{}", dir, path_raw.trim_start_matches("./"));
-            let mut parts: Vec<&str> = Vec::new();
-            for seg in combined.split('/') {
-                if seg == ".." {
-                    parts.pop();
-                } else if seg != "." {
-                    parts.push(seg);
-                }
+
+        if let Some(from_pos) = t.find(" from ").or_else(|| t.find("\tfrom ")) {
+            // Named import: import {Foo} from "./foo.sol";
+            let symbols = &t[..from_pos + 1]; // include the space before "from"
+            let rest = t[from_pos + 6..].trim(); // skip " from "
+            let path_raw = rest
+                .trim_start_matches('"')
+                .trim_end_matches(';')
+                .trim_end_matches('"');
+            if !path_raw.starts_with('.') {
+                continue;
             }
-            parts.join("/")
-        };
-        imports.push(format!("{symbols}from \"{resolved}\";"));
+            let resolved = if dir.is_empty() {
+                path_raw.trim_start_matches("./").to_string()
+            } else {
+                resolve_relative_path(dir, path_raw)
+            };
+            let resolved = to_import_path(&resolved).to_string();
+            imports.push(format!("{symbols}from \"{resolved}\";"));
+        } else {
+            // Bare path import: import "../foo.sol";
+            let inner = t
+                .trim_start_matches("import")
+                .trim()
+                .trim_start_matches('"')
+                .trim_end_matches(';')
+                .trim_end_matches('"');
+            if !inner.starts_with('.') {
+                continue;
+            }
+            let resolved = if dir.is_empty() {
+                inner.trim_start_matches("./").to_string()
+            } else {
+                resolve_relative_path(dir, inner)
+            };
+            let resolved = to_import_path(&resolved).to_string();
+            imports.push(format!("import \"{resolved}\";"));
+        }
     }
     imports
 }
 
-fn extract_pragma(source: &str) -> String {
-    for line in source.lines() {
-        let t = line.trim();
-        if t.starts_with("pragma solidity") {
-            return t
-                .trim_end_matches(';')
-                .trim_start_matches("pragma solidity")
-                .trim()
-                .to_string();
-        }
-    }
-    "^0.8.20".to_string()
-}
 
 fn is_concise(mode: &PromptMode) -> bool {
     matches!(mode, PromptMode::Concise)
+}
+
+/// If `contract_path` is an absolute path, strip everything up to the first
+/// standard Solidity source directory so the generated import works from the
+/// Foundry workspace root (e.g. `contracts/`, `src/`, `test/`).
+fn to_import_path(contract_path: &str) -> &str {
+    for marker in &["contracts/", "src/", "test/"] {
+        if let Some(pos) = contract_path.find(marker) {
+            return &contract_path[pos..];
+        }
+    }
+    contract_path
 }
 
 pub fn build_round_one_bodies_prompt(
@@ -114,14 +136,12 @@ pub fn build_round_one_bodies_prompt(
     mode: &PromptMode,
 ) -> Result<String> {
     let analysis_summary = serde_json::to_string_pretty(analysis)?;
-    let pragma = extract_pragma(source_code);
     let handler_name = format!("{contract_name}Handler");
     let test_name = format!("{contract_name}InvariantTest");
 
-    let handler_target_import = format!("import {{{contract_name}}} from \"{contract_path}\";");
-    let test_handler_import = format!(
-        "import {{{handler_name}}} from \"./{handler_name}.sol\";"
-    );
+    let import_path = to_import_path(contract_path);
+    let handler_target_import = format!("import {{{contract_name}}} from \"{import_path}\";"  );
+    let test_handler_import = format!("import {{{handler_name}}} from \"./{handler_name}.sol\";");
     let test_std_import = "import {Test} from \"forge-std/Test.sol\";";
 
     let dep_imports = extract_dependency_imports(contract_path, source_code);
@@ -141,27 +161,35 @@ transfer, or mint on a token), use EXACTLY these pre-resolved import lines — d
 
     let rules_block = if is_concise(mode) {
         "STRICT DESIGN RULES:\n\
-1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract \
-instance. Do NOT reimplement the target contract's internal logic inside the handler.\n\
-2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
-not explicitly exist in the provided source code.\n\
-3. IMPORTS: Use only the import lines listed in REQUIRED IMPORT LINES above. If you need to interact with a dependency (e.g. call approve or transfer on a token), use the pre-resolved import line provided in the dependency imports block — do not invent paths. Never use low-level .call() for a contract whose interface you know.\n\
-4. setUp REGISTRATION: In the invariant test setUpBody, register the handler by calling ONLY `targetContract(address(handler))`. Do NOT call `targetSelector(...)`, `targetSelectors(...)`, or any variant — these functions take a `FuzzSelector` struct, not a string, and calling them with a string literal is a compile error. The `targetSelectors` JSON field is metadata only — always set it to `\"\"` and do NOT generate any Solidity call from it. Never emit any line that contains `targetSelector` or `targetSelectors` inside setUpBody.\n\
-5. HANDLER ACCESS FROM INVARIANTS: Public array state vars (e.g. `address[] public actors`) do NOT expose a getActors() method. If the invariant test needs to iterate an array, define a helper in handler.functions using the COMPLETE function syntax, e.g.: `\"actorsLength\": \"function actorsLength() external view returns (uint256) { return actors.length; }\"`. Then call `handler.actorsLength()` from the invariant test. Never call a helper that is not defined in handler.functions.\n\
-6. BOUND AMOUNTS TO PREVENT OVERFLOW: Always cap amounts at `type(uint128).max` — never `type(uint256).max`.\n\
-7. INITIALIZE GHOST STATE: If the contract is deployed with an initial supply or state, ghost variables MUST be initialized to match in the constructor. Uninitialised ghost state causes false positives from the first invariant check.\n\
-8. NO TAUTOLOGICAL INVARIANTS: Never write invariants that are always true by type. `uint256 >= 0` is always true — do not write it. Only write invariants that can actually fail.\n\
-9. HANDLER IS THE CALLER: Inside handler functions, ALL calls to the target contract are made FROM `address(this)`, NOT from `msg.sender`. Therefore: (a) ghost mappings must be keyed by `address(this)` not `msg.sender`; (b) use `vm.prank(someAddress)` before the contract call to simulate a specific user; (c) every state-changing call MUST update its corresponding ghost variable.\n\
-10. NO DUPLICATE GETTERS: A `public` state variable automatically generates a getter with that exact name. NEVER define a function whose name matches a public state variable — e.g. if `EtherVault public target;` is declared, do NOT write `function target() external view returns (EtherVault)`. This causes a \"Identifier already declared\" compile error.\n\
-11. PREVENT DUPLICATE ACTORS: In addActor (or any actor-registration function), guard against re-registration. Declare `mapping(address => bool) public ghost_isActor;` in stateVars. At the top of addActor: `if (ghost_isActor[actor]) return; ghost_isActor[actor] = true;`. Duplicate actors cause invariants that sum over the array to double-count balances, producing false positives.\n\
-12. QUALIFIED STRUCT TYPES: When the target contract defines a struct inside its body (e.g. `contract C { struct S {...} }`), reference it from the handler as `ContractName.StructName`. NEVER use the bare struct name — e.g. write `VestingWallet.Schedule memory s = target.schedules(key);` NOT `Schedule memory s = target.schedules(key);`.\n\
-13. NO MATH LIBRARY: Never use `Math.min()` or `Math.max()`. Use inline ternary: `a < b ? a : b`.\n\
-14. NO LOCAL VARIABLE SHADOWING: Never declare a local variable with the same name as a function or state variable in the same contract. For example, if the handler declares `function deposit(...)`, do NOT write `uint256 deposit = ...;` inside any function body — name it `amount`, `depositAmount`, or similar instead. Solidity raises a compile error on shadowing.\n\
+1. EXTERNAL CALLS ONLY: Handler functions MUST call the target contract — never reimplement its logic. \
+(a) NEVER import or use internal libraries from the target (FullMath, SafeMath, TickMath…); \
+(b) NEVER copy formulas from the source; \
+(c) Call public view functions like `target.getFee(pool)` and store the result.\n\
+2. NO HALLUCINATIONS: Only call functions and read variables that explicitly exist in the provided source.\n\
+3. IMPORTS: Use only the pre-resolved import lines listed in REQUIRED IMPORT LINES. Never invent paths or use low-level .call() for a contract whose interface you know.\n\
+4. setUp REGISTRATION: In setUpBody call ONLY `targetContract(address(handler))`. Never call any targetSelector variant — it takes a FuzzSelector struct, not a string. Set the targetSelectors JSON field to \"\".\n\
+5. HANDLER ACCESS FROM INVARIANTS: The invariant test has NO direct access to handler state variables. Every handler array or mapping must be accessed via a public getter prefixed with `handler.` — e.g. `handler.actorsLength()`, `handler.actors(i)`, `handler.poolsLength()`, `handler.pools(i)`. Never write `pools.length` or `pools[i]` bare in an invariant function — `pools` is not declared in that scope. If you need to iterate a handler array, define a getter in handler.functions first.\n\
+6. GHOST STATE — INITIALIZE: Ghost variables MUST be initialized in the constructor to match the contract's deployed state. Uninitialised ghost state produces false positives from the very first invariant check.\n\
+7. GHOST STATE — SYNC ON ACTOR REGISTRATION: When registering a new actor, immediately read its current balance/state from the contract and assign the ghost variable. Never assume zero.\n\
+8. INVARIANTS MUST HOLD AT T=0: Every invariant must pass immediately after setUp(), before any handler call. Verify logic against the initial deployed state.\n\
+9. NO TAUTOLOGICAL INVARIANTS: Only write invariants that can actually fail — `uint256 >= 0` is always true, do not write it.\n\
+10. HANDLER IS THE CALLER: All target calls are FROM `address(this)`, not `msg.sender`. Key ghost mappings by `address(this)`. Use `vm.prank(actor)` to simulate users. Every state-changing call must update its ghost variable.\n\
+11. PREVENT DUPLICATE ACTORS: Guard addActor with `mapping(address => bool) public ghost_isActor`. At the top: `if (ghost_isActor[actor]) return; ghost_isActor[actor] = true;`. Declare addActor as `public` (not `external`) so handler functions can call it internally.\n\
+12. BOUND NEEDS UINT256: `bound(x, min, max)` requires `uint256`. Cast first: `uint8(bound(uint256(myUint8), 0, 255))`. Cap amounts at `type(uint128).max`, never `type(uint256).max`.\n\
+13. CAST BEFORE ASSERT: `assertEq`, `assertLe`, `assertGe`, `assertLt`, `assertGt` only have overloads for `uint256`, `int256`, `bool`, and `address` in Solidity 0.7.x. Always cast smaller types first: `assertEq(uint256(myUint24), 0, ...)`. Never call these with `uint24`, `uint128`, `int24`, etc. directly.\n\
+14. AVOID STACK-TOO-DEEP (Solidity 0.7.x): Each function body must declare at most 4 local variables. Split complex invariants into multiple small functions — one property each. Never destructure more than 2 tuple values at once.\n\
+15. COUNT TUPLE FIELDS EXACTLY: When destructuring a public mapping that returns a struct (e.g. `(a, b, c) = target.myMapping(key)`), count the exact number of fields in the struct definition in the source code and use exactly that many slots. Never guess — an off-by-one causes a compile error.\n\
+16. NO CHEAT CODES IN INVARIANTS: Invariant functions are `view` — never call `vm.prank`, `vm.warp`, `vm.roll`, `vm.deal`, or any other cheat code inside them. State setup belongs in handler functions, not invariant checks.\n\
+17. MOCK EXTERNAL DEPENDENCIES: If the target constructor takes an address it later calls, write a minimal mock in `handler.helperContracts` — a full `contract MockDep { ... }` string placed before the Handler in the same file. Scan the source for every call the target makes on that dependency and implement only those functions. Deploy in constructorBody: `MockDep mock = new MockDep(); target = new Target(address(mock), ...);`. Never import a mock from a separate file; never cast raw addresses to contract types.\n\
+18. ACTORS ARRAY IS THE ONLY SOURCE OF ADDRESSES: Every address the target interacts with MUST be deployed and pushed into `actors` in the constructor. In handler functions pick with `actors[seed % actors.length]`. Never derive addresses via keccak256 or uint160 casts — they are unregistered and every call using them reverts silently.\n\
 ".to_string()
     } else {
         "STRICT DESIGN RULES:\n\
 1. EXTERNAL CALLS ONLY: Handler functions MUST make external calls to the target contract \
-instance. Do NOT reimplement the target contract's internal logic inside the handler.\n\
+instance. Do NOT reimplement the target contract's internal logic inside the handler. \
+This means: (a) NEVER import or use any internal library from the target's source (e.g. FullMath, SafeMath, TickMath) — call the target's public getter/view functions instead; \
+(b) NEVER copy formulas or math from the target's source into the handler; \
+(c) If the target has a public view function like `getFee(pool)`, call `target.getFee(pool)` and store the result — do NOT re-derive the fee yourself.\n\
 2. NO HALLUCINATIONS: Do not call functions or read variables on the target contract that do \
 not explicitly exist in the provided source code.\n\
 3. NO REDUNDANCIES: Do not write meaningless checks like `require(myUint >= 0)`.\n\
@@ -188,6 +216,9 @@ not explicitly exist in the provided source code.\n\
 24. PREVENT DUPLICATE ACTORS: In addActor (or any actor-registration function), guard against re-registration. Declare `mapping(address => bool) public ghost_isActor;` in stateVars. At the top of addActor: `if (ghost_isActor[actor]) return; ghost_isActor[actor] = true;`. Duplicate actors cause invariants that sum over the array to double-count balances, producing false positives.\n\
 25. addActor MUST BE PUBLIC: Declare `addActor` as `public`, not `external`. If other handler functions call `addActor` internally (e.g. inside `transfer` to auto-register participants), `external` will cause a compile error. Always use `public`.\n\
 26. BOUND NEEDS UINT256: `bound(x, min, max)` requires `x` to be `uint256`. Never pass `address` or `msg.sender` directly — cast first: `bound(uint256(uint160(msg.sender)), 0, max)`.\n\
+27. AVOID STACK-TOO-DEEP (Solidity 0.7.x): Each function body must declare at most 4 local variables. Split complex invariants into multiple small functions — one property each. Never destructure more than 2 tuple values at once.\n\
+28. MOCK EXTERNAL DEPENDENCIES: If the target constructor accepts an address it later calls functions on, write a minimal mock using `handler.helperContracts`. Steps: (1) scan the source for every call the target makes on that dependency (e.g. `factory.swapFeeManager()`, `factory.isPool(pool)`); (2) write the full `contract MockDep { ... }` definition as a single string in `handler.helperContracts` — it is placed before the Handler in the same file, so no import is needed and no separate .sol file should be created; (3) add `MockDep public mock;` to stateVars; (4) in constructorBody: `mock = new MockDep(); target = new TargetContract(address(mock), ...);`. NEVER import a mock from a separate file. NEVER cast a raw address like `address(0x123)`, `address(this)`, or `address(handler)` to a contract type — those addresses hold no code and every call silently reverts.\n\
+29. ACTORS ARRAY IS THE ONLY SOURCE OF ADDRESSES: Any address the target contract will interact with (pools, users, tokens) MUST be deployed or registered in the constructor and immediately pushed into `actors`. In handler functions, always select addresses using `actors[seed % actors.length]` — NEVER generate addresses with `keccak256`, `address(uint160(...))`, or any other derivation. An address not in `actors` was never registered with mock dependencies and every target call using it will revert silently, making the entire fuzz run useless.\n\
 ".to_string()
     };
 
@@ -236,12 +267,13 @@ REQUIRED JSON STRUCTURE:\n\
         \"meta\": {{\n\
             \"contract\": \"{contract_name}\",\n\
             \"contractPath\": \"{contract_path}\",\n\
-            \"solidity\": \"{pragma}\",\n\
             \"generatedAt\": \"timestamp\"\n\
         }},\n\
+        // NOTE: meta.solidity is set automatically from the source file — do not include it.\n\
         \"handler\": {{\n\
             \"contractName\": \"{handler_name}\",\n\
             \"imports\": [\"array of import lines\"],\n\
+            \"helperContracts\": [\"optional — full contract definitions for mocks/helpers placed before the Handler in the same file; omit or leave empty if not needed\"],\n\
             \"stateVars\": [\"ALL state variable declarations including ghost vars, each a full Solidity line ending with ;\"],\n\
             \"ghostVars\": [\"names only of the ghost variables already declared in stateVars, e.g. ghost_balance\"],\n\
             \"constructorSignature\": \"signature_string\",\n\
@@ -318,6 +350,8 @@ pub fn build_round_n_prompt(request: &GenerationRequest, mode: &PromptMode) -> R
              - contract {test_name} is Test  — do not change this declaration or remove Test inheritance.\n\
              - To iterate actors in an invariant, use handler.actorsLength() and handler.actors(i) — never call handler.getActors().\n\
              - HANDLER IS THE CALLER: Ghost mappings must be keyed by address(this) not msg.sender. Every state-changing call must update its ghost variable.\n\
+             - EXTERNAL CALLS ONLY: Never import or use internal libraries from the target's source (e.g. FullMath, SafeMath, TickMath). Call the target's public getter functions instead — e.g. `target.getFee(pool)` not a reimplemented formula.\n\
+             - ACTORS ARRAY IS THE ONLY SOURCE OF ADDRESSES: handler functions must pick addresses with `actors[seed % actors.length]`. Never use keccak256 or address(uint160(...)) to derive addresses — they are never registered and every call using them reverts.\n\
              "
         )
     } else {
@@ -334,6 +368,9 @@ pub fn build_round_n_prompt(request: &GenerationRequest, mode: &PromptMode) -> R
              - IMPORT PATHS: Import dependencies from their own source file — never re-export them from the target contract file.\n\
              - HANDLER IS THE CALLER: Ghost mappings must be keyed by address(this) not msg.sender. Every state-changing call must update its ghost variable.\n\
              - ASSERT VS REQUIRE: assert(condition) takes one argument only. Use require(condition, \"msg\") for messages.\n\
+             - MOCK EXTERNAL DEPENDENCIES: If the target constructor takes an address it calls functions on, deploy a mock: `contract MockDep {{...}}`, then `mock = new MockDep(); target = new TargetContract(address(mock), ...);`. Never cast raw addresses like address(0x123) or address(this) to a contract type — they have no code.\n\
+             - EXTERNAL CALLS ONLY: Never import or use internal libraries from the target's source (e.g. FullMath, SafeMath, TickMath). Call the target's public getter functions instead — e.g. `target.getFee(pool)` not a reimplemented formula.\n\
+             - ACTORS ARRAY IS THE ONLY SOURCE OF ADDRESSES: handler functions must pick addresses with `actors[seed % actors.length]`. Never use keccak256 or address(uint160(...)) to derive addresses — they are never registered and every call using them reverts.\n\
              "
         )
     };
@@ -362,7 +399,7 @@ pub fn build_round_n_prompt(request: &GenerationRequest, mode: &PromptMode) -> R
          {patch_constraints}\
          \n\
          VALID bodies path prefixes:\n\
-         - meta.contract / meta.contractPath / meta.solidity / meta.generatedAt\n\
+         - meta.contract / meta.contractPath / meta.generatedAt  (meta.solidity is read-only, set automatically)\n\
          - handler.contractName / handler.imports / handler.stateVars / handler.ghostVars\n\
          - handler.constructorSignature / handler.constructorBody\n\
          - handler.functions.<functionName>\n\

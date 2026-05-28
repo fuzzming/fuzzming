@@ -7,7 +7,7 @@ use crate::shared::{
     ports::{ExecutorPort, LlmEnginePort, ReporterPort},
     requests::round_signal::RoundSignal,
     responses::{
-        llm_signal::LlmSignal,
+        llm_signal::{LlmSignal, LlmStatus},
         stage_event::{StageEvent, StageKind, StageStatus},
     },
 };
@@ -33,15 +33,33 @@ pub async fn run_round(
     info!(contract = %signal.contract_name, round = signal.round, "LLM started");
     let mut llm_signal = llm_engine.run(signal.clone()).await?;
 
+    // Emit the correct status so the terminal handler can close the spinner.
+    let llm_stage_status = if matches!(llm_signal.status, LlmStatus::Failed) {
+        StageStatus::Failed
+    } else {
+        StageStatus::Finished
+    };
     reporter
         .emit_stage_event(StageEvent {
             contract_name: Some(signal.contract_name.clone()),
             round: signal.round,
             stage: StageKind::Llm,
-            status: StageStatus::Finished,
+            status: llm_stage_status,
             fuzzer_summary: None,
         })
         .await?;
+
+    // LLM failure — skip the executor; the error will be injected into the next round.
+    if matches!(llm_signal.status, LlmStatus::Failed) {
+        let msg = format!(
+            "LLM call failed:\n{}",
+            llm_signal.reason.as_deref().unwrap_or("unknown error")
+        );
+        reporter
+            .emit_compile_error(signal.round, &msg)
+            .await?;
+        return Ok(llm_signal);
+    }
 
     let result = llm_signal.result.as_mut().ok_or_else(|| {
         anyhow!(
@@ -107,6 +125,7 @@ fn build_executor_input(
         } => Ok(ExecutorInput::Full {
             bodies: *bodies.clone(),
             fuzzer_config: FuzzerConfigArtifact::Foundry(*foundry_config.clone()),
+            source_pragma: signal.source_pragma.clone(),
         }),
 
         GenerationResponse::Patch {
@@ -130,6 +149,7 @@ fn build_executor_input(
                 bodies_updates: bodies_updates.clone(),
                 existing_config: FuzzerConfigArtifact::Foundry(existing_config),
                 config_updates: foundry_config_updates.clone(),
+                source_pragma: signal.source_pragma.clone(),
             })
         }
     }

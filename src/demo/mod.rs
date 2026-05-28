@@ -186,6 +186,7 @@ fn fake_bodies(contract_name: &str, contract_path: &str) -> BodiesJson {
         handler: HandlerBodies {
             contract_name: format!("{contract_name}Handler"),
             imports: vec![],
+            helper_contracts: vec![],
             state_vars: vec![],
             ghost_vars: vec![],
             constructor_signature: "constructor() {}".to_string(),
