@@ -205,6 +205,46 @@ The session ends on **full coverage or round exhaustion** — not on the first b
 
 ---
 
+## Limitations
+
+FuzzMing finds bugs by generating thousands of random call sequences and checking that properties hold after every step. This approach has known blind spots — classes of bug that invariant fuzzing structurally cannot detect regardless of how many rounds run.
+
+### 1. Bugs with no observable behavioral difference
+
+If a bug changes which internal code path executes but always produces the same output, no invariant can fail. There is no state where the buggy version and the correct version disagree on a return value or storage change.
+
+**Example:** A redundant pre-check that uses the wrong variable — but a try/catch immediately below it handles every failure case anyway. Both paths return `0`. FuzzMing cannot write a rule that fails here because the contract's visible behavior is identical with or without the bug. Detecting this requires static analysis: a tool that reads code structure and flags "these two consecutive blocks always produce the same result."
+
+### 2. Bugs in code that never executes during testing
+
+Some code paths are gated on `tx.origin` — the original wallet that started a transaction. In Foundry invariant tests, `tx.origin` is always the test contract's own address, not a real user wallet. If the buggy code only runs when a specific registered address is `tx.origin`, the fuzzer will never trigger it: the test contract is never in the relevant mapping, so the condition is always false, and the code block is skipped on every single call.
+
+**Example:** A discount calculation that rounds in the wrong direction — but only applies when `tx.origin` is a registered discounted address. The fuzzer ran thousands of calls and the discount block never executed once. The fix is to call the target from inside a handler using `vm.prank(addr, addr)` to set both `msg.sender` and `tx.origin` to the same discounted address, then store the result in a ghost variable for the invariant to check.
+
+### 3. Bugs that require chain-specific knowledge
+
+FuzzMing reads the contract and uses its constants as-is. If a hardcoded constant is the wrong value for the chain the contract will actually be deployed on, FuzzMing has no way to know. That knowledge lives outside the contract entirely.
+
+**Example:** A constant set to `2` with a comment saying "must equal the block time." The contract is internally consistent — `2` is used the same way everywhere. But the target chain produces a block every 0.45 seconds, not every 2 seconds, making the constant 4× too large. No amount of fuzzing the contract reveals this. The fix is a `--chain` flag that loads known parameters (block time, gas limits, oracle patterns) for the target chain, so the analysis stage can compare hardcoded constants against real-world values.
+
+### 4. Bugs that require two adversarial actors
+
+FuzzMing's invariant testing uses a single actor calling functions randomly. It has no model of one address deliberately trying to harm another. Attacks that require coordinated multi-transaction sequencing — where an attacker moves state before a victim's transaction to cause the victim to pay more or receive less — are invisible to a single-actor model regardless of how many rounds run.
+
+**Example:** A fee formula that uses the live spot price instead of a time-averaged price. An attacker can execute a large swap to push the spot price far from the average, inflating the fee charged to any swap that follows in the same block. The attacker loses money — it is a pure griefing attack. Discovering it requires two actors: one that moves state adversarially, and one that checks whether the victim paid above a fair threshold. This is closer to game-theoretic simulation than property testing and would require a dedicated multi-actor adversarial mode.
+
+### Summary
+
+| Limitation | What would catch it |
+|---|---|
+| Bug produces no observable difference | Static analysis — code linter or formal verifier |
+| Buggy code never runs during testing | `vm.prank(addr, addr)` in handlers + ghost variables |
+| Wrong constant for a specific chain | `--chain` flag with known chain parameters |
+| Attack requires two adversarial actors | Multi-actor adversarial simulation mode |
+
+These limitations are documented in detail in the [DynamicSwapFeeModule case study](docs/case-study-dynamicswapfeemodule.md), which compares FuzzMing against a professional audit on the same contract.
+
+---
 
 ## Logging
 
