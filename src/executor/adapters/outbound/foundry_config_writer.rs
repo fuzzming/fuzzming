@@ -50,6 +50,7 @@ const MAX_DEPTH: u32 = 500;
 fn build_fuzzming_section(config: &FoundryConfig) -> String {
     [
         FUZZMING_HEADER.to_string(),
+        "test             = \"test/fuzzming\"".to_string(),
         String::new(),
         "[profile.fuzzming.invariant]".to_string(),
         format!("runs             = {}", config.runs.min(MAX_RUNS)),

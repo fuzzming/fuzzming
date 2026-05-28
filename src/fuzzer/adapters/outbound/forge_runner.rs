@@ -51,6 +51,25 @@ impl TestRunnerPort for ForgeRunner {
         })
     }
 
+    async fn run_build(&self, profile_name: &str) -> Result<RunnerResult> {
+        let output = tokio::process::Command::new("forge")
+            .args(["build"])
+            .env("FOUNDRY_PROFILE", profile_name)
+            .env("PATH", forge_path())
+            .current_dir(&self.working_dir)
+            .output()
+            .await
+            .context(
+                "failed to spawn `forge build` — is Foundry installed and `forge` on your PATH?",
+            )?;
+
+        Ok(RunnerResult {
+            exit_code: output.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })
+    }
+
     async fn run_coverage(&self, profile_name: &str) -> Result<CoverageResult> {
         let output = tokio::process::Command::new("forge")
             .args(["coverage", "--report", "lcov"])
