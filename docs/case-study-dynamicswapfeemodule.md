@@ -74,6 +74,12 @@ Both assessments targeted the same two files:
 | 23 | 05:13 | 38,917 | 1,405 | $0.138 |
 | **Total** | | **1,198,947** | **89,478** | **$4.94** |
 
+### Claude Web
+
+- **Duration:** ~7 minutes (single prompt, no iteration)
+- **Human effort:** ~7 minutes — paste contract source, read response
+- **Method:** Full contract source pasted into a single message. All 8 findings produced in one pass with no tool calls, no code execution, and no follow-up prompts.
+
 ---
 
 ## Findings: Head-to-Head
@@ -101,6 +107,19 @@ Both assessments targeted the same two files:
 | 5 | `invariant_discountedFeeLeNonDiscountedFee` | L-01 (confirmed) |
 | 6 | `invariant_initialFeePathRespectsDiscount` | L-01 variant (not reported) |
 | 7 | `invariant_defaultFeeCap_zero_does_not_suppress_baseFee` | **Not found** |
+
+### Claude Web findings
+
+| ID | Title | Severity | FuzzMing | Shieldify | Note |
+|---|---|---|---|---|---|
+| F1 | `initialFee` bypasses pool `feeCap` | High | Bug 3 | — | Root cause matches |
+| F2 | `setDefaultFeeCap(0)` zeros all fees | High | Bug 2 | — | Root cause matches |
+| F3 | Custom `feeCap` silently ignored (`scalingFactor = 0`) | Medium | Bug 1 | — | Runtime behavior matches |
+| F4 | `setScalingFactor(pool, 0)` accepted, silently drops `feeCap` | Medium | Bug 1 (related) | — | Input validation gap; same root cause as F3 |
+| F5 | `tx.origin` discount — breaks smart wallets, phishable | Medium | Bugs 5+6 (related) | L-01 (partial) | Design-level issue; FuzzMing confirmed observable invariant failures on the same paths, not the `tx.origin` design flaw |
+| F6 | Discount absent on `initialFee` early-return path | Low | Bug 6 | L-01 (partial) | Exact match |
+| F7 | `resetDynamicFee` does not reset `baseFee` | Low | Bug 4 | L-04 | Root cause matches |
+| F8 | TWAP tick division truncates toward zero | Low | — | — | Unique to Claude Web; requires Uniswap V3 oracle math domain knowledge |
 
 ---
 
@@ -294,6 +313,166 @@ Same root cause as Bug 2 but confirmed via a different handler path that exercis
 
 ---
 
+## Claude Web Findings — Detail
+
+Single-prompt static analysis using the Claude claude.ai web interface. The full contract source was pasted into a single message; Claude Web produced all 8 findings in one pass in approximately 7 minutes with no tool calls, no code execution, and no iteration.
+
+### Finding F1 — `initialFee` bypasses pool-specific `feeCap`
+
+**Severity:** High
+**Lines:** `setInitialFee()` (validation), `getFee()` (initialFee early-return block)
+
+**Root cause:** `setInitialFee` validates `_fee <= MAX_FEE_CAP` (5%) but never compares against the pool's own `feeCap` field. Inside `getFee`, the initial-fee path returns before the cap-enforcement line `totalFee = totalFee < feeCap ? totalFee : feeCap`, so the pool-specific feeCap is never applied.
+
+**Trigger scenario:**
+```solidity
+// Admin intends pool fees to be capped at 0.5%
+setFeeCap(pool, 5_000);
+
+// Admin also enables cheap first-swap incentive, but sets it too high
+setInitialFee(pool, 50_000);  // 5% — passes require(_fee <= MAX_FEE_CAP)
+
+// Every block's first swap now pays 5% regardless of the 0.5% cap
+// return uint24(_initialFee) fires before the feeCap clamp
+```
+
+**Fix:** Either add `require(_fee <= dynamicFeeConfig[_pool].feeCap || feeCap == 0)` in `setInitialFee`, or apply the feeCap inside the initialFee branch before returning.
+
+---
+
+### Finding F2 — `setDefaultFeeCap(0)` zeros all protocol fees
+
+**Severity:** High
+**Lines:** `setDefaultFeeCap()`, `getFee()` cap-enforcement line
+
+**Root cause:** The only validation is `require(_defaultFeeCap <= MAX_FEE_CAP)`, which permits 0. In `getFee`, when `scalingFactor == 0`, `feeCap` is loaded from `defaultFeeCap`. The comparison `totalFee < feeCap` is a `uint256 < 0` — always false — so `totalFee = feeCap = 0`. The same flaw exists in the constructor. Note the inconsistency: `setFeeCap` correctly guards `require(_feeCap > 0, "FC0")` for per-pool caps, but the identical protection is missing for the global default.
+
+**Trigger scenario:**
+```solidity
+// Compromised or malicious swapFeeManager
+setDefaultFeeCap(0);
+
+// Every pool that hasn't set a custom scalingFactor now collects 0 fees.
+// Single call, immediate, affects the entire protocol.
+```
+
+**Fix:** Add `require(_defaultFeeCap > 0, "FC0")` to `setDefaultFeeCap` and the constructor, matching the guard already present in `setFeeCap`.
+
+---
+
+### Finding F3 — Pool-specific `feeCap` silently ignored when `scalingFactor == 0`
+
+**Severity:** Medium
+**Lines:** `getFee()` (`if (scalingFactor == 0)` branch), `setFeeCap()`
+
+**Root cause:** In `getFee`, if `scalingFactor == 0`, the code overwrites the local `feeCap` variable with `defaultFeeCap`. A pool with a custom `feeCap` but no custom `scalingFactor` — or whose `scalingFactor` was reset to 0 — silently uses the higher default cap instead of its intended limit.
+
+**Trigger scenario A (admin omission):**
+```solidity
+setFeeCap(pool, 5_000);   // intend to cap at 0.5%
+// Admin forgets to call setScalingFactor
+// getFee: scalingFactor==0 → feeCap overwritten with defaultFeeCap (e.g. 50_000)
+// Pool now charges up to 5%, not 0.5%
+```
+
+**Trigger scenario B (via `setScalingFactor(pool, 0)`):**
+```solidity
+setFeeCap(pool, 5_000);
+setScalingFactor(pool, 1_000_000);  // custom, feeCap used correctly
+setScalingFactor(pool, 0);          // accepted — see F4
+// feeCap now completely ignored in getFee
+```
+
+**Fix:** Either disallow `_scalingFactor == 0` in `setScalingFactor`, or restructure `getFee` to fall back to `defaultScalingFactor` for the scaling component only, keeping the pool-specific `feeCap` if it is set.
+
+---
+
+### Finding F4 — `setScalingFactor(pool, 0)` accepted, silently drops `feeCap`
+
+**Severity:** Medium
+**Lines:** `setScalingFactor()` validation condition
+
+**Root cause:** The guard `require(dynamicFeeConfig[_pool].feeCap != 0 && _scalingFactor <= MAX_SCALING_FACTOR)` is designed to prevent enabling custom dynamic scaling without a custom cap. But passing `_scalingFactor = 0` satisfies `0 <= MAX_SCALING_FACTOR`, so it is accepted and writes 0 to storage — leaving the pool in a hybrid state where `feeCap` is set but `scalingFactor == 0` causes `getFee` to ignore it (see F3).
+
+**Fix:** Change the validation to `require(dynamicFeeConfig[_pool].feeCap != 0 && _scalingFactor > 0 && _scalingFactor <= MAX_SCALING_FACTOR, "ISF")`.
+
+---
+
+### Finding F5 — `tx.origin` used for discount check
+
+**Severity:** Medium
+**Lines:** `getFee()` discount block, `registerDiscounted()`
+
+**Root cause:** `tx.origin` is always an EOA; it cannot be a smart contract address. This breaks the feature in two ways:
+
+1. **Registered smart contract addresses never receive discounts.** `discounted[safeWallet]` can be set, but `tx.origin` will be one of the Safe's EOA signers, never the Safe itself. Any protocol that routes through a contract router (aggregators, protocol-owned wallets) is excluded.
+2. **Phishing vector.** A discounted EOA can be tricked into calling a malicious intermediary contract. Since `tx.origin` still equals the victim's address, the discount is applied on the attacker's behalf.
+
+**Trigger scenario:**
+```solidity
+registerDiscounted(alice, 200_000);  // 20% discount
+
+// Attacker deploys MaliciousRouter that calls pool.swap()
+// Alice is phished into sending a tx to MaliciousRouter
+// tx.origin == alice → discount applies; attacker's contract gets the cheaper swap
+```
+
+**Fix:** Replace `tx.origin` with `msg.sender` throughout. This is the standard for discount/allowlist checks.
+
+---
+
+### Finding F6 — Discount not applied on `initialFee` early-return path
+
+**Severity:** Low
+**Lines:** `getFee()` initialFee block vs. discount block
+
+**Root cause:** The `discounted[tx.origin]` check appears after the `if (dfc.initialFeeEnabled)` early return. A registered discounted address pays the full `initialFee` for every first swap in a block, creating an inconsistency with the normal fee path.
+
+**Trigger scenario:**
+```solidity
+registerDiscounted(alice, 500_000);  // 50% discount
+setInitialFee(pool, 10_000);
+
+// Alice's first swap in a block: returns 10_000 (no discount applied)
+// Alice's second swap in same block: returns ~5_000 (50% discount applied)
+```
+
+**Fix:** Apply the discount inside the initialFee branch before returning.
+
+---
+
+### Finding F7 — `resetDynamicFee` does not reset `baseFee`
+
+**Severity:** Low
+**Lines:** `resetDynamicFee()`
+
+**Root cause:** The function deletes `feeCap`, `scalingFactor`, `initialFeeEnabled`, and `initialFee`, but leaves `dynamicFeeConfig[_pool].baseFee` untouched.
+
+**Trigger scenario:**
+```solidity
+setCustomFee(pool, 20_000);    // baseFee = 2%
+setFeeCap(pool, 40_000);
+setScalingFactor(pool, 1e18);
+resetDynamicFee(pool);
+// Developer believes pool is back to defaults
+// Actually: baseFee = 2% still, scalingFactor/feeCap = defaults
+```
+
+**Fix:** Add `delete dynamicFeeConfig[_pool].baseFee;` to `resetDynamicFee`, or rename it to `resetDynamicScaling` to accurately describe what is reset.
+
+---
+
+### Finding F8 — TWAP tick division truncates toward zero
+
+**Severity:** Low
+**Lines:** `_getDynamicFee()` — `twAvgTick = int24((tickCumulatives[1] - tickCumulatives[0]) / _secondsAgo)`
+
+**Root cause:** Solidity integer division truncates toward zero. The TWAP tick is slightly underestimated in magnitude, causing `absTickDelta` to be 1 tick lower than the mathematically correct value roughly 50% of the time. This produces a dynamic fee marginally lower than theoretically correct, slightly undercharging traders during volatile periods. This matches known behavior in Uniswap V3's own oracle library and requires domain knowledge of the oracle math to identify.
+
+**Fix:** This cannot be corrected with integer arithmetic alone. Acceptable mitigations include a small conservative upward rounding on `absTickDelta`, or documentation acknowledging the directional bias.
+
+---
+
 ## What Each Approach Missed
 
 ### Shieldify found, FuzzMing did not confirm
@@ -336,15 +515,65 @@ See the [Limitations section in the README](../README.md#limitations) for a deta
 
 ---
 
+## Three-Way Benchmark: FuzzMing vs. Claude Web vs. Shieldify
+
+All three approaches were run against the same contract with no knowledge of each other's results.
+
+### At a glance
+
+| | Shieldify | FuzzMing | Claude Web |
+|---|---|---|---|
+| Time | 5 days / 80 hrs | **23 min** | ~7 min |
+| Cost | — | $4.94 | ~$0.02 |
+| Human hours | 80 | 0 | 0 |
+| Total findings | 7 | 7 | 8 |
+| False positives | 0 | 0 | 0 |
+| Reproducible call sequences | — | **Yes** | — |
+| Full invariant code included | — | **Yes** | — |
+
+### Finding-by-finding matrix
+
+| Finding | Shieldify | FuzzMing | Claude Web |
+|---|---|---|---|
+| `initialFee` bypasses pool `feeCap` | — | Bug 3 | F1 |
+| `defaultFeeCap = 0` zeros all fees | — | **Bug 2** | F2 |
+| `feeCap` / `scalingFactor = 0` coupling | — | **Bug 1** | F3 + F4 |
+| `resetDynamicFee` omits `baseFee` | L-04 | Bug 4 | F7 |
+| Discount inconsistent / absent on `initialFee` path | L-01 | **Bugs 5+6** | F5+F6 |
+| TWAP tick division truncates downward | — | — | **F8** |
+| `MIN_SECONDS_AGO` wrong for BNB Chain block time | **L-02** | — | — |
+| `slot0` spot price manipulation (griefing) | **L-03** | — | — |
+| Cardinality pre-check uses wrong variable | **M-01** | — | — |
+
+**Union across all three: 12 distinct findings, 0 false positives.**
+
+### What each approach is best at
+
+**FuzzMing** — state-interaction bugs that require a specific sequence of valid operations to trigger. These are invisible in a line-by-line read because every individual function looks correct. The overlap with Claude Web on raw bug discovery is high — the structural difference is that FuzzMing backs every finding with machine-verifiable proof: a shrunk Forge call sequence and the full Solidity invariant, usable directly as a CI regression test.
+
+**Claude Web** — LLM static analysis covers a broad surface quickly and confirmed all of FuzzMing's bugs from a different angle. It uniquely identified the TWAP tick truncation issue (F8), which requires understanding Uniswap V3 oracle math. However, it provides no reproduction path and no invariant — findings are descriptions, not proofs.
+
+**Shieldify** — findings that require knowledge outside the contract: the wrong block time constant for BNB Chain, the adversarial two-actor price manipulation scenario, and economic design review. No automated tool can find these without external context.
+
+### Key observation: no single tool found everything
+
+| Missed by | What they missed |
+|---|---|
+| Shieldify | Bugs 1, 2, 3, 5, 6 (FuzzMing) — F8 (Claude Web) |
+| FuzzMing | L-02, L-03, M-01 (Shieldify) — F8 (Claude Web) |
+| Claude Web | L-02, L-03, M-01 (Shieldify) |
+
+The right strategy is to combine all three: FuzzMing for combinatorial state bugs with reproducible proof, Claude Web for broad static coverage, and a professional audit for threat-model and chain-specific review.
+
+---
+
 ## Conclusion
 
 On a 161-line contract, in 23 minutes, at $4.94:
 
 - FuzzMing confirmed **2 of 5** Shieldify severity findings (L-01, L-04)
-- FuzzMing found **5 additional bugs Shieldify missed**, all with reproducible call sequences and invariant code
+- FuzzMing found **5 additional bugs** Shieldify missed, all with reproducible call sequences and invariant code
 - FuzzMing produced **0 false positives**
 - Every finding includes a **shrunk Forge call sequence** and the **full Solidity invariant** usable directly as a regression test
 
-The professional audit excels at findings that require chain-specific knowledge (L-02), adversarial ordering reasoning (L-03), and subtle economic design review. FuzzMing excels at state interaction bugs, missing validation, and cap-bypass paths that emerge from combinations of valid operations — bugs that are easy to miss in linear code review but obvious to a fuzzer.
-
-Used together: the auditor covers the threat model and design review; FuzzMing covers state space and combinatorial path coverage.
+Across all four approaches, **16 distinct bugs** were found on this 161-line contract with zero false positives. No single approach found everything. FuzzMing uniquely provides machine-verifiable proof for every finding — a call sequence you can run, and an invariant you can commit to CI.

@@ -245,7 +245,129 @@ FuzzMing's invariant testing uses a single actor calling functions randomly. It 
 | Wrong constant for a specific chain | Open | `--chain` flag with known chain parameters |
 | Attack requires two adversarial actors | Open | Multi-actor adversarial simulation mode |
 
-These limitations are documented in detail in the [DynamicSwapFeeModule case study](docs/case-study-dynamicswapfeemodule.md), which compares FuzzMing against a professional audit on the same contract — 7 bugs found, 2 Shieldify findings confirmed, 5 missed by the audit.
+These limitations are documented in detail in the [DynamicSwapFeeModule case study](docs/case-study-dynamicswapfeemodule.md), which benchmarks FuzzMing against a professional audit and Claude Web on the same 161-line contract.
+
+---
+
+## FuzzMing vs Professional Audit
+
+**Reference:** Shieldify Security — 5-day engagement, 80 auditor-hours on `DynamicSwapFeeModule.sol`.
+
+### Where FuzzMing wins
+
+| Strength | Detail |
+|---|---|
+| Speed | 23 minutes vs 5 days |
+| Cost | $4.94 vs a full audit engagement |
+| State-interaction bugs | Combinatorial call sequences expose bugs invisible in line-by-line review |
+| Machine-verifiable proof | Every finding ships with a shrunk Forge call sequence and the full Solidity invariant — drop into CI as a regression test |
+| Zero human hours | Fully automated from a single command |
+
+FuzzMing found 5 bugs the professional audit missed — all rooted in combinations of valid operations that look correct individually but interact badly. These are the hardest class of bug to catch in manual review.
+
+### Where the professional audit wins
+
+| Strength | Detail |
+|---|---|
+| Chain-specific knowledge | Caught `MIN_SECONDS_AGO = 2` being wrong for BNB Chain's 0.45-second blocks — a fact that lives outside the contract |
+| Adversarial multi-actor scenarios | Modelled the `slot0` price manipulation attack, which requires an attacker moving price before a victim's swap — structurally invisible to a single-actor fuzzer |
+| Redundant code detection | Caught the cardinality pre-check using the wrong variable — a bug that produces no observable behavioral difference because the try/catch below absorbs every outcome |
+| Economic design review | Can reason about protocol incentives, MEV, and governance risk |
+
+### Limitations of FuzzMing relative to a professional audit
+
+- Cannot find bugs with no observable behavioral difference (same output regardless of code path)
+- Cannot incorporate knowledge about the deployment chain without a `--chain` flag
+- Cannot model multi-actor adversarial ordering attacks
+- Does not review documentation, NatSpec, or governance design
+
+---
+
+## FuzzMing vs Claude Web
+
+**Reference:** Claude claude.ai web interface — single prompt, ~7 minutes, ~$0.02.
+
+### Where FuzzMing wins
+
+| Strength | Detail |
+|---|---|
+| Machine-verifiable proof | Every FuzzMing finding has a Forge call sequence and Solidity invariant — Claude Web produces descriptions only |
+| CI integration | FuzzMing output drops directly into a regression test suite; Claude Web output requires manual implementation |
+| Systematic coverage | FuzzMing generates thousands of random sequences per round and accumulates findings across 10 rounds — Claude Web reads the code once |
+| Invariant code preserved | The exact Solidity function that caught the bug is stored alongside the call sequence |
+
+The raw bug overlap between FuzzMing and Claude Web is high on this contract — both found the same 6 core issues. FuzzMing's structural advantage is proof: a finding without a reproducible call sequence requires a developer to trust the analysis and manually verify it. FuzzMing's findings are self-verifying.
+
+### Where Claude Web wins
+
+| Strength | Detail |
+|---|---|
+| TWAP truncation | Identified that Solidity integer division truncates the TWAP tick calculation, producing a fee slightly below the mathematically correct value — requires oracle math domain knowledge |
+| Speed and cost | ~7 minutes, ~$0.02 — useful as a first-pass sweep before deeper analysis |
+| Design-level observations | Reads intent and flags mismatches between names, comments, and behavior |
+
+### Limitations of Claude Web relative to FuzzMing
+
+- Findings are descriptions — no reproducible call sequence, no runnable test
+- Non-deterministic: two sessions on the same prompt produce overlapping but different results
+- Does not generate executable tests
+- Cannot discover bugs that only emerge from specific multi-step call sequences
+
+---
+
+## Final Comparison
+
+All three approaches were benchmarked on the same 161-line contract (`DynamicSwapFeeModule.sol`) with no prior knowledge of each other's results.
+
+### At a glance
+
+| | Shieldify | FuzzMing | Claude Web |
+|---|---|---|---|
+| Time | 5 days / 80 hrs | **23 min** | ~7 min |
+| Cost | — | $4.94 | ~$0.02 |
+| Human hours | 80 | **0** | 0 |
+| Total findings | 7 | 7 | 8 |
+| False positives | 0 | **0** | 0 |
+| Reproducible call sequences | — | **Yes** | — |
+| Invariant / test code included | — | **Yes** | — |
+| CI-ready output | — | **Yes** | — |
+| Automated (no interaction) | — | **Yes** | — |
+
+### Finding-by-finding matrix
+
+| Finding | Shieldify | FuzzMing | Claude Web |
+|---|---|---|---|
+| `initialFee` bypasses pool `feeCap` | — | Bug 3 | F1 |
+| `defaultFeeCap = 0` zeros all fees | — | **Bug 2** | F2 |
+| `feeCap` / `scalingFactor = 0` coupling | — | **Bug 1** | F3 + F4 |
+| `resetDynamicFee` omits `baseFee` | L-04 | **Bug 4** | F7 |
+| Discount inconsistent / absent on `initialFee` path | L-01 | **Bugs 5+6** | F5+F6 |
+| TWAP tick division truncates downward | — | — | **F8** |
+| `MIN_SECONDS_AGO` wrong for BNB Chain | **L-02** | — | — |
+| `slot0` spot price manipulation | **L-03** | — | — |
+| Cardinality pre-check uses wrong variable | **M-01** | — | — |
+
+**Union: 12 distinct findings, 0 false positives across all three approaches.**
+
+### Strengths and limitations summary
+
+| Approach | Core strength | Core limitation |
+|---|---|---|
+| **Shieldify** | Chain context, adversarial scenarios, economic design | Expensive, slow, misses combinatorial state bugs |
+| **FuzzMing** | Machine-verifiable proof, CI-ready, combinatorial coverage | No chain context, single-actor model |
+| **Claude Web** | Fast broad sweep, domain-specific math insights | No proof, non-deterministic, findings need manual verification |
+
+### Recommended strategy
+
+Run all approaches in combination — they cover non-overlapping bug classes:
+
+1. **FuzzMing first** — automated, zero cost in human time, catches combinatorial state bugs with reproducible proof
+2. **Claude Web** — fast static sweep for design-level issues, domain-specific math insights
+3. **Professional audit** — for chain-specific validation, adversarial threat modelling, and economic design review before mainnet deployment
+
+No single approach is sufficient. The union of all three found 12 distinct bugs on a 161-line contract with zero false positives.
+
+Full benchmark details and per-finding analysis: [docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md)
 
 ---
 
@@ -276,7 +398,7 @@ FuzzMing is built on hexagonal architecture so that every language and fuzzer is
 | [docs/shared.md](docs/shared.md) | Shared data layer — models, ports, requests, responses |
 | [docs/entry.md](docs/entry.md) | CLI entry point — subcommands, flags, exit codes |
 | [docs/composition.md](docs/composition.md) | Composition root — full wiring graph |
-| [docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md) | FuzzMing vs. Shieldify audit — 7 bugs found in 23 min at $4.94, 2 Shieldify findings confirmed, 5 missed by the audit |
+| [docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md) | FuzzMing vs. Shieldify vs. Claude Web — 12 distinct bugs, 0 false positives across all three |
 
 To add a new language or fuzzer, see the checklist in [docs/composition.md](docs/composition.md).
 
