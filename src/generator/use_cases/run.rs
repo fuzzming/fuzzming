@@ -50,6 +50,8 @@ impl GeneratorRunPort for GeneratorRunUseCase {
                     status: LlmStatus::Failed,
                     result: None,
                     reason: Some(e.to_string()),
+                    stripped_invariant_codes: std::collections::HashMap::new(),
+                    final_bodies: None,
                 });
             }
         };
@@ -58,6 +60,8 @@ impl GeneratorRunPort for GeneratorRunUseCase {
             status: LlmStatus::Done,
             result: Some(response),
             reason: None,
+            stripped_invariant_codes: std::collections::HashMap::new(),
+                    final_bodies: None,
         })
     }
 }
