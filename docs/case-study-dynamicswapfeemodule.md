@@ -71,15 +71,15 @@ Both assessments targeted the same two files:
 
 ### Shieldify findings
 
-| ID | Title | Severity | Status | FuzzMing |
-|---|---|---|---|---|
-| M-01 | Cardinality pre-check uses wrong variable and is redundant | Medium | Fixed | Not confirmed |
-| L-01 | Discount rounds up in favour of user | Low | Acknowledged | Not confirmed |
-| L-02 | `MIN_SECONDS_AGO` hardcoded wrong for BNB Chain block time | Low | Acknowledged | Not found |
-| L-03 | `currentTick` from `slot0` manipulable via spot price | Low | Acknowledged | Not confirmed |
-| L-04 | `resetDynamicFee` does not reset `baseFee` | Low | Acknowledged | **Confirmed — Bug 4** |
-| I-01 | Wrong NatSpec in `calculateGrowth()` | Info | Fixed | Out of scope |
-| I-02 | `MINIMUM_LIQUIDITY` check blocks small depositors | Info | Acknowledged | Out of scope |
+| ID | Title | Severity | Status | FuzzMing | Note |
+|---|---|---|---|---|---|
+| M-01 | Cardinality pre-check uses wrong variable and is redundant | Medium | Fixed | Identified, not confirmed | AI analysis flagged it; no invariant fired — the try/catch already handles it so there is no observable violation |
+| L-01 | Discount rounds up in favour of user | Low | Acknowledged | Identified, not confirmed | AI analysis named the exact bug; invariant written but never fired — `tx.origin` in Foundry view invariants is always the test contract, not the discounted address |
+| L-02 | `MIN_SECONDS_AGO` hardcoded wrong for BNB Chain block time | Low | Acknowledged | Not found | FuzzMing has no knowledge of BNB Chain's block time — it treated `MIN_SECONDS_AGO = 2` as correct by copying the contract constant |
+| L-03 | `currentTick` from `slot0` manipulable via spot price | Low | Acknowledged | Not found | Requires adversarial multi-transaction ordering (attacker moves price before victim swap); invariant fuzzing with a single actor cannot model this |
+| L-04 | `resetDynamicFee` does not reset `baseFee` | Low | Acknowledged | **Confirmed — Bug 4** | Forge call sequence captured |
+| I-01 | Wrong NatSpec in `calculateGrowth()` | Info | Fixed | Out of scope | Different contract |
+| I-02 | `MINIMUM_LIQUIDITY` check blocks small depositors | Info | Acknowledged | Out of scope | Different contract |
 
 ### FuzzMing findings (with call sequences)
 
