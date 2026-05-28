@@ -141,6 +141,9 @@ fn is_transient_error(msg: &str) -> bool {
         || lower.contains("overloaded")
         || lower.contains("connection")
         || lower.contains("timed out")
+        || lower.contains("serialization error")
+        || lower.contains("missing field")
+        || lower.contains("internal server error")
 }
 
 impl LiteLlmClient {
