@@ -138,7 +138,18 @@ async fn generate_invariant_test(
     }
     out.push(String::new());
 
-    for import in &t.imports {
+    // Merge handler imports into the invariant test so that any interface the
+    // handler imports (e.g. ICLPool) is also available in the invariant test
+    // file, which is a separate compilation unit and does not inherit imports
+    // transitively from the handler.
+    let mut merged_imports = t.imports.clone();
+    for handler_import in &bodies.handler.imports {
+        if !merged_imports.contains(handler_import) {
+            merged_imports.push(handler_import.clone());
+        }
+    }
+
+    for import in &merged_imports {
         out.push(import.clone());
     }
     out.push(String::new());
