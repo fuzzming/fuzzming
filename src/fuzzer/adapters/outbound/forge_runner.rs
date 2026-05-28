@@ -149,6 +149,7 @@ impl TestRunnerPort for ForgeRunner {
                         bugs.push(BugInfo {
                             invariant_name: name,
                             call_sequence: sequence_lines.join("\n"),
+                            invariant_code: String::new(),
                         });
                     }
                 }

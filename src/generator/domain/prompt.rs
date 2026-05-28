@@ -244,6 +244,7 @@ mod tests {
         let bug = BugInfo {
             invariant_name: "invariant_solvency".to_string(),
             call_sequence: "handler_deposit()".to_string(),
+            invariant_code: String::new(),
         };
         let assembled = Prompt::new(3, "contract C {}".to_string(), None, None, vec![bug], None)
             .into_assembled();

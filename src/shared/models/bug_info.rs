@@ -4,4 +4,6 @@ use serde::{Deserialize, Serialize};
 pub struct BugInfo {
     pub invariant_name: String,
     pub call_sequence: String,
+    #[serde(default)]
+    pub invariant_code: String,
 }

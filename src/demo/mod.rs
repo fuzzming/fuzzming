@@ -48,6 +48,8 @@ impl LlmEnginePort for MockLlmEngine {
                 },
             }),
             reason: None,
+            stripped_invariant_codes: std::collections::HashMap::new(),
+            final_bodies: None,
         })
     }
 }
@@ -84,6 +86,7 @@ fn scripted_report(contract_name: &str, round: u32) -> FuzzReport {
             call_sequence:
                 "sender=0x1111...  calldata=withdraw(uint256) args=[1000000000000000000 [1e18]]"
                     .to_string(),
+            invariant_code: String::new(),
         }]),
         ("TokenVault", 2) => bug_report(vec![BugInfo {
             invariant_name: "invariant_noReentrancy".to_string(),
@@ -92,18 +95,21 @@ fn scripted_report(contract_name: &str, round: u32) -> FuzzReport {
                 "sender=0x2222...  calldata=withdraw(uint256) args=[500000000000000000 [5e17]]"
             )
             .to_string(),
+            invariant_code: String::new(),
         }]),
         ("TokenVault", _) => bug_report(vec![BugInfo {
             invariant_name: "invariant_solvency".to_string(),
             call_sequence:
                 "sender=0x3333...  calldata=ownerWithdraw(uint256) args=[9999999999 [9.999e9]]"
                     .to_string(),
+            invariant_code: String::new(),
         }]),
         ("StakingPool", 1) => pass_report("StakingPool"),
         ("StakingPool", _) => bug_report(vec![BugInfo {
             invariant_name: "invariant_rewardRateAccessControl".to_string(),
             call_sequence: "sender=0x4444...  calldata=setRewardRate(uint256) args=[99999]"
                 .to_string(),
+            invariant_code: String::new(),
         }]),
         ("PriceOracle", _) => pass_report("PriceOracle"),
         _ => pass_report(contract_name),
