@@ -1,9 +1,10 @@
 use anyhow::{anyhow, Result};
 use tracing::info;
 
+use crate::executor::use_cases::apply_patch::apply_patches;
 use crate::generator::domain::generation_response::GenerationResponse;
 use crate::shared::{
-    models::{ExecutorInput, FuzzerConfigArtifact},
+    models::{BodiesJson, ExecutorInput, FuzzerConfigArtifact},
     ports::{ExecutorPort, LlmEnginePort, ReporterPort},
     requests::round_signal::RoundSignal,
     responses::{
@@ -67,23 +68,40 @@ pub async fn run_round(
     })?;
 
     // Strip confirmed-broken invariants to avoid reruns and stale failure signals.
+    // The invariant code is saved into llm_signal.stripped_invariant_codes so the
+    // session can backfill BugInfo.invariant_code in state.found_bugs.
     if let GenerationResponse::Full { ref mut bodies, .. } = result.response {
-        let stripped: Vec<&str> = signal
-            .confirmed_bugs
-            .iter()
-            .filter(|b| {
-                bodies
-                    .invariant_test
-                    .invariants
-                    .shift_remove(&b.invariant_name)
-                    .is_some()
-            })
-            .map(|b| b.invariant_name.as_str())
-            .collect();
+        let mut stripped: Vec<String> = Vec::new();
+        for bug in &signal.confirmed_bugs {
+            if let Some(code) = bodies
+                .invariant_test
+                .invariants
+                .shift_remove(&bug.invariant_name)
+            {
+                llm_signal
+                    .stripped_invariant_codes
+                    .entry(bug.invariant_name.clone())
+                    .or_insert(code);
+                stripped.push(bug.invariant_name.clone());
+            }
+        }
         if !stripped.is_empty() {
             info!(contract = %signal.contract_name, stripped = ?stripped, "stripped confirmed invariants");
         }
     }
+
+    // Save the final merged bodies so the session can look up invariant code
+    // when forge reports a new bug. Full mode: bodies are already in memory.
+    // Patch mode: apply the patches to existing_bodies to reconstruct them.
+    llm_signal.final_bodies = match &result.response {
+        GenerationResponse::Full { bodies, .. } => Some(*bodies.clone()),
+        GenerationResponse::Patch {
+            bodies_updates, ..
+        } => signal
+            .existing_bodies
+            .as_ref()
+            .and_then(|eb| apply_patches::<BodiesJson>(eb.clone(), bodies_updates).ok()),
+    };
 
     info!(contract = %signal.contract_name, round = signal.round, "LLM done — executor writing files");
     reporter
