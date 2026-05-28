@@ -22,6 +22,7 @@ FuzzMing is an open source tool that closes the loop between an LLM and a fuzzer
 - **Compile error recovery:** a pre-flight `forge build` catches compile errors immediately before the full test run; the error is fed back to the LLM and retried next round
 - **Isolated test execution:** the `[profile.fuzzming]` section in `foundry.toml` sets `test = "test/fuzzming"` so forge only runs FuzzMing-generated tests — your existing suite is never touched
 - **Bug deduplication:** each unique breaking invariant is recorded once regardless of how many rounds it fires; the final report is never inflated with duplicates
+- **Invariant code in reports:** every confirmed finding includes the full Solidity invariant function alongside the shrunk call sequence — drop it directly into a Foundry regression test
 - **Coverage feedback:** after each passing round, LCOV coverage gaps are fed back to the LLM so it writes better invariants next time
 - **Iterative security analysis:** patch rounds include a dedicated LLM audit pass that reviews fuzz output + confirmed bugs and prints a clean findings summary at the end of the session
 - **Interactive or headless:** guided prompts for first-time users, `--defaults` / `--from-config` for CI pipelines
@@ -219,7 +220,9 @@ If a bug changes which internal code path executes but always produces the same 
 
 Some code paths are gated on `tx.origin` — the original wallet that started a transaction. In Foundry invariant tests, `tx.origin` is always the test contract's own address, not a real user wallet. If the buggy code only runs when a specific registered address is `tx.origin`, the fuzzer will never trigger it: the test contract is never in the relevant mapping, so the condition is always false, and the code block is skipped on every single call.
 
-**Example:** A discount calculation that rounds in the wrong direction — but only applies when `tx.origin` is a registered discounted address. The fuzzer ran thousands of calls and the discount block never executed once. The fix is to call the target from inside a handler using `vm.prank(addr, addr)` to set both `msg.sender` and `tx.origin` to the same discounted address, then store the result in a ghost variable for the invariant to check.
+FuzzMing handles this via Rule 21 and a dedicated `tx_origin_paths` analysis field: when `tx.origin` is detected in the source, the LLM is instructed to call the target from inside a handler using `vm.prank(addr, addr)` — the two-argument form sets both `msg.sender` and `tx.origin` — then store the result in a ghost variable for the invariant to check. This pattern successfully confirmed the discount-related bugs in the DynamicSwapFeeModule case study.
+
+**Remaining risk:** contracts where the `tx.origin`-dependent path is never reached regardless of caller identity, or where the required state preconditions are too narrow for the fuzzer to stumble upon within the round budget.
 
 ### 3. Bugs that require chain-specific knowledge
 
@@ -235,14 +238,14 @@ FuzzMing's invariant testing uses a single actor calling functions randomly. It 
 
 ### Summary
 
-| Limitation | What would catch it |
-|---|---|
-| Bug produces no observable difference | Static analysis — code linter or formal verifier |
-| Buggy code never runs during testing | `vm.prank(addr, addr)` in handlers + ghost variables |
-| Wrong constant for a specific chain | `--chain` flag with known chain parameters |
-| Attack requires two adversarial actors | Multi-actor adversarial simulation mode |
+| Limitation | Status | What would catch it |
+|---|---|---|
+| Bug produces no observable difference | Open | Static analysis — code linter or formal verifier |
+| `tx.origin`-gated code paths | Handled — Rule 21 + `vm.prank(addr, addr)` | Confirmed discount bugs in DynamicSwapFeeModule |
+| Wrong constant for a specific chain | Open | `--chain` flag with known chain parameters |
+| Attack requires two adversarial actors | Open | Multi-actor adversarial simulation mode |
 
-These limitations are documented in detail in the [DynamicSwapFeeModule case study](docs/case-study-dynamicswapfeemodule.md), which compares FuzzMing against a professional audit on the same contract.
+These limitations are documented in detail in the [DynamicSwapFeeModule case study](docs/case-study-dynamicswapfeemodule.md), which compares FuzzMing against a professional audit on the same contract — 7 bugs found, 2 Shieldify findings confirmed, 5 missed by the audit.
 
 ---
 
@@ -273,7 +276,7 @@ FuzzMing is built on hexagonal architecture so that every language and fuzzer is
 | [docs/shared.md](docs/shared.md) | Shared data layer — models, ports, requests, responses |
 | [docs/entry.md](docs/entry.md) | CLI entry point — subcommands, flags, exit codes |
 | [docs/composition.md](docs/composition.md) | Composition root — full wiring graph |
-| [docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md) | FuzzMing vs. Shieldify audit — findings, cost and time comparison |
+| [docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md) | FuzzMing vs. Shieldify audit — 7 bugs found in 23 min at $4.94, 2 Shieldify findings confirmed, 5 missed by the audit |
 
 To add a new language or fuzzer, see the checklist in [docs/composition.md](docs/composition.md).
 
