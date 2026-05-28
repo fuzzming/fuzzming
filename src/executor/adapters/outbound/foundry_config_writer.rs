@@ -22,7 +22,16 @@ const FUZZMING_HEADER: &str = "[profile.fuzzming]";
 pub async fn write_foundry_config(config: &FoundryConfig, writer: &FileSystemWriter) -> Result<()> {
     let fuzzming_section = build_fuzzming_section(config);
 
-    let base = config.current_toml.as_deref().unwrap_or("");
+    // Read existing foundry.toml directly so we preserve [profile.default] and other sections.
+    // current_toml in the config struct is populated only in tests; in production it is always None.
+    let existing_on_disk = tokio::fs::read_to_string(
+        writer.base_path().join(FOUNDRY_TOML_PATH)
+    ).await.unwrap_or_default();
+    let base = if !existing_on_disk.is_empty() {
+        existing_on_disk.as_str()
+    } else {
+        config.current_toml.as_deref().unwrap_or("")
+    };
     let needs_coverage = !base.contains(COVERAGE_HEADER);
 
     let mut toml = replace_or_append_section(base, FUZZMING_HEADER, &fuzzming_section);
@@ -73,11 +82,19 @@ fn replace_or_append_section(toml: &str, header: &str, new_section: &str) -> Str
             }
         }
         Some(start_idx) => {
+            // Extract bare section name, e.g. "[profile.fuzzming]" → "profile.fuzzming".
+            // Any header that starts with "[{section_name}." is a sub-table of this section
+            // and must be included in the block being replaced — otherwise TOML ends up with
+            // duplicate keys on subsequent writes.
+            let section_name = header.trim_start_matches('[').trim_end_matches(']');
+            let subsection_prefix = format!("[{section_name}.");
             let end_idx = lines[start_idx + 1..]
                 .iter()
                 .position(|l| {
                     let t = l.trim();
-                    t.starts_with('[') && !t.starts_with("[[")
+                    t.starts_with('[')
+                        && !t.starts_with("[[")
+                        && !t.starts_with(&subsection_prefix)
                 })
                 .map(|rel| start_idx + 1 + rel)
                 .unwrap_or(lines.len());

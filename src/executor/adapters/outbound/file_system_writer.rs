@@ -12,6 +12,10 @@ impl FileSystemWriter {
         Self { base_path }
     }
 
+    pub fn base_path(&self) -> &PathBuf {
+        &self.base_path
+    }
+
     pub async fn write_file(&self, path: &str, content: &str) -> Result<()> {
         let full_path = self.base_path.join(path);
         let parent = full_path.parent().unwrap_or(&full_path);

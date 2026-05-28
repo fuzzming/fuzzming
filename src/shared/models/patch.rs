@@ -8,7 +8,8 @@ pub struct JsonBlockUpdate {
     /// Dot-separated path into the JSON artifact.
     /// Examples: `"handler.functions.deposit"`, `"handler.ghostVars.0"`, `"handler.stateVars[1]"`
     pub path: String,
-    /// New value (ignored for `Remove`).
+    /// New value (ignored for `Remove`). Also accepts `"body"` key that some LLMs use for function bodies.
+    #[serde(alias = "body")]
     pub value: Value,
     /// LLM-provided justification for this change.
     #[serde(default)]

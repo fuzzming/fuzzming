@@ -9,24 +9,60 @@ pub struct SolidityGenerator;
 #[async_trait]
 impl CodeGeneratorPort for SolidityGenerator {
     async fn generate(&self, bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
-        generate_handler(bodies, writer).await?;
-        generate_invariant_test(bodies, writer).await?;
+        // Read the pragma from the original source file so the LLM cannot accidentally
+        // change it to a different Solidity version in a patch round.
+        let pragma = read_source_pragma(bodies, writer).await;
+        generate_handler(bodies, writer, &pragma).await?;
+        generate_invariant_test(bodies, writer, &pragma).await?;
         Ok(())
     }
 }
 
-async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
+/// Extract `pragma solidity <version>` from the target contract source file.
+/// Falls back to `bodies.meta.solidity` if the file cannot be read.
+async fn read_source_pragma(bodies: &BodiesJson, writer: &FileSystemWriter) -> String {
+    let path = writer.base_path().join(&bodies.meta.contract_path);
+    if let Ok(source) = tokio::fs::read_to_string(&path).await {
+        for line in source.lines() {
+            let t = line.trim();
+            if t.starts_with("pragma solidity") {
+                return t
+                    .trim_end_matches(';')
+                    .trim_start_matches("pragma solidity")
+                    .trim()
+                    .to_string();
+            }
+        }
+    }
+    bodies.meta.solidity.clone()
+}
+
+fn needs_abi_encoder_v2(solidity: &str) -> bool {
+    // forge-std's Test/StdInvariant uses string[] and struct arrays which require
+    // ABIEncoderV2 in Solidity 0.7.x. Without this pragma the contract won't compile.
+    solidity.contains("0.7.")
+}
+
+async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter, pragma: &str) -> Result<()> {
     let h = &bodies.handler;
     let mut out = Vec::<String>::new();
 
     out.push("// SPDX-License-Identifier: MIT".into());
-    out.push(format!("pragma solidity {};", bodies.meta.solidity));
+    out.push(format!("pragma solidity {};", pragma));
+    if needs_abi_encoder_v2(pragma) {
+        out.push("pragma experimental ABIEncoderV2;".into());
+    }
     out.push(String::new());
 
     for import in &h.imports {
         out.push(import.clone());
     }
     out.push(String::new());
+
+    for helper in &h.helper_contracts {
+        out.push(helper.clone());
+        out.push(String::new());
+    }
 
     out.push(format!("contract {} is Test {{", h.contract_name));
     out.push(String::new());
@@ -83,12 +119,15 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter) -> Res
     writer.write_file(&path, &out.join("\n")).await
 }
 
-async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter) -> Result<()> {
+async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter, pragma: &str) -> Result<()> {
     let t = &bodies.invariant_test;
     let mut out = Vec::<String>::new();
 
     out.push("// SPDX-License-Identifier: MIT".into());
-    out.push(format!("pragma solidity {};", bodies.meta.solidity));
+    out.push(format!("pragma solidity {};", pragma));
+    if needs_abi_encoder_v2(pragma) {
+        out.push("pragma experimental ABIEncoderV2;".into());
+    }
     out.push(String::new());
 
     for import in &t.imports {

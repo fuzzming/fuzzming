@@ -34,7 +34,8 @@ impl ExecuteUseCase {
 #[async_trait]
 impl ExecutorRunPort for ExecuteUseCase {
     async fn execute(&self, input: ExecutorInput) -> Result<()> {
-        let (bodies, fuzzer_config) = resolve_input(input)?;
+        let (mut bodies, fuzzer_config, source_pragma) = resolve_input(input)?;
+        bodies.meta.solidity = source_pragma;
 
         write_bodies(&bodies, &self.writer).await?;
         write_config_json(&fuzzer_config, &bodies.meta.contract, &self.writer).await?;
@@ -50,27 +51,28 @@ impl ExecutorRunPort for ExecuteUseCase {
 /// passing through the full artifacts (round 1) or applying patch operations (round N).
 fn resolve_input(
     input: ExecutorInput,
-) -> Result<(crate::shared::models::BodiesJson, FuzzerConfigArtifact)> {
+) -> Result<(crate::shared::models::BodiesJson, FuzzerConfigArtifact, String)> {
     match input {
         ExecutorInput::Full {
             bodies,
             fuzzer_config,
-        } => Ok((bodies, fuzzer_config)),
+            source_pragma,
+        } => Ok((bodies, fuzzer_config, source_pragma)),
 
         ExecutorInput::Patch {
             existing_bodies,
             bodies_updates,
             existing_config,
             config_updates,
+            source_pragma,
         } => {
             let patched_bodies = apply_patches(existing_bodies, &bodies_updates)?;
-            // Unwrap the enum so patch paths apply to FoundryConfig fields.
             let patched_config = match existing_config {
                 FuzzerConfigArtifact::Foundry(inner) => {
                     FuzzerConfigArtifact::Foundry(apply_patches(inner, &config_updates)?)
                 }
             };
-            Ok((patched_bodies, patched_config))
+            Ok((patched_bodies, patched_config, source_pragma))
         }
     }
 }

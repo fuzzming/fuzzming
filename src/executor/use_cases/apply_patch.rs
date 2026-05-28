@@ -181,6 +181,7 @@ mod tests {
             handler: HandlerBodies {
                 contract_name: "VaultHandler".to_string(),
                 imports: vec!["import {Vault} from \"src/Vault.sol\";".to_string()],
+                helper_contracts: vec![],
                 state_vars: vec!["Vault vault;".to_string()],
                 ghost_vars: vec!["uint256 ghost_totalDeposited;".to_string()],
                 constructor_signature: "constructor(address _vault)".to_string(),
