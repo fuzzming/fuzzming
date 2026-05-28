@@ -19,8 +19,13 @@ pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
             .bugs
             .iter()
             .map(|b| {
+                let code_block = if b.invariant_code.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n```solidity\n{}\n```", b.invariant_code)
+                };
                 if b.call_sequence.is_empty() {
-                    format!("- `{}`", b.invariant_name)
+                    format!("- `{}`{}", b.invariant_name, code_block)
                 } else {
                     let seq = b
                         .call_sequence
@@ -28,7 +33,7 @@ pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
                         .map(|line| format!("  {line}"))
                         .collect::<Vec<_>>()
                         .join("\n");
-                    format!("- `{}`\n{}", b.invariant_name, seq)
+                    format!("- `{}`{}\n{}", b.invariant_name, code_block, seq)
                 }
             })
             .collect::<Vec<_>>()
