@@ -33,6 +33,15 @@ pub fn build_round_one_analysis_prompt() -> String {
      - Asset accounting: balance tracking, share/asset ratio drift, ghost state divergence\n\
      - Access control: privileged functions reachable by unauthorized callers\n\
      - Business logic: properties that must hold across all valid state transitions\n\
+     - Reset/clear completeness: For every function named reset*, clear*, delete*, or disable*, \
+       list ALL fields in the affected struct or mapping. For each field NOT modified, explicitly \
+       state whether the omission is intentional or a bug (e.g. a missing baseFee clear after \
+       resetDynamicFee). A field that logically belongs to the same configuration unit but is \
+       silently retained after a reset is a Medium/Low severity finding.\n\
+     - tx.origin usage: Search the source for any use of tx.origin. If found, list every code \
+       path affected. Note that tx.origin-dependent paths CANNOT be tested from view invariant \
+       functions — they require vm.prank(actor, actor) in a handler function plus ghost state \
+       recording. Flag this explicitly so the generator uses the ghost pattern for those paths.\n\
      \n\
      Discovery objective: find many independent root causes, not many ways to trigger \
      the same defect. Group equivalent exploit paths under one finding when they come \
@@ -186,6 +195,10 @@ transfer, or mint on a token), use EXACTLY these pre-resolved import lines — d
 16. NO CHEAT CODES IN INVARIANTS: Invariant functions are `view` — never call `vm.prank`, `vm.warp`, `vm.roll`, `vm.deal`, or any other cheat code inside them. State setup belongs in handler functions, not invariant checks.\n\
 17. MOCK EXTERNAL DEPENDENCIES: If the target constructor takes an address it later calls, write a minimal mock in `handler.helperContracts` — a full `contract MockDep { ... }` string placed before the Handler in the same file. Scan the source for every call the target makes on that dependency and implement only those functions. Deploy in constructorBody: `MockDep mock = new MockDep(); target = new Target(address(mock), ...);`. Never import a mock from a separate file; never cast raw addresses to contract types.\n\
 18. ACTORS ARRAY IS THE ONLY SOURCE OF ADDRESSES: Every address the target interacts with MUST be deployed and pushed into `actors` in the constructor. In handler functions pick with `actors[seed % actors.length]`. Never derive addresses via keccak256 or uint160 casts — they are unregistered and every call using them reverts silently.\n\
+19. ASCII ONLY IN STRINGS: All Solidity string literals must use only plain ASCII characters (codes 0-127). Never use Unicode dashes, smart quotes, ellipsis, or any non-ASCII glyph. Use plain hyphen (-) or colon (:) instead. One non-ASCII character in a string causes a parse error and wastes a full round.\n\
+20. MATCH REQUIRE BOUNDS EXACTLY: For every handler function that calls a target function, read ALL require statements in that target function and enforce the exact same constraints in your bound() calls. Copy the exact constants — if the target has require(_fee <= MAX_BASE_FEE || _fee == ZERO_FEE_INDICATOR), the handler must bound to [0, MAX_BASE_FEE] or explicitly use ZERO_FEE_INDICATOR. A handler that lets values outside the target require range through causes false-positive invariant failures.\n\
+21. TX.ORIGIN PATTERN: If the target reads tx.origin anywhere in its source, that path CANNOT be tested from a view invariant function. Use this pattern: (a) in a handler function call vm.prank(actor, actor) - the two-argument form sets BOTH msg.sender and tx.origin; (b) call the target and record the result in a ghost variable; (c) write an invariant that asserts the ghost. Never call a tx.origin-dependent target function from inside an invariant expecting tx.origin to equal a discounted address.\n\
+22. FUZZABLE MOCK STATE: Mock contracts must have mutable state, not hardcoded return values. For every value the mock returns that the target branches on (e.g. currentTick, observationCardinality, lastObsTimestamp), add a public state variable and a setter. Write handler functions (e.g. handle_setMockCurrentTick) that fuzz those values with bounded inputs. A static mock makes entire code branches invisible to the fuzzer.\n\
 ".to_string()
     } else {
         "STRICT DESIGN RULES:\n\
