@@ -7,7 +7,7 @@ use clap::{Args, Parser, Subcommand};
     name = "fuzzming",
     version,
     disable_help_flag = true,
-    about = "AI-powered Solidity smart contract fuzzer",
+    about = "AI-powered Solidity smart contract fuzzer"
 )]
 pub struct CliArgs {
     /// Print the full CLI reference and examples

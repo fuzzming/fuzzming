@@ -28,7 +28,6 @@ pub fn parse_lcov(lcov_data: &str) -> Result<CoverageContext> {
     let mut function_found = 0;
     let mut function_hit = 0;
 
-
     let parse_hits = |raw: &str, line: &str| -> Result<u32> {
         if raw == "-" {
             Ok(0)
@@ -118,9 +117,9 @@ pub fn parse_lcov(lcov_data: &str) -> Result<CoverageContext> {
             if let Some(cap) = br_re.captures(line) {
                 let hits: u32 = parse_hits(&cap[4], line)?;
                 if hits == 0 {
-                    let line_num = cap[1]
-                        .parse()
-                        .with_context(|| format!("Invalid BRDA line number in LCOV line: {line}"))?;
+                    let line_num = cap[1].parse().with_context(|| {
+                        format!("Invalid BRDA line number in LCOV line: {line}")
+                    })?;
                     non_function_gap_lines.insert((sf.clone(), line_num));
                     gaps.push(CoverageGap {
                         file: sf.clone(),

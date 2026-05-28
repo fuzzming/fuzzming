@@ -24,9 +24,9 @@ pub async fn write_foundry_config(config: &FoundryConfig, writer: &FileSystemWri
 
     // Read existing foundry.toml directly so we preserve [profile.default] and other sections.
     // current_toml in the config struct is populated only in tests; in production it is always None.
-    let existing_on_disk = tokio::fs::read_to_string(
-        writer.base_path().join(FOUNDRY_TOML_PATH)
-    ).await.unwrap_or_default();
+    let existing_on_disk = tokio::fs::read_to_string(writer.base_path().join(FOUNDRY_TOML_PATH))
+        .await
+        .unwrap_or_default();
     let base = if !existing_on_disk.is_empty() {
         existing_on_disk.as_str()
     } else {
@@ -48,23 +48,27 @@ const MAX_RUNS: u32 = 1000;
 const MAX_DEPTH: u32 = 500;
 
 fn build_fuzzming_section(config: &FoundryConfig) -> String {
-    [FUZZMING_HEADER.to_string(),
+    [
+        FUZZMING_HEADER.to_string(),
         String::new(),
         "[profile.fuzzming.invariant]".to_string(),
         format!("runs             = {}", config.runs.min(MAX_RUNS)),
         format!("depth            = {}", config.depth.min(MAX_DEPTH)),
         format!("seed             = \"{}\"", config.seed),
         format!("max_test_rejects = {}", config.max_test_rejects),
-        format!("dictionary_weight = {}", config.dictionary_weight)]
+        format!("dictionary_weight = {}", config.dictionary_weight),
+    ]
     .join("\n")
 }
 
 fn build_coverage_section() -> String {
-    [COVERAGE_HEADER.to_string(),
+    [
+        COVERAGE_HEADER.to_string(),
         String::new(),
         "[profile.coverage.invariant]".to_string(),
         "runs  = 256".to_string(),
-        "depth = 50".to_string()]
+        "depth = 50".to_string(),
+    ]
     .join("\n")
 }
 
@@ -92,9 +96,7 @@ fn replace_or_append_section(toml: &str, header: &str, new_section: &str) -> Str
                 .iter()
                 .position(|l| {
                     let t = l.trim();
-                    t.starts_with('[')
-                        && !t.starts_with("[[")
-                        && !t.starts_with(&subsection_prefix)
+                    t.starts_with('[') && !t.starts_with("[[") && !t.starts_with(&subsection_prefix)
                 })
                 .map(|rel| start_idx + 1 + rel)
                 .unwrap_or(lines.len());
@@ -109,9 +111,7 @@ fn replace_or_append_section(toml: &str, header: &str, new_section: &str) -> Str
                 (true, false) => format!("{new_section}\n\n{after_trimmed}\n"),
                 (false, true) => format!("{before_trimmed}\n\n{new_section}\n"),
                 (false, false) => {
-                    format!(
-                        "{before_trimmed}\n\n{new_section}\n\n{after_trimmed}\n"
-                    )
+                    format!("{before_trimmed}\n\n{new_section}\n\n{after_trimmed}\n")
                 }
             }
         }

@@ -9,5 +9,9 @@ use crate::shared::models::CoverageContext;
 pub trait FuzzerOutputPort: Send + Sync {
     async fn write_fuzz_output(&self, contract_name: &str, content: &str) -> Result<()>;
     async fn write_lcov(&self, contract_name: &str, content: &str) -> Result<PathBuf>;
-    async fn write_coverage_context(&self, contract_name: &str, context: &CoverageContext) -> Result<()>;
+    async fn write_coverage_context(
+        &self,
+        contract_name: &str,
+        context: &CoverageContext,
+    ) -> Result<()>;
 }

@@ -10,7 +10,9 @@ use console::{Color, Style};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 use crate::reporter::ports::outbound::OutputPort;
-use crate::shared::responses::stage_event::{FuzzerRoundSummary, StageEvent, StageKind, StageStatus};
+use crate::shared::responses::stage_event::{
+    FuzzerRoundSummary, StageEvent, StageKind, StageStatus,
+};
 
 /// Messages shown during round 1 — three LLM calls: analysis → bodies → config.
 const ROUND_ONE_MESSAGES: &[&str] = &[
@@ -92,7 +94,6 @@ fn spinner_style() -> ProgressStyle {
         .tick_strings(&["", ".", "..", "..."])
 }
 
-
 fn msg_active(label: &str, verb: &str) -> String {
     let diamond = Style::new().fg(Color::Color256(99)).bold();
     let name_st = Style::new().fg(Color::Color256(147)).bold();
@@ -154,7 +155,11 @@ fn msg_fuzzer_done(ok: bool, summary: Option<&FuzzerRoundSummary>) -> String {
     } else {
         ("✗", Style::new().fg(Color::Red).bold())
     };
-    let label = if ok { "Fuzzer complete" } else { "Fuzzer failed" };
+    let label = if ok {
+        "Fuzzer complete"
+    } else {
+        "Fuzzer failed"
+    };
     let base = format!("  {}  {}", icon_st.apply_to(icon), label);
     match summary {
         Some(s) => {
@@ -180,7 +185,11 @@ fn msg_fuzzer_done(ok: bool, summary: Option<&FuzzerRoundSummary>) -> String {
             format!(
                 "{}  {}  {}{}",
                 base,
-                bug_st.apply_to(format!("{} bug{}", s.bugs, if s.bugs == 1 { "" } else { "s" })),
+                bug_st.apply_to(format!(
+                    "{} bug{}",
+                    s.bugs,
+                    if s.bugs == 1 { "" } else { "s" }
+                )),
                 muted.apply_to(format!("{} passed", s.passed)),
                 compile_part,
             )
@@ -250,7 +259,13 @@ impl OutputPort for TerminalOutput {
                 });
 
                 let mut g = state.lock().expect("progress lock");
-                g.contracts.insert(contract, ContractProgress { bar: spinner, cancel });
+                g.contracts.insert(
+                    contract,
+                    ContractProgress {
+                        bar: spinner,
+                        cancel,
+                    },
+                );
             }
 
             (StageKind::Llm, StageStatus::Finished) => {
@@ -341,7 +356,10 @@ impl OutputPort for TerminalOutput {
                 });
 
                 let mut g = state.lock().expect("progress lock");
-                g.fuzzer = Some(FuzzerProgress { bar: spinner, cancel });
+                g.fuzzer = Some(FuzzerProgress {
+                    bar: spinner,
+                    cancel,
+                });
             }
 
             (StageKind::Fuzzer, StageStatus::Finished) => {

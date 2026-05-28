@@ -27,7 +27,10 @@ pub fn format_for_llm(raw: &str) -> String {
         out.push_str(&format!("  {}\n", f.name));
         out.push_str(&format!("  Failure: {}\n", f.failure_message));
         if !f.call_sequence.is_empty() {
-            out.push_str(&format!("  Call sequence ({} step(s)):\n", f.call_sequence.len()));
+            out.push_str(&format!(
+                "  Call sequence ({} step(s)):\n",
+                f.call_sequence.len()
+            ));
             for step in &f.call_sequence {
                 out.push_str(&format!("    {step}\n"));
             }
@@ -105,13 +108,8 @@ fn parse_failing_invariants(raw: &str) -> Vec<FailingInvariant> {
 
 /// Extract the assertion message from a [FAIL: <msg>] line.
 fn extract_fail_message(line: &str) -> String {
-    let inner = line
-        .trim_start_matches('[')
-        .trim_end_matches(']');
-    inner
-        .trim_start_matches("FAIL:")
-        .trim()
-        .to_string()
+    let inner = line.trim_start_matches('[').trim_end_matches(']');
+    inner.trim_start_matches("FAIL:").trim().to_string()
 }
 
 /// Format a forge call step into a readable string.
@@ -179,7 +177,9 @@ Suite result: FAILED. 1 passed; 2 failed;";
     #[test]
     fn extracts_failure_messages() {
         let failures = parse_failing_invariants(FORGE_OUTPUT);
-        assert!(failures[0].failure_message.contains("count should never exceed 100"));
+        assert!(failures[0]
+            .failure_message
+            .contains("count should never exceed 100"));
         assert!(failures[1].failure_message.contains("solvency broken"));
     }
 
@@ -207,7 +207,8 @@ Suite result: FAILED. 1 passed; 2 failed;";
 
     #[test]
     fn format_for_llm_all_passed() {
-        let raw = "[PASS] invariant_solvency() (runs: 256, calls: 512, reverts: 0)\nSuite result: ok.";
+        let raw =
+            "[PASS] invariant_solvency() (runs: 256, calls: 512, reverts: 0)\nSuite result: ok.";
         assert_eq!(format_for_llm(raw), "All invariants passed.");
     }
 

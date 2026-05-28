@@ -13,8 +13,8 @@ use super::response_parser::{
 };
 use super::stages::{AnalysisStage, BodiesStage, ConfigStage};
 use crate::generator::domain::generation_response::{GenerationResponse, GenerationResult};
+use crate::generator::ports::outbound::{GenerationPort, GenerationRequest, LlmClientPort};
 use crate::shared::models::{GenerationUsage, PromptMode};
-use crate::generator::ports::outbound::{LlmClientPort, GenerationPort, GenerationRequest};
 
 const MAX_ATTEMPTS: usize = 3;
 
@@ -26,7 +26,12 @@ pub struct LiteLlmGenerationAdapter {
 }
 
 impl LiteLlmGenerationAdapter {
-    pub fn new(model: impl Into<String>, api_key: impl Into<String>, client: Arc<dyn LlmClientPort>, prompt_mode: PromptMode) -> Self {
+    pub fn new(
+        model: impl Into<String>,
+        api_key: impl Into<String>,
+        client: Arc<dyn LlmClientPort>,
+        prompt_mode: PromptMode,
+    ) -> Self {
         Self {
             model: model.into(),
             api_key: api_key.into(),
@@ -53,7 +58,9 @@ impl LiteLlmGenerationAdapter {
             total.cached_prompt_tokens = total
                 .cached_prompt_tokens
                 .saturating_add(usage.cached_prompt_tokens);
-            total.reasoning_tokens = total.reasoning_tokens.saturating_add(usage.reasoning_tokens);
+            total.reasoning_tokens = total
+                .reasoning_tokens
+                .saturating_add(usage.reasoning_tokens);
             total.thinking_tokens = total.thinking_tokens.saturating_add(usage.thinking_tokens);
         }
     }
@@ -93,10 +100,7 @@ impl LiteLlmGenerationAdapter {
         bail!("{stage_name} failed after {MAX_ATTEMPTS} attempts: {last_error}")
     }
 
-    async fn generate_round_one(
-        &self,
-        request: &GenerationRequest,
-    ) -> Result<GenerationResult> {
+    async fn generate_round_one(&self, request: &GenerationRequest) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
         let mut usage = GenerationUsage::default();
 
@@ -113,7 +117,13 @@ impl LiteLlmGenerationAdapter {
         let bodies_stage: BodiesStage = self
             .request_json(
                 &system_prompt,
-                build_round_one_bodies_prompt(&analysis, &request.contract_name, &request.contract_path, &request.source_code, &self.prompt_mode)?,
+                build_round_one_bodies_prompt(
+                    &analysis,
+                    &request.contract_name,
+                    &request.contract_path,
+                    &request.source_code,
+                    &self.prompt_mode,
+                )?,
                 "bodies",
                 "bodies object with valid Solidity syntax",
                 &mut usage,
@@ -139,10 +149,7 @@ impl LiteLlmGenerationAdapter {
         })
     }
 
-    async fn generate_round_n(
-        &self,
-        request: &GenerationRequest,
-    ) -> Result<GenerationResult> {
+    async fn generate_round_n(&self, request: &GenerationRequest) -> Result<GenerationResult> {
         let system_prompt = system_prompt_from_request(request);
         let domain_context = user_prompt_from_request(request);
         let patch_prompt = build_round_n_prompt(request, &self.prompt_mode)?;

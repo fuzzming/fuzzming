@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::executor::adapters::inbound::Executor;
-use crate::executor::adapters::outbound::{FileSystemWriter, FoundryConfigWriter, SolidityGenerator};
+use crate::executor::adapters::outbound::{
+    FileSystemWriter, FoundryConfigWriter, SolidityGenerator,
+};
 use crate::executor::use_cases::ExecuteUseCase;
 use crate::fuzzer::adapters::inbound::Fuzzer as FuzzerAdapter;
 use crate::fuzzer::adapters::outbound::{FileSystemFuzzerOutput, ForgeRunner};
@@ -32,26 +34,43 @@ impl CompositionRoot {
 
         // Single shared LLM client — used by both the generator and the security analyzer.
         let llm_client: Arc<dyn crate::generator::ports::outbound::LlmClientPort> =
-            Arc::new(LiteLlmClient::new(&model, Some(api_key.as_str()), Some(0.1), config.max_tokens, config.llm_timeout_secs));
+            Arc::new(LiteLlmClient::new(
+                &model,
+                Some(api_key.as_str()),
+                Some(0.1),
+                config.max_tokens,
+                config.llm_timeout_secs,
+            ));
 
         // Generator (LLM engine)
-        let generation_adapter =
-            Box::new(LiteLlmGenerationAdapter::new(&model, &api_key, Arc::clone(&llm_client), prompt_mode));
+        let generation_adapter = Box::new(LiteLlmGenerationAdapter::new(
+            &model,
+            &api_key,
+            Arc::clone(&llm_client),
+            prompt_mode,
+        ));
         let generator_use_case = Box::new(GeneratorRunUseCase::new(generation_adapter));
         let generator = Box::new(Generator::new(generator_use_case));
 
         // Fuzzer engine
         let forge_runner = Box::new(ForgeRunner::new(workspace.clone()));
         let fuzzer_output = Box::new(FileSystemFuzzerOutput::new(workspace.clone()));
-        let fuzzer_use_case = Box::new(RunFuzzerUseCase::new(forge_runner, fuzzer_output, workspace.clone()));
+        let fuzzer_use_case = Box::new(RunFuzzerUseCase::new(
+            forge_runner,
+            fuzzer_output,
+            workspace.clone(),
+        ));
         let fuzzer = Box::new(FuzzerAdapter::new(fuzzer_use_case));
 
         // Executor
         let fs_writer = FileSystemWriter::new(workspace.clone());
         let code_generator = Arc::new(SolidityGenerator);
         let config_writer = Arc::new(FoundryConfigWriter);
-        let executor_use_case =
-            Box::new(ExecuteUseCase::new(fs_writer, code_generator, config_writer));
+        let executor_use_case = Box::new(ExecuteUseCase::new(
+            fs_writer,
+            code_generator,
+            config_writer,
+        ));
         let executor = Box::new(Executor::new(executor_use_case));
 
         // Reader

@@ -237,7 +237,10 @@ fn extract_erroring_contract_names(stderr: &str, stdout: &str) -> HashSet<String
 /// Forge emits detailed solc errors to stdout, not stderr.
 /// Return stdout when it has diagnostic content, else fall back to stderr.
 fn compile_error_details<'a>(stdout: &'a str, stderr: &'a str) -> &'a str {
-    if stdout.contains("Error (") || stdout.contains("Compiler run failed") || stdout.contains("TypeError") {
+    if stdout.contains("Error (")
+        || stdout.contains("Compiler run failed")
+        || stdout.contains("TypeError")
+    {
         stdout
     } else {
         stderr

@@ -7,13 +7,17 @@ pub fn format_compile_error_outcome(outcome: &SessionOutcome) -> String {
         "## FuzzMing: Compile Error for `{}` ({} round{}, test code never ran)",
         outcome.contract_name,
         outcome.rounds_completed,
-        if outcome.rounds_completed == 1 { "" } else { "s" },
+        if outcome.rounds_completed == 1 {
+            ""
+        } else {
+            "s"
+        },
     )
 }
 
 pub fn format_compile_error(round: u32, message: &str) -> String {
-    let err_st  = Style::new().fg(Color::Red).bold();
-    let muted   = Style::new().fg(Color::Color256(245));
+    let err_st = Style::new().fg(Color::Red).bold();
+    let muted = Style::new().fg(Color::Color256(245));
 
     let header = format!(
         "\n  {}  {}",

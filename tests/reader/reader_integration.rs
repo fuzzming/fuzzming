@@ -39,7 +39,9 @@ async fn get_coverage_context_returns_none_when_file_missing() -> Result<()> {
     let dir = TempDir::new()?;
     let use_case = make_use_case(&dir);
 
-    let coverage = use_case.get_coverage_context("missing-coverage_context.json").await?;
+    let coverage = use_case
+        .get_coverage_context("missing-coverage_context.json")
+        .await?;
 
     assert!(coverage.is_none());
     Ok(())
@@ -50,14 +52,15 @@ async fn get_coverage_context_reads_enriched_json() -> Result<()> {
     let dir = TempDir::new()?;
 
     let context = CoverageContext {
-        gaps: vec![
-            CoverageGap {
-                file: "src/Vault.sol".to_string(),
-                line: 42,
-                gap_type: GapType::Branch,
-                source_context: vec!["41: if (x > 0) {".to_string(), "42:     revert();".to_string()],
-            },
-        ],
+        gaps: vec![CoverageGap {
+            file: "src/Vault.sol".to_string(),
+            line: 42,
+            gap_type: GapType::Branch,
+            source_context: vec![
+                "41: if (x > 0) {".to_string(),
+                "42:     revert();".to_string(),
+            ],
+        }],
         line_found: 10,
         line_hit: 8,
         branch_found: 4,

@@ -11,6 +11,13 @@ pub fn assemble_prompt(
     confirmed_bugs: Vec<BugInfo>,
     security_analysis: Option<String>,
 ) -> Result<AssembledPrompt> {
-    Ok(Prompt::new(round, contract_context.source_code, fuzz_output, coverage_context, confirmed_bugs, security_analysis)
-        .into_assembled())
+    Ok(Prompt::new(
+        round,
+        contract_context.source_code,
+        fuzz_output,
+        coverage_context,
+        confirmed_bugs,
+        security_analysis,
+    )
+    .into_assembled())
 }

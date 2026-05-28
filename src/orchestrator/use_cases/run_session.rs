@@ -103,11 +103,15 @@ impl OrchestratorRunPort for RunSessionUseCase {
                     .enumerate()
                     .filter_map(|(i, s)| {
                         let is_patch = s.existing_bodies.is_some();
-                        let has_error = s.fuzz_output.as_deref().map(|o| {
-                            o.contains("COMPILATION ERROR")
-                                || o.contains("SETUP FAILURE")
-                                || o.contains("LLM PARSE FAILURE")
-                        }).unwrap_or(false);
+                        let has_error = s
+                            .fuzz_output
+                            .as_deref()
+                            .map(|o| {
+                                o.contains("COMPILATION ERROR")
+                                    || o.contains("SETUP FAILURE")
+                                    || o.contains("LLM PARSE FAILURE")
+                            })
+                            .unwrap_or(false);
                         (is_patch && !has_error).then_some(i)
                     })
                     .collect();
@@ -166,9 +170,14 @@ impl OrchestratorRunPort for RunSessionUseCase {
                     self.reporter.emit_round_usage(usage).await?;
                 }
                 // Record parse failures for injection into the next round.
-                if matches!(llm_signal.status, crate::shared::responses::llm_signal::LlmStatus::Failed) {
+                if matches!(
+                    llm_signal.status,
+                    crate::shared::responses::llm_signal::LlmStatus::Failed
+                ) {
                     if let Some(reason) = &llm_signal.reason {
-                        state.llm_failures.insert(signal.contract_name.clone(), reason.clone());
+                        state
+                            .llm_failures
+                            .insert(signal.contract_name.clone(), reason.clone());
                     }
                 }
             }
@@ -461,7 +470,6 @@ fn format_coverage_summary(ctx: CoverageContext) -> String {
         ctx.gaps.len(),
     )
 }
-
 
 fn extract_pragma_from_source(source: &str) -> String {
     for line in source.lines() {

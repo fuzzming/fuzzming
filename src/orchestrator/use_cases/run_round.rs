@@ -55,9 +55,7 @@ pub async fn run_round(
             "LLM call failed:\n{}",
             llm_signal.reason.as_deref().unwrap_or("unknown error")
         );
-        reporter
-            .emit_compile_error(signal.round, &msg)
-            .await?;
+        reporter.emit_compile_error(signal.round, &msg).await?;
         return Ok(llm_signal);
     }
 

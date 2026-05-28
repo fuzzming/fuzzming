@@ -113,9 +113,8 @@ fn step_into_mut<'a>(node: &'a mut Value, seg: &str) -> Result<&'a mut Value> {
         match child {
             Value::Array(arr) => {
                 let len = arr.len();
-                arr.get_mut(idx).with_context(|| {
-                    format!("'{key}': index {idx} out of bounds (len={len})")
-                })
+                arr.get_mut(idx)
+                    .with_context(|| format!("'{key}': index {idx} out of bounds (len={len})"))
             }
             _ => bail!("'{key}' is not an array"),
         }

@@ -6,9 +6,7 @@ pub fn extract_json_payload(raw: &str) -> Result<String> {
     let trimmed = raw.trim();
 
     // Find the first ```json or ``` fence anywhere in the response (handles prose preambles).
-    let fence_start = trimmed
-        .find("```json")
-        .or_else(|| trimmed.find("```"));
+    let fence_start = trimmed.find("```json").or_else(|| trimmed.find("```"));
 
     if let Some(start) = fence_start {
         let after_fence = &trimmed[start..];

@@ -18,7 +18,10 @@ impl ReadUseCase {
         contract_reader: Arc<dyn ContractReaderPort>,
         fs_reader: Arc<FileSystemReader>,
     ) -> Self {
-        Self { contract_reader, fs_reader }
+        Self {
+            contract_reader,
+            fs_reader,
+        }
     }
 }
 

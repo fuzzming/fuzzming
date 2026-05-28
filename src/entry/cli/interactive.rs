@@ -66,11 +66,17 @@ pub fn resolve_cli_config(args: &RunArgs) -> Result<ResolvedCliConfig> {
 }
 
 fn resolve_from_config_only(stored: &ConfigFile) -> Result<ResolvedCliConfig> {
-    let model = stored.model.clone()
+    let model = stored
+        .model
+        .clone()
         .ok_or_else(|| anyhow!("fuzzming.config is missing 'model'"))?;
-    let llm_key = stored.llm_key.clone()
+    let llm_key = stored
+        .llm_key
+        .clone()
         .ok_or_else(|| anyhow!("fuzzming.config is missing 'llm_key'"))?;
-    let workspace_root = stored.workspace_root.clone()
+    let workspace_root = stored
+        .workspace_root
+        .clone()
         .unwrap_or_else(|| PathBuf::from("."));
     Ok(ResolvedCliConfig {
         targets: stored.targets.clone(),
@@ -87,11 +93,17 @@ fn resolve_from_config_only(stored: &ConfigFile) -> Result<ResolvedCliConfig> {
 }
 
 fn resolve_with_defaults(args: &RunArgs) -> Result<ResolvedCliConfig> {
-    let model = args.model.clone()
+    let model = args
+        .model
+        .clone()
         .ok_or_else(|| anyhow!("--defaults requires --model or LLM_MODEL env var"))?;
-    let llm_key = args.llm_key.clone()
+    let llm_key = args
+        .llm_key
+        .clone()
         .ok_or_else(|| anyhow!("--defaults requires --llm-key or LLM_KEY env var"))?;
-    let workspace_root = args.workspace_root.clone()
+    let workspace_root = args
+        .workspace_root
+        .clone()
         .unwrap_or_else(|| PathBuf::from("."));
     Ok(ResolvedCliConfig {
         targets: args.targets.clone(),
@@ -139,7 +151,9 @@ fn resolve_from_args(args: &RunArgs, stored: &ConfigFile) -> Result<ResolvedCliC
         verbose: args.verbose,
         max_tokens: stored.max_tokens.or(args.max_tokens),
         llm_timeout_secs: stored.llm_timeout_secs.unwrap_or(args.llm_timeout_secs),
-        full_coverage_rounds: stored.full_coverage_rounds.unwrap_or(args.full_coverage_rounds),
+        full_coverage_rounds: stored
+            .full_coverage_rounds
+            .unwrap_or(args.full_coverage_rounds),
         prompt_mode,
     })
 }
@@ -219,15 +233,15 @@ fn prompt_for_config(
         .unwrap_or_else(|| PromptMode::Concise.as_str().to_string());
 
     ui.divider();
-    let tier_input = Input::<String>::new()
-        .with_prompt(ui.question("Prompt mode (concise = Claude/GPT-4+/Gemini, guided = open-source models)"))
-        .with_initial_text(&tier_default)
-        .interact_text()?;
+    let tier_input =
+        Input::<String>::new()
+            .with_prompt(ui.question(
+                "Prompt mode (concise = Claude/GPT-4+/Gemini, guided = open-source models)",
+            ))
+            .with_initial_text(&tier_default)
+            .interact_text()?;
 
-    let prompt_mode = tier_input
-        .trim()
-        .parse::<PromptMode>()
-        .unwrap_or_default();
+    let prompt_mode = tier_input.trim().parse::<PromptMode>().unwrap_or_default();
 
     let llm_key_hint = if stored.llm_key.is_some() {
         "(leave blank to keep saved key)"
@@ -261,20 +275,40 @@ fn prompt_for_config(
     ui.divider();
     let llm_timeout_secs = Input::<u64>::new()
         .with_prompt(ui.question("LLM timeout (seconds)"))
-        .with_initial_text(stored.llm_timeout_secs.unwrap_or(args.llm_timeout_secs).to_string())
+        .with_initial_text(
+            stored
+                .llm_timeout_secs
+                .unwrap_or(args.llm_timeout_secs)
+                .to_string(),
+        )
         .interact_text()?;
 
     ui.divider();
     let max_tokens_raw = Input::<u32>::new()
         .with_prompt(ui.question("Max tokens per LLM call (0 = no limit)"))
-        .with_initial_text(stored.max_tokens.or(args.max_tokens).unwrap_or(0).to_string())
+        .with_initial_text(
+            stored
+                .max_tokens
+                .or(args.max_tokens)
+                .unwrap_or(0)
+                .to_string(),
+        )
         .interact_text()?;
-    let max_tokens: Option<u32> = if max_tokens_raw == 0 { None } else { Some(max_tokens_raw) };
+    let max_tokens: Option<u32> = if max_tokens_raw == 0 {
+        None
+    } else {
+        Some(max_tokens_raw)
+    };
 
     ui.divider();
     let full_coverage_rounds = Input::<u32>::new()
         .with_prompt(ui.question("Stop after N consecutive rounds at 100% coverage"))
-        .with_initial_text(stored.full_coverage_rounds.unwrap_or(args.full_coverage_rounds).to_string())
+        .with_initial_text(
+            stored
+                .full_coverage_rounds
+                .unwrap_or(args.full_coverage_rounds)
+                .to_string(),
+        )
         .interact_text()?;
 
     let resolved = ResolvedCliConfig {
@@ -408,7 +442,10 @@ fn discover_targets(workspace_root: &Path) -> Result<Vec<String>> {
     };
 
     let mut targets = Vec::new();
-    for entry in WalkDir::new(&search_root).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(&search_root)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         if entry.file_type().is_file() {
             let path = entry.path();
             if path.extension().map(|e| e == "sol").unwrap_or(false) {

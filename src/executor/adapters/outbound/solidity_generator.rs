@@ -43,7 +43,11 @@ fn needs_abi_encoder_v2(solidity: &str) -> bool {
     solidity.contains("0.7.")
 }
 
-async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter, pragma: &str) -> Result<()> {
+async fn generate_handler(
+    bodies: &BodiesJson,
+    writer: &FileSystemWriter,
+    pragma: &str,
+) -> Result<()> {
     let h = &bodies.handler;
     let mut out = Vec::<String>::new();
 
@@ -119,7 +123,11 @@ async fn generate_handler(bodies: &BodiesJson, writer: &FileSystemWriter, pragma
     writer.write_file(&path, &out.join("\n")).await
 }
 
-async fn generate_invariant_test(bodies: &BodiesJson, writer: &FileSystemWriter, pragma: &str) -> Result<()> {
+async fn generate_invariant_test(
+    bodies: &BodiesJson,
+    writer: &FileSystemWriter,
+    pragma: &str,
+) -> Result<()> {
     let t = &bodies.invariant_test;
     let mut out = Vec::<String>::new();
 

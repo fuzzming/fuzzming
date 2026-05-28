@@ -60,12 +60,8 @@ impl CliRunner {
                 print_extended_help(&ui);
                 Ok(())
             }
-            Some(Command::Report { workspace_root }) => {
-                handle_report(workspace_root, &ui)
-            }
-            Some(Command::Config { reset }) => {
-                handle_config(reset, &ui)
-            }
+            Some(Command::Report { workspace_root }) => handle_report(workspace_root, &ui),
+            Some(Command::Config { reset }) => handle_config(reset, &ui),
             Some(Command::Run(run_args)) => {
                 return handle_run(run_args, &ui).await;
             }
@@ -172,7 +168,11 @@ fn print_outcome_reports(outcomes: &[SessionOutcome]) {
 fn print_security_analyses(outcomes: &[SessionOutcome]) {
     let analyses: Vec<_> = outcomes
         .iter()
-        .filter_map(|o| o.security_analysis.as_deref().map(|a| (&o.contract_name, a)))
+        .filter_map(|o| {
+            o.security_analysis
+                .as_deref()
+                .map(|a| (&o.contract_name, a))
+        })
         .collect();
     if analyses.is_empty() {
         return;

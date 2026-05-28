@@ -7,7 +7,11 @@ pub fn format_exhausted_report(outcome: &SessionOutcome) -> String {
     let summary = if bug_count == 0 {
         "no bugs found".to_string()
     } else {
-        format!("{} bug{} found", bug_count, if bug_count == 1 { "" } else { "s" })
+        format!(
+            "{} bug{} found",
+            bug_count,
+            if bug_count == 1 { "" } else { "s" }
+        )
     };
 
     let bugs_section = if bug_count > 0 {

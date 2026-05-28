@@ -10,16 +10,20 @@ pub fn format_bug_report(outcome: &SessionOutcome) -> String {
             .bugs
             .iter()
             .enumerate()
-            .map(|(i, bug)| format!("**Bug {}:** {}\n```\n{}\n```", i + 1, bug.invariant_name, bug.call_sequence))
+            .map(|(i, bug)| {
+                format!(
+                    "**Bug {}:** {}\n```\n{}\n```",
+                    i + 1,
+                    bug.invariant_name,
+                    bug.call_sequence
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n\n")
     };
 
     format!(
         "## FuzzMing: {} bug(s) found in `{}` (round {})\n\n{}",
-        bug_count,
-        outcome.contract_name,
-        outcome.rounds_completed,
-        bug_blocks,
+        bug_count, outcome.contract_name, outcome.rounds_completed, bug_blocks,
     )
 }

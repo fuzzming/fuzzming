@@ -51,7 +51,11 @@ impl ExecutorRunPort for ExecuteUseCase {
 /// passing through the full artifacts (round 1) or applying patch operations (round N).
 fn resolve_input(
     input: ExecutorInput,
-) -> Result<(crate::shared::models::BodiesJson, FuzzerConfigArtifact, String)> {
+) -> Result<(
+    crate::shared::models::BodiesJson,
+    FuzzerConfigArtifact,
+    String,
+)> {
     match input {
         ExecutorInput::Full {
             bodies,

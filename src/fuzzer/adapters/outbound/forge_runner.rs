@@ -40,7 +40,9 @@ impl TestRunnerPort for ForgeRunner {
             .current_dir(&self.working_dir)
             .output()
             .await
-            .context("failed to spawn `forge test` — is Foundry installed and `forge` on your PATH?")?;
+            .context(
+                "failed to spawn `forge test` — is Foundry installed and `forge` on your PATH?",
+            )?;
 
         Ok(RunnerResult {
             exit_code: output.status.code().unwrap_or(-1),
@@ -57,12 +59,19 @@ impl TestRunnerPort for ForgeRunner {
             .current_dir(&self.working_dir)
             .output()
             .await
-            .context("failed to spawn `forge coverage` — is Foundry installed and `forge` on your PATH?")?;
+            .context(
+                "failed to spawn `forge coverage` — is Foundry installed and `forge` on your PATH?",
+            )?;
 
         let exit_code = output.status.code().unwrap_or(-1);
-        let lcov_content = tokio::fs::read_to_string(self.working_dir.join("lcov.info")).await.ok();
+        let lcov_content = tokio::fs::read_to_string(self.working_dir.join("lcov.info"))
+            .await
+            .ok();
 
-        Ok(CoverageResult { exit_code, lcov_content })
+        Ok(CoverageResult {
+            exit_code,
+            lcov_content,
+        })
     }
 
     /// Parse failing invariants for a contract from forge stdout.
@@ -219,18 +228,27 @@ Encountered 3 failing tests in test/invariants/VaultInvariantTest.sol:VaultInvar
         let bugs = r.collect_bugs(MULTI_BUG_OUTPUT, "Vault");
         assert_eq!(bugs.len(), 3);
         assert!(bugs.iter().any(|b| b.invariant_name == "invariant_bounded"));
-        assert!(bugs.iter().any(|b| b.invariant_name == "invariant_in_range"));
-        assert!(bugs.iter().any(|b| b.invariant_name == "invariant_never_zero"));
+        assert!(bugs
+            .iter()
+            .any(|b| b.invariant_name == "invariant_in_range"));
+        assert!(bugs
+            .iter()
+            .any(|b| b.invariant_name == "invariant_never_zero"));
     }
 
     #[test]
     fn call_sequence_extracted_per_bug() {
         let r = runner();
         let bugs = r.collect_bugs(MULTI_BUG_OUTPUT, "Vault");
-        let bounded = bugs.iter().find(|b| b.invariant_name == "invariant_bounded").unwrap();
+        let bounded = bugs
+            .iter()
+            .find(|b| b.invariant_name == "invariant_bounded")
+            .unwrap();
         assert!(bounded.call_sequence.contains("handler_bigJump"));
-        let never_zero =
-            bugs.iter().find(|b| b.invariant_name == "invariant_never_zero").unwrap();
+        let never_zero = bugs
+            .iter()
+            .find(|b| b.invariant_name == "invariant_never_zero")
+            .unwrap();
         assert!(never_zero.call_sequence.contains("handler_reset"));
     }
 
@@ -238,7 +256,10 @@ Encountered 3 failing tests in test/invariants/VaultInvariantTest.sol:VaultInvar
     fn no_duplicate_bugs_from_summary_section() {
         let r = runner();
         let bugs = r.collect_bugs(MULTI_BUG_OUTPUT, "Vault");
-        let count = bugs.iter().filter(|b| b.invariant_name == "invariant_bounded").count();
+        let count = bugs
+            .iter()
+            .filter(|b| b.invariant_name == "invariant_bounded")
+            .count();
         assert_eq!(count, 1);
     }
 
@@ -259,7 +280,8 @@ Encountered 3 failing tests in test/invariants/VaultInvariantTest.sol:VaultInvar
 
     #[test]
     fn filter_lcov_keeps_matching_sf_records() {
-        let lcov = "SF:src/Other.sol\nDA:1,1\nend_of_record\nSF:src/Vault.sol\nDA:5,1\nend_of_record\n";
+        let lcov =
+            "SF:src/Other.sol\nDA:1,1\nend_of_record\nSF:src/Vault.sol\nDA:5,1\nend_of_record\n";
         let r = runner();
         let out = r.filter_lcov(lcov, "Vault");
         assert!(out.contains("Vault.sol"));

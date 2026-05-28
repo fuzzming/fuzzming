@@ -36,10 +36,18 @@ impl FuzzerOutputPort for FileSystemFuzzerOutput {
         Ok(dest)
     }
 
-    async fn write_coverage_context(&self, contract_name: &str, context: &CoverageContext) -> Result<()> {
+    async fn write_coverage_context(
+        &self,
+        contract_name: &str,
+        context: &CoverageContext,
+    ) -> Result<()> {
         let dir = self.workspace_root.join(FUZZMING_DIR).join(contract_name);
         fs::create_dir_all(&dir).await?;
-        fs::write(dir.join("coverage_context.json"), serde_json::to_string(context)?).await?;
+        fs::write(
+            dir.join("coverage_context.json"),
+            serde_json::to_string(context)?,
+        )
+        .await?;
         Ok(())
     }
 }
