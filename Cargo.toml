@@ -2,7 +2,12 @@
 name = "fuzzming"
 version = "1.0.0"
 edition = "2021"
+description = "LLM-powered fuzzing assistant for Solidity smart contracts — generates, runs, and iterates invariant tests with Foundry"
 license = "Apache-2.0"
+repository = "https://github.com/fuzzming/fuzzming"
+readme = "README.md"
+keywords = ["fuzzing", "solidity", "smart-contracts", "llm", "foundry"]
+categories = ["command-line-utilities", "development-tools::testing"]
 
 [lib]
 name = "fuzzming"
