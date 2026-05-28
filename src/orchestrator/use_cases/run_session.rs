@@ -221,13 +221,19 @@ impl OrchestratorRunPort for RunSessionUseCase {
             let mut compile_error_emitted = false;
 
             for ((path, signal), report) in active.iter().zip(signals.iter()).zip(reports.iter()) {
-                // Accumulate all bugs found this round before deciding termination.
+                // Accumulate bugs found this round — one entry per unique invariant name.
+                // The same invariant can fire in multiple rounds; only keep the first
+                // occurrence so the final report doesn't repeat the same finding N times.
                 if !report.bugs.is_empty() {
-                    state
+                    let entry = state
                         .found_bugs
                         .entry(signal.contract_name.clone())
-                        .or_default()
-                        .extend(report.bugs.iter().cloned());
+                        .or_default();
+                    for bug in &report.bugs {
+                        if !entry.iter().any(|b| b.invariant_name == bug.invariant_name) {
+                            entry.push(bug.clone());
+                        }
+                    }
                 } else if let Some(lcov_path) = &report.lcov_path {
                     let lcov_str = lcov_path.to_string_lossy().to_string();
                     if let Ok(Some(ctx)) = self.reader.get_coverage_context(&lcov_str).await {
