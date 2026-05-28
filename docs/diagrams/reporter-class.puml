@@ -1,0 +1,167 @@
+@startuml Reporter_Class
+
+' ── Skin ─────────────────────────────────────────────────────────────────────
+
+skinparam linetype ortho
+skinparam nodesep 35
+skinparam ranksep 45
+
+skinparam ClassBackgroundColor        #F8F7FF
+skinparam ClassBorderColor            #AFA9EC
+skinparam ClassBorderThickness        1.5
+skinparam ClassFontName               Helvetica
+skinparam ClassFontSize               11
+skinparam ClassFontColor              #26215C
+skinparam ClassHeaderBackgroundColor  #EDE9F7
+skinparam ClassArrowColor             #7F77DD
+skinparam ClassArrowThickness         1.5
+
+skinparam InterfaceBackgroundColor    #EDE9F7
+skinparam InterfaceBorderColor        #7F77DD
+skinparam InterfaceFontColor          #26215C
+skinparam InterfaceFontName           Helvetica
+skinparam InterfaceFontSize           11
+
+skinparam PackageBackgroundColor      #F9F8FC
+skinparam PackageBorderColor          #C5C1EB
+skinparam PackageFontColor            #534AB7
+skinparam PackageFontSize             11
+skinparam PackageFontStyle            bold
+
+skinparam NoteBackgroundColor         #FAEEDA
+skinparam NoteBorderColor             #EF9F27
+skinparam ShadowingEnabled            false
+skinparam RoundCorner                 8
+
+skinparam ClassBackgroundColor<<adapter>>  #EDE9F7
+skinparam ClassBorderColor<<adapter>>      #7F77DD
+skinparam ClassBackgroundColor<<usecase>>  #EBF3FC
+skinparam ClassBorderColor<<usecase>>      #9EB8E6
+skinparam ClassBackgroundColor<<fn>>       #F0F7EE
+skinparam ClassBorderColor<<fn>>           #8CC87A
+
+' ── Component ────────────────────────────────────────────────────────────────
+
+package "Reporter" {
+
+  ' ── Inbound adapter ────────────────────────────────────────────────────────
+  ' (Reporter directly implements ReporterPort — no separate internal port)
+
+  class Reporter <<adapter>> {
+    + output : Box<OutputPort>
+  }
+
+  ' ── Use case layer — formatting functions ──────────────────────────────────
+
+  together {
+    class format_bug_report <<fn>> {
+      (SessionOutcome) → String
+    }
+    class format_exhausted_report <<fn>> {
+      (SessionOutcome) → String
+    }
+    class format_coverage_report <<fn>> {
+      (SessionOutcome) → String
+    }
+  }
+
+  together {
+    class format_compile_error <<fn>> {
+      (round, message) → String
+    }
+    class format_dev_test_failure <<fn>> {
+      (SessionOutcome) → String
+    }
+    class format_round_usage <<fn>> {
+      (RoundUsage) → String
+    }
+  }
+
+  ' ── Outbound port ──────────────────────────────────────────────────────────
+
+  interface OutputPort <<outbound port>> {
+    + write(output : &str) : Result<()>
+    + write_progress(output : &str) : Result<()>
+    + handle_stage_event(StageEvent) : Result<()>
+  }
+
+  ' ── Outbound adapter ───────────────────────────────────────────────────────
+
+  class TerminalOutput <<adapter>> {
+    - state : Arc<Mutex<ProgressState>>
+    + new() : TerminalOutput
+  }
+
+  class ProgressState {
+    + contracts : HashMap<String, ContractProgress>
+    + fuzzer : Option<FuzzerProgress>
+    + multi : MultiProgress
+  }
+
+}
+
+' ── Shared ───────────────────────────────────────────────────────────────────
+
+package "Shared" #F1EFE8 {
+
+  interface ReporterPort {
+    + emit(SessionOutcome) : Result<()>
+    + emit_round_usage(RoundUsage) : Result<()>
+    + emit_stage_event(StageEvent) : Result<()>
+    + emit_compile_error(round, msg) : Result<()>
+  }
+
+  together {
+    class SessionOutcome <<model>> {
+      + reason : TerminationReason
+      + contract_name : String
+      + rounds_completed : u32
+      + bugs : Vec<BugInfo>
+      + coverage_snapshots : Vec<String>
+    }
+    class RoundUsage <<model>> {
+      + contract_name : String
+      + round : u32
+      + usage : GenerationUsage
+    }
+  }
+
+  class StageEvent <<model>> {
+    + contract_name : Option<String>
+    + round : u32
+    + stage : StageKind
+    + status : StageStatus
+    + fuzzer_summary : Option<FuzzerRoundSummary>
+  }
+
+}
+
+' ── Wiring ───────────────────────────────────────────────────────────────────
+
+' ① Inbound: Reporter directly implements shared ReporterPort (no internal port)
+Reporter       ..|>  ReporterPort           : implements
+
+' ② Reporter owns the outbound port
+Reporter       *-->  OutputPort
+
+' ③ Reporter dispatches to format functions based on TerminationReason
+Reporter       ..>   format_bug_report       : calls on Bug
+Reporter       ..>   format_exhausted_report : calls on Exhausted
+Reporter       ..>   format_coverage_report  : calls on FullCoverage
+Reporter       ..>   format_compile_error    : calls on CompileError
+Reporter       ..>   format_dev_test_failure : calls on DevTestFailed
+Reporter       ..>   format_round_usage      : calls for usage
+
+' ④ Outbound adapter implements outbound port
+TerminalOutput ..|>  OutputPort              : implements
+TerminalOutput *-->  ProgressState
+
+' ⑤ Format functions consume shared data types
+format_bug_report       ..>  SessionOutcome : formats
+format_exhausted_report ..>  SessionOutcome : formats
+format_coverage_report  ..>  SessionOutcome : formats
+format_dev_test_failure ..>  SessionOutcome : formats
+format_round_usage      ..>  RoundUsage     : formats
+TerminalOutput          ..>  StageEvent     : handles
+
+@enduml

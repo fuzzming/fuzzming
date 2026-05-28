@@ -1,0 +1,215 @@
+@startuml Generator_Class
+
+' ── Skin ─────────────────────────────────────────────────────────────────────
+
+skinparam linetype ortho
+skinparam nodesep 35
+skinparam ranksep 45
+
+skinparam ClassBackgroundColor        #F8F7FF
+skinparam ClassBorderColor            #AFA9EC
+skinparam ClassBorderThickness        1.5
+skinparam ClassFontName               Helvetica
+skinparam ClassFontSize               11
+skinparam ClassFontColor              #26215C
+skinparam ClassHeaderBackgroundColor  #EDE9F7
+skinparam ClassArrowColor             #7F77DD
+skinparam ClassArrowThickness         1.5
+
+skinparam InterfaceBackgroundColor    #EDE9F7
+skinparam InterfaceBorderColor        #7F77DD
+skinparam InterfaceFontColor          #26215C
+skinparam InterfaceFontName           Helvetica
+skinparam InterfaceFontSize           11
+
+skinparam PackageBackgroundColor      #F9F8FC
+skinparam PackageBorderColor          #C5C1EB
+skinparam PackageFontColor            #534AB7
+skinparam PackageFontSize             11
+skinparam PackageFontStyle            bold
+
+skinparam NoteBackgroundColor         #FAEEDA
+skinparam NoteBorderColor             #EF9F27
+skinparam ShadowingEnabled            false
+skinparam RoundCorner                 8
+
+skinparam ClassBackgroundColor<<adapter>>  #EDE9F7
+skinparam ClassBorderColor<<adapter>>      #7F77DD
+skinparam ClassBackgroundColor<<usecase>>  #EBF3FC
+skinparam ClassBorderColor<<usecase>>      #9EB8E6
+skinparam ClassBackgroundColor<<fn>>       #F0F7EE
+skinparam ClassBorderColor<<fn>>           #8CC87A
+skinparam ClassBackgroundColor<<domain>>   #FFF8F0
+skinparam ClassBorderColor<<domain>>       #D4B896
+
+' ── Component ────────────────────────────────────────────────────────────────
+
+package "Generator" {
+
+  ' ── Inbound layer ──────────────────────────────────────────────────────────
+
+  class Generator <<adapter>> {
+    - use_case : Box<GeneratorRunPort>
+  }
+
+  interface GeneratorRunPort <<inbound port>> {
+    + run(RoundSignal) : Result<LlmSignal>
+  }
+
+  class GeneratorRunUseCase <<usecase>> {
+    - gateway : Box<GenerationPort>
+  }
+
+  class assemble_prompt <<fn>> {
+    (round, ContractContext,
+    fuzz_output, CoverageContext,
+    bugs, security_analysis)
+    → AssembledPrompt
+  }
+
+  ' ── Domain ────────────────────────────────────────────────────────────────
+
+  class Prompt <<domain>> {
+    - source_code : String
+    - round : u32
+    - fuzz_output : Option<String>
+    - coverage_context : Option<CoverageContext>
+    - confirmed_bugs : Vec<BugInfo>
+    - security_analysis : Option<String>
+    + into_assembled() : AssembledPrompt
+  }
+
+  together {
+    class GenerationResult <<domain>> {
+      + response : GenerationResponse
+      + usage : GenerationUsage
+    }
+    enum GenerationResponse <<domain>> {
+      Full { bodies, foundry_config }
+      Patch { bodies_updates, config_updates }
+    }
+  }
+
+  ' ── Outbound layer — first port ────────────────────────────────────────────
+
+  interface GenerationPort <<outbound port>> {
+    + generate(GenerationRequest) : Result<GenerationResult>
+  }
+
+  class GenerationRequest <<model>> {
+    + round : u32
+    + contract_name : String
+    + prompt : AssembledPrompt
+    + existing_bodies : Option<BodiesJson>
+  }
+
+  class LiteLlmGenerationAdapter <<adapter>> {
+    - model : String
+    - client : Arc<LlmClientPort>
+    - prompt_mode : PromptMode
+  }
+
+  ' ── Outbound layer — second port ───────────────────────────────────────────
+
+  interface LlmClientPort <<outbound port>> {
+    + complete(system, user) : Result<(String, Option<GenerationUsage>)>
+  }
+
+  class LiteLlmClient <<adapter>> {
+    - model : String
+    - api_key : Option<String>
+    - max_tokens : Option<u32>
+    - timeout_secs : u64
+  }
+
+}
+
+' ── Shared ───────────────────────────────────────────────────────────────────
+
+package "Shared" #F1EFE8 {
+
+  interface LlmEnginePort {
+    + run(RoundSignal) : Result<LlmSignal>
+  }
+
+  together {
+    class RoundSignal <<model>> {
+      + round : u32
+      + contract_name : String
+      + source_code : String
+      + fuzz_output : Option<String>
+      + coverage_context : Option<CoverageContext>
+      + confirmed_bugs : Vec<BugInfo>
+      + existing_bodies : Option<BodiesJson>
+    }
+    class LlmSignal <<model>> {
+      + status : LlmStatus
+      + result : Option<GenerationResult>
+      + final_bodies : Option<BodiesJson>
+    }
+  }
+
+  together {
+    class AssembledPrompt <<model>> {
+      + messages : Vec<Message>
+      + round : u32
+      + context_sections : Vec<String>
+    }
+    class BodiesJson <<model>> {
+      + meta : BodiesMeta
+      + handler : HandlerBodies
+      + invariant_test : InvariantTestBodies
+    }
+  }
+
+  together {
+    class FoundryConfig <<model>> {
+      + depth : u32
+      + runs : u32
+      + seed : String
+      + dictionary_weight : u32
+    }
+    class GenerationUsage <<model>> {
+      + calls : u64
+      + prompt_tokens : u64
+      + completion_tokens : u64
+      + cached_prompt_tokens : u64
+    }
+  }
+}
+
+' ── Wiring ───────────────────────────────────────────────────────────────────
+
+' ① Inbound: shared port → adapter → internal port → use case
+Generator                   ..|>  LlmEnginePort              : implements
+Generator                   *-->  GeneratorRunPort
+GeneratorRunUseCase         ..|>  GeneratorRunPort            : implements
+
+' ② Use case calls prompt assembly helper, which builds a Prompt domain object
+GeneratorRunUseCase         ..>   assemble_prompt             : calls
+assemble_prompt             ..>   Prompt                      : builds
+Prompt                      ..>   AssembledPrompt             : produces
+
+' ③ Use case owns the first outbound port
+GeneratorRunUseCase         *-->  GenerationPort
+GenerationRequest           *-->  AssembledPrompt
+
+' ④ First outbound adapter implements first port; owns second port
+LiteLlmGenerationAdapter    ..|>  GenerationPort              : implements
+LiteLlmGenerationAdapter    *-->  LlmClientPort
+
+' ⑤ Second outbound adapter implements second port
+LiteLlmClient               ..|>  LlmClientPort               : implements
+
+' ⑥ Domain: generation result carries the response
+LiteLlmGenerationAdapter    ..>   GenerationResult            : returns
+GenerationResult            *-->  GenerationResponse
+
+' ⑦ Data flow from shared
+GeneratorRunUseCase         ..>   RoundSignal                 : receives
+GeneratorRunUseCase         ..>   LlmSignal                   : produces
+LiteLlmGenerationAdapter    ..>   FoundryConfig               : configures
+LiteLlmGenerationAdapter    ..>   BodiesJson                  : produces
+LiteLlmClient               ..>   GenerationUsage             : tracks
+
+@enduml

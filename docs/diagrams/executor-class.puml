@@ -1,0 +1,167 @@
+@startuml Executor_Class
+
+' ── Skin ─────────────────────────────────────────────────────────────────────
+
+skinparam linetype ortho
+skinparam nodesep 35
+skinparam ranksep 45
+
+skinparam ClassBackgroundColor        #F8F7FF
+skinparam ClassBorderColor            #AFA9EC
+skinparam ClassBorderThickness        1.5
+skinparam ClassFontName               Helvetica
+skinparam ClassFontSize               11
+skinparam ClassFontColor              #26215C
+skinparam ClassHeaderBackgroundColor  #EDE9F7
+skinparam ClassArrowColor             #7F77DD
+skinparam ClassArrowThickness         1.5
+
+skinparam InterfaceBackgroundColor    #EDE9F7
+skinparam InterfaceBorderColor        #7F77DD
+skinparam InterfaceFontColor          #26215C
+skinparam InterfaceFontName           Helvetica
+skinparam InterfaceFontSize           11
+
+skinparam PackageBackgroundColor      #F9F8FC
+skinparam PackageBorderColor          #C5C1EB
+skinparam PackageFontColor            #534AB7
+skinparam PackageFontSize             11
+skinparam PackageFontStyle            bold
+
+skinparam NoteBackgroundColor         #FAEEDA
+skinparam NoteBorderColor             #EF9F27
+skinparam ShadowingEnabled            false
+skinparam RoundCorner                 8
+
+skinparam ClassBackgroundColor<<adapter>>  #EDE9F7
+skinparam ClassBorderColor<<adapter>>      #7F77DD
+skinparam ClassBackgroundColor<<usecase>>  #EBF3FC
+skinparam ClassBorderColor<<usecase>>      #9EB8E6
+skinparam ClassBackgroundColor<<fn>>       #F0F7EE
+skinparam ClassBorderColor<<fn>>           #8CC87A
+
+' ── Component ────────────────────────────────────────────────────────────────
+
+package "Executor" {
+
+  ' ── Inbound layer ──────────────────────────────────────────────────────────
+
+  class Executor <<adapter>> {
+    - use_case : Box<ExecutorRunPort>
+  }
+
+  interface ExecutorRunPort <<inbound port>> {
+    + execute(ExecutorInput) : Result<()>
+  }
+
+  class ExecuteUseCase <<usecase>> {
+    - writer : FileSystemWriter
+    - generator : Arc<CodeGeneratorPort>
+    - config_writer : Arc<ConfigWriterPort>
+  }
+
+  together {
+    class apply_patches <<fn>> {
+      (bodies, updates) → BodiesJson
+    }
+    class write_bodies <<fn>> {
+      (bodies, writer) → Result<()>
+    }
+    class write_config_json <<fn>> {
+      (config, writer) → Result<()>
+    }
+  }
+
+  ' ── Outbound ports ─────────────────────────────────────────────────────────
+
+  together {
+    interface CodeGeneratorPort <<outbound port>> {
+      + generate(BodiesJson, FileSystemWriter) : Result<()>
+    }
+    interface ConfigWriterPort <<outbound port>> {
+      + write(FuzzerConfigArtifact, FileSystemWriter) : Result<()>
+    }
+  }
+
+  ' ── Outbound adapters ──────────────────────────────────────────────────────
+
+  together {
+    class SolidityGenerator <<adapter>> {
+    }
+    class FoundryConfigWriter <<adapter>> {
+    }
+  }
+
+  class FileSystemWriter <<adapter>> {
+    - base_path : PathBuf
+    + write_file(path, content) : Result<()>
+  }
+
+}
+
+' ── Shared ───────────────────────────────────────────────────────────────────
+
+package "Shared" #F1EFE8 {
+
+  interface ExecutorPort {
+    + execute(ExecutorInput) : Result<()>
+  }
+
+  together {
+    enum ExecutorInput <<model>> {
+      Full { bodies, fuzzer_config, source_pragma }
+      Patch { existing_bodies, bodies_updates,
+      existing_config, config_updates, source_pragma }
+    }
+    class JsonBlockUpdate <<model>> {
+      + op : JsonPatchOp
+      + path : String
+      + value : Value
+    }
+  }
+
+  together {
+    class BodiesJson <<model>> {
+      + meta : BodiesMeta
+      + handler : HandlerBodies
+      + invariant_test : InvariantTestBodies
+    }
+    enum FuzzerConfigArtifact <<model>> {
+      Foundry(FoundryConfig)
+    }
+  }
+
+}
+
+' ── Wiring ───────────────────────────────────────────────────────────────────
+
+' ① Inbound: shared port → adapter → internal port → use case
+Executor          ..|>  ExecutorPort        : implements
+Executor          *-->  ExecutorRunPort
+ExecuteUseCase    ..|>  ExecutorRunPort     : implements
+
+' ② Use case owns both outbound ports and the writer
+ExecuteUseCase    *-->  CodeGeneratorPort
+ExecuteUseCase    *-->  ConfigWriterPort
+ExecuteUseCase    *-->  FileSystemWriter
+
+' ③ Outbound adapters implement outbound ports
+SolidityGenerator   ..|>  CodeGeneratorPort  : implements
+FoundryConfigWriter ..|>  ConfigWriterPort   : implements
+
+' ④ Both adapters receive the writer at call time
+SolidityGenerator   ..>   FileSystemWriter   : uses
+FoundryConfigWriter ..>   FileSystemWriter   : uses
+
+' ⑤ Helper functions called by the use case
+ExecuteUseCase    ..>   apply_patches        : calls
+ExecuteUseCase    ..>   write_bodies         : calls
+ExecuteUseCase    ..>   write_config_json    : calls
+
+' ⑥ Data flow
+ExecuteUseCase    ..>   ExecutorInput        : receives
+apply_patches     ..>   JsonBlockUpdate      : applies
+ExecuteUseCase    ..>   BodiesJson           : processes
+ExecuteUseCase    ..>   FuzzerConfigArtifact : processes
+
+@enduml
