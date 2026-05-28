@@ -233,6 +233,7 @@ FuzzMing is built on hexagonal architecture so that every language and fuzzer is
 | [docs/shared.md](docs/shared.md) | Shared data layer — models, ports, requests, responses |
 | [docs/entry.md](docs/entry.md) | CLI entry point — subcommands, flags, exit codes |
 | [docs/composition.md](docs/composition.md) | Composition root — full wiring graph |
+| [docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md) | FuzzMing vs. Shieldify audit — findings, cost and time comparison |
 
 To add a new language or fuzzer, see the checklist in [docs/composition.md](docs/composition.md).
 
