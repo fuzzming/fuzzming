@@ -34,6 +34,11 @@ pub fn build_round_one_analysis_prompt() -> String {
      - Access control: privileged functions reachable by unauthorized callers\n\
      - Business logic: properties that must hold across all valid state transitions\n\
      \n\
+     Discovery objective: find many independent root causes, not many ways to trigger \
+     the same defect. Group equivalent exploit paths under one finding when they come \
+     from the same code problem. The generator should later use this analysis to create \
+     tests for different possible problems, not duplicate invariants for the same problem.\n\
+     \n\
      Return this JSON exactly:\n\
      {\n\
        \"vulnerability_analysis\": [\"string — one entry per finding\"],\n\
@@ -111,7 +116,6 @@ fn extract_dependency_imports(contract_path: &str, source: &str) -> Vec<String> 
     imports
 }
 
-
 fn is_concise(mode: &PromptMode) -> bool {
     matches!(mode, PromptMode::Concise)
 }
@@ -140,7 +144,7 @@ pub fn build_round_one_bodies_prompt(
     let test_name = format!("{contract_name}InvariantTest");
 
     let import_path = to_import_path(contract_path);
-    let handler_target_import = format!("import {{{contract_name}}} from \"{import_path}\";"  );
+    let handler_target_import = format!("import {{{contract_name}}} from \"{import_path}\";");
     let test_handler_import = format!("import {{{handler_name}}} from \"./{handler_name}.sol\";");
     let test_std_import = "import {Test} from \"forge-std/Test.sol\";";
 
@@ -395,6 +399,10 @@ pub fn build_round_n_prompt(request: &GenerationRequest, mode: &PromptMode) -> R
          3. op must be one of: add (key must not exist), replace (key must exist), remove (set value to null).\n\
          4. No duplicate paths in one response.\n\
          5. If nothing needs changing for one artifact, return its updates array as [].\n\
+         6. New invariants should target distinct root causes. Use the security analysis to \
+         understand confirmed failures, then move to other possible problems. Do not add \
+         another invariant whose only purpose is to rediscover a confirmed vulnerability \
+         through a different call sequence or symptom.\n\
          \n\
          {patch_constraints}\
          \n\

@@ -40,7 +40,10 @@ impl SecurityAnalysisPort for LiteLlmSecurityAnalysisAdapter {
         // When this becomes `previous_analysis` next round, the LLM knows exactly
         // which bugs were confirmed at the time this analysis was written.
         let bugs_header = if request.confirmed_bugs.is_empty() {
-            format!("**Confirmed bugs at round {}:** None\n\n", request.rounds_completed)
+            format!(
+                "**Confirmed bugs at round {}:** None\n\n",
+                request.rounds_completed
+            )
         } else {
             let list = format_bugs(&request.confirmed_bugs);
             format!(
@@ -54,17 +57,26 @@ impl SecurityAnalysisPort for LiteLlmSecurityAnalysisAdapter {
 }
 
 fn build_system_prompt() -> String {
-    "You are an expert smart contract security auditor working in an iterative fuzzing loop. \
-     Each round you receive the latest fuzzer output and an optional previous analysis, \
-     and you produce a refined security analysis. Your job is to:\n\
-     1. Update confirmed bug findings — adjust severity or exploitability if new evidence warrants it.\n\
-     2. Add newly discovered issues revealed by the latest fuzz output.\n\
+    "You are an expert smart contract security auditor assisting a test generator in an \
+     iterative fuzzing loop. Your output is guidance for the next generator call, not a \
+     standalone audit report. Each round you receive the latest fuzzer output and an \
+     optional previous analysis, and you produce a refined security analysis. Your job is to:\n\
+     1. Explain confirmed fuzzing failures to the generator: root cause, affected code, \
+        why the invariant failed, and what class of bug it proves.\n\
+     2. Update confirmed bug findings — adjust severity or exploitability if new evidence warrants it.\n\
      3. Identify vulnerabilities the fuzzer is STILL missing — \
         focus on: access control, reentrancy, arithmetic overflow, oracle manipulation, \
         economic attacks (MEV/sandwich/frontrunning), state machine violations, \
         admin key risks, and missing validation.\n\
+     Group findings by root cause, not by exploit path. If two call sequences, invariants, \
+     or symptoms come from the same code defect, treat them as one finding and explicitly \
+     say they share the same root cause.\n\
+     Do not ask the generator to reproduce the same bug through another invariant, call \
+     sequence, or symptom. Once a root cause is confirmed, direct the generator toward \
+     other independent problems in the code.\n\
      Be precise: reference specific function names and the exact conditions that create risk. \
-     Do NOT re-describe confirmed bugs in section 3 — list only distinct issues not yet caught.\n\
+     Do NOT re-describe confirmed bugs in section 3 — list only distinct issues not yet caught, \
+     and exclude near-duplicates that come from the same underlying problem.\n\
      Return JSON: {\"analysis\": \"<full markdown text>\"}".to_string()
 }
 
@@ -87,17 +99,23 @@ fn build_user_prompt(request: &SecurityAnalysisRequest) -> String {
 
     let instruction = if request.previous_analysis.is_some() {
         "Update the analysis based on the latest fuzz output:\n\
-         ## Confirmed Bug Analysis\n\
-         Keep and refine existing findings. Update severity if new evidence warrants it.\n\n\
-         ## Additional Potential Vulnerabilities\n\
-         Add newly discovered issues and any distinct issues the fuzzer is still missing."
+         ## Confirmed Failure Explanation for Generator\n\
+         Explain each confirmed failure by root cause, affected function/state, why the \
+         invariant failed, and what the generator should avoid repeating. Merge findings \
+         that share the same root cause, even if they have different call sequences or \
+         invariant names. Update severity if new evidence warrants it.\n\n\
+         ## Independent Vulnerabilities to Try Next\n\
+         Suggest only distinct issues the fuzzer is still missing. Do not list another \
+         way to trigger an already-confirmed root cause."
     } else {
         "Provide an initial analysis:\n\
-         ## Confirmed Bug Analysis\n\
-         For each confirmed bug: root cause, severity (Critical/High/Medium/Low), \
-         exploitability without privileged access.\n\n\
-         ## Additional Potential Vulnerabilities\n\
-         Distinct issues NOT already confirmed above."
+         ## Confirmed Failure Explanation for Generator\n\
+         For each confirmed bug: root cause, affected function/state, why the invariant \
+         failed, severity (Critical/High/Medium/Low), and exploitability without privileged \
+         access. Merge duplicates by root cause.\n\n\
+         ## Independent Vulnerabilities to Try Next\n\
+         Distinct issues NOT already confirmed above, excluding near-duplicates from the \
+         same underlying defect."
     };
 
     format!(
@@ -107,7 +125,11 @@ fn build_user_prompt(request: &SecurityAnalysisRequest) -> String {
         request.rounds_completed,
         request.source_code,
         request.confirmed_bugs.len(),
-        if request.confirmed_bugs.len() == 1 { "" } else { "s" },
+        if request.confirmed_bugs.len() == 1 {
+            ""
+        } else {
+            "s"
+        },
         bugs_section,
         fuzz_section,
         previous_section,
@@ -124,7 +146,14 @@ fn format_bugs(bugs: &[BugInfo]) -> String {
             let seq = if bug.call_sequence.is_empty() {
                 String::new()
             } else {
-                format!("\n  Call sequence:\n{}", bug.call_sequence.lines().map(|l| format!("    {l}")).collect::<Vec<_>>().join("\n"))
+                format!(
+                    "\n  Call sequence:\n{}",
+                    bug.call_sequence
+                        .lines()
+                        .map(|l| format!("    {l}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
             };
             out.push(format!("- `{}`{}", bug.invariant_name, seq));
         }

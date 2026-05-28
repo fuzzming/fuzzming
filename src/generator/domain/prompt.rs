@@ -1,5 +1,5 @@
-use crate::shared::models::{AssembledPrompt, BugInfo, CoverageContext, GapType, Message, Role};
 use super::fuzz_output_parser::format_for_llm;
+use crate::shared::models::{AssembledPrompt, BugInfo, CoverageContext, GapType, Message, Role};
 
 const RULES: [&str; 5] = [
     "NO FOR-IN LOOPS: Solidity mappings are not iterable. Track actors with `address[] public actors` and push new callers into it.",
@@ -27,7 +27,14 @@ impl Prompt {
         confirmed_bugs: Vec<BugInfo>,
         security_analysis: Option<String>,
     ) -> Self {
-        Self { source_code, round, fuzz_output, coverage_context, confirmed_bugs, security_analysis }
+        Self {
+            source_code,
+            round,
+            fuzz_output,
+            coverage_context,
+            confirmed_bugs,
+            security_analysis,
+        }
     }
 
     pub fn system_message(&self) -> String {
@@ -56,7 +63,11 @@ impl Prompt {
                 .collect::<Vec<_>>()
                 .join("\n");
             sections.push(format!(
-                "CONFIRMED BUGS (these invariants already caught real vulnerabilities — keep them in the test and focus on finding additional distinct bugs):\n{list}"
+                "CONFIRMED BUGS (these invariants already caught real vulnerabilities):\n{list}\n\n\
+                 DISCOVERY GOAL: do not spend new patches on another invariant that proves the \
+                 same vulnerability or the same underlying root cause through a different call \
+                 sequence. Keep confirmed findings recorded, but focus new handler/invariant work \
+                 on distinct root causes and independent security properties."
             ));
         }
 
@@ -70,8 +81,14 @@ impl Prompt {
 
         if let Some(analysis) = &self.security_analysis {
             sections.push(format!(
-                "SECURITY ANALYSIS (AI-identified vulnerabilities — use these insights \
-                 to strengthen or add invariants):\n{analysis}"
+                "SECURITY ANALYSIS FOR GENERATOR (use this as guidance for the next patch):\n\
+                 - The confirmed-failure section explains what already broke, why it broke, \
+                 and which root cause is already covered.\n\
+                 - Do not create another invariant whose purpose is to reproduce the same \
+                 root cause through a different call sequence or symptom.\n\
+                 - Use the independent-vulnerabilities section to target other possible \
+                 problems in the code.\n\n\
+                 {analysis}"
             ));
         }
 
@@ -108,8 +125,14 @@ impl Prompt {
 
         AssembledPrompt {
             messages: vec![
-                Message { role: Role::System, content: system },
-                Message { role: Role::User, content: user },
+                Message {
+                    role: Role::System,
+                    content: system,
+                },
+                Message {
+                    role: Role::User,
+                    content: user,
+                },
             ],
             round: self.round,
             context_sections,
@@ -196,7 +219,9 @@ mod tests {
         assert_eq!(assembled.messages.len(), 2);
         assert!(matches!(assembled.messages[0].role, Role::System));
         assert!(matches!(assembled.messages[1].role, Role::User));
-        assert!(assembled.context_sections.contains(&"fuzz_output".to_string()));
+        assert!(assembled
+            .context_sections
+            .contains(&"fuzz_output".to_string()));
         assert!(assembled.context_sections.contains(&"coverage".to_string()));
         assert!(assembled.messages[1].content.contains("Round: 2"));
         assert!(assembled.messages[1].content.contains("FUZZ OUTPUT"));
@@ -220,10 +245,12 @@ mod tests {
             invariant_name: "invariant_solvency".to_string(),
             call_sequence: "handler_deposit()".to_string(),
         };
-        let assembled =
-            Prompt::new(3, "contract C {}".to_string(), None, None, vec![bug], None).into_assembled();
+        let assembled = Prompt::new(3, "contract C {}".to_string(), None, None, vec![bug], None)
+            .into_assembled();
 
-        assert!(assembled.context_sections.contains(&"confirmed_bugs".to_string()));
+        assert!(assembled
+            .context_sections
+            .contains(&"confirmed_bugs".to_string()));
         assert!(assembled.messages[1].content.contains("CONFIRMED BUGS"));
         assert!(assembled.messages[1].content.contains("invariant_solvency"));
     }
