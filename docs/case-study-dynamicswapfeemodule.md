@@ -524,7 +524,7 @@ All three approaches were run against the same contract with no knowledge of eac
 | | Shieldify | FuzzMing | Claude Web |
 |---|---|---|---|
 | Time | 5 days / 80 hrs | **23 min** | ~7 min |
-| Cost | — | $4.94 | ~$0.02 |
+| Cost | — | $4.94 | Not included (no sourced figure) |
 | Human hours | 80 | 0 | 0 |
 | Total findings | 7 | 7 | 8 |
 | False positives | 0 | 0 | 0 |

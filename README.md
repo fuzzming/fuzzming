@@ -285,7 +285,7 @@ FuzzMing found 5 bugs the professional audit missed — all rooted in combinatio
 
 ## FuzzMing vs Claude Web
 
-**Reference:** Claude claude.ai web interface — single prompt, ~7 minutes, ~$0.02.
+**Reference:** Claude claude.ai web interface — single prompt, ~7 minutes.
 
 ### Where FuzzMing wins
 
@@ -303,7 +303,7 @@ The raw bug overlap between FuzzMing and Claude Web is high on this contract —
 | Strength | Detail |
 |---|---|
 | TWAP truncation | Identified that Solidity integer division truncates the TWAP tick calculation, producing a fee slightly below the mathematically correct value — requires oracle math domain knowledge |
-| Speed and cost | ~7 minutes, ~$0.02 — useful as a first-pass sweep before deeper analysis |
+| Speed | ~7 minutes — useful as a first-pass sweep before deeper analysis |
 | Design-level observations | Reads intent and flags mismatches between names, comments, and behavior |
 
 ### Limitations of Claude Web relative to FuzzMing
@@ -324,7 +324,7 @@ All three approaches were benchmarked on the same 161-line contract (`DynamicSwa
 | | Shieldify | FuzzMing | Claude Web |
 |---|---|---|---|
 | Time | 5 days / 80 hrs | **23 min** | ~7 min |
-| Cost | — | $4.94 | ~$0.02 |
+| Cost | — | $4.94 | Not included (no sourced figure) |
 | Human hours | 80 | **0** | 0 |
 | Total findings | 7 | 7 | 8 |
 | False positives | 0 | **0** | 0 |

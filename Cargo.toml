@@ -1,6 +1,6 @@
 [package]
 name = "fuzzming"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "LLM-powered fuzzing assistant for Solidity smart contracts — generates, runs, and iterates invariant tests with Foundry"
 license = "Apache-2.0"
