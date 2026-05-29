@@ -19,9 +19,14 @@ Five independent methods were run against the same 161-line contract. No method 
 | Cost | not disclosed | not tracked | not tracked | $4.94 | $2.15 |
 | Human effort | 80 hrs | ~7 min | 0 | 0 | 0 |
 | Bugs detected (invariants generated) | 5 | 8 | 5 | 7 | 6  |
-| Bugs confirmed (fuzzer found counterexample) | 5 | 8 (prose — unverified) ⁴ | 5 | 7 | **1** ⁵ |
+| Bugs confirmed (fuzzer found counterexample) | 5 | 0 (8 unverified) ⁴ | 5 | 7 | **1** ⁵ |
 | False positives | 0 | unverifiable (no test code) | 0 | 0 | 0 |
 | Reproducible proof | — | — | ✓ (seed + counterexample) | ✓ (shrunk call sequence) | ✓ (call sequence) |
+
+**Terminology note (important):**
+- **Stateful invariant fuzzing** = an **execution method**. The fuzzer runs multi-step call sequences over changing contract state (typically through a handler), then checks invariants after each sequence.
+- **LLM-generated invariants** = a **generation method**. The LLM writes invariant code, but a separate fuzzer run is still needed to execute those invariants and confirm bugs.
+- In short: one is **how tests are executed** (`stateful fuzzing`), the other is **how tests are written** (`LLM-generated invariants`).
 
 ◎ Invariant generated in LLM cache and semantically correct — not compiled or run due to invgen's own toolchain failure (see Method 5).
 
