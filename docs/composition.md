@@ -21,9 +21,9 @@ Everything behind `orchestrator` is fully wired and ready to run.
 
 ## Why a single composition root?
 
-- **Testability** — every component can be tested in isolation by providing mock implementations of its ports. The composition root is the one place that chooses the real adapters for production.
-- **No circular imports** — each component's `adapters/` never imports another component. The composition root is the only file with cross-component imports.
-- **Traceability** — the full wiring graph is visible in one file. If you want to know what implements `FuzzerEnginePort`, you read `composition_root.rs`.
+- **Testability**: every component can be tested in isolation by providing mock implementations of its ports. The composition root is the one place that chooses the real adapters for production.
+- **No circular imports**: each component's `adapters/` never imports another component. The composition root is the only file with cross-component imports.
+- **Traceability**: the full wiring graph is visible in one file. If you want to know what implements `FuzzerEnginePort`, you read `composition_root.rs`.
 
 ---
 
@@ -56,7 +56,7 @@ CompositionRoot::build(config)
 ├─ Reader  (Box<dyn ReaderPort>)
 │   └─ ReadUseCase  (Box<dyn ReaderRunPort>)
 │       ├─ SolidityContractReader  (Arc<dyn ContractReaderPort>)
-│       └─ FileSystemReader  (Arc — shared by both readers and the use case)
+│       └─ FileSystemReader  (Arc: shared by both readers and the use case)
 │             base_path = config.workspace_root
 │
 ├─ Reporter  (Box<dyn ReporterPort>)
@@ -78,7 +78,7 @@ The LLM client receives the API key and two config values at construction time:
 let llm_client: Arc<dyn LlmClientPort> = Arc::new(LiteLlmClient::new(
     &model,
     Some(api_key.as_str()),  // provider API key
-    Some(0.1),               // temperature — fixed; not user-configurable
+    Some(0.1),               // temperature: fixed; not user-configurable
     config.max_tokens,       // Option<u32>; None = no output token limit
     config.llm_timeout_secs, // u64; default 120
 ));
@@ -88,7 +88,7 @@ let llm_client: Arc<dyn LlmClientPort> = Arc::new(LiteLlmClient::new(
 
 ---
 
-## `LiteLlmGenerationAdapter` — prompt mode
+## `LiteLlmGenerationAdapter`: prompt mode
 
 ```rust
 let generation_adapter = Box::new(LiteLlmGenerationAdapter::new(
@@ -99,11 +99,11 @@ let generation_adapter = Box::new(LiteLlmGenerationAdapter::new(
 ));
 ```
 
-`PromptMode` is resolved at startup and passed through to the adapter. It controls how many design rules are included in the system prompt — not the JSON output schema, which is always the same.
+`PromptMode` is resolved at startup and passed through to the adapter. It controls how many design rules are included in the system prompt: not the JSON output schema, which is always the same.
 
 ---
 
-## `LiteLlmSecurityAnalysisAdapter` — optional analyzer
+## `LiteLlmSecurityAnalysisAdapter`: optional analyzer
 
 The security analyzer shares the same `LiteLlmClient` as the generator. It is wired into the
 orchestrator via `RunSessionUseCase::with_security_analyzer()` so patch rounds can request a
@@ -112,7 +112,7 @@ session proceeds without the extra analysis stage.
 
 ---
 
-## `RunFuzzerUseCase` — compile-error isolation
+## `RunFuzzerUseCase`: compile-error isolation
 
 The fuzzer use case receives `workspace_root` as a third argument alongside the two outbound ports:
 

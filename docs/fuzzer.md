@@ -1,12 +1,12 @@
 # Fuzzer Component
 
-The Fuzzer is the **execution gateway** of FuzzMing. It runs `forge test` against all generated invariant tests in one process, filters output per contract, and — if any contract passes — runs `forge coverage` and filters the lcov file per contract. It never writes Solidity files and never calls the LLM.
+The Fuzzer is the **execution gateway** of FuzzMing. It runs `forge test` against all generated invariant tests in one process, filters output per contract, and, if any contract passes, runs `forge coverage` and filters the lcov file per contract. It never writes Solidity files and never calls the LLM.
 
 ---
 
 ## Responsibility
 
-One job: given a batch of `RoundSignal`s (one per contract), run forge once and return a `Vec<FuzzReport>` (one per contract). All subprocess logic and output parsing live in the outbound adapter — the use case only orchestrates.
+One job: given a batch of `RoundSignal`s (one per contract), run forge once and return a `Vec<FuzzReport>` (one per contract). All subprocess logic and output parsing live in the outbound adapter: the use case only orchestrates.
 
 ---
 
@@ -16,18 +16,18 @@ One job: given a batch of `RoundSignal`s (one per contract), run forge once and 
 src/fuzzer/
 ├── adapters/
 │   ├── inbound/
-│   │   └── fuzzer.rs                       # Inbound adapter — implements FuzzerEnginePort, delegates to FuzzerRunPort
+│   │   └── fuzzer.rs                       # Inbound adapter: implements FuzzerEnginePort, delegates to FuzzerRunPort
 │   └── outbound/
-│       ├── forge_runner.rs                 # ForgeRunner — spawns forge, parses forge output, reads lcov.info
-│       └── file_system_fuzzer_output.rs    # FileSystemFuzzerOutput — writes fuzz_output.txt and lcov.info
+│       ├── forge_runner.rs                 # ForgeRunner: spawns forge, parses forge output, reads lcov.info
+│       └── file_system_fuzzer_output.rs    # FileSystemFuzzerOutput: writes fuzz_output.txt and lcov.info
 ├── ports/
 │   ├── inbound/
-│   │   └── fuzzer_run_port.rs              # FuzzerRunPort — inbound contract between adapter and use case
+│   │   └── fuzzer_run_port.rs              # FuzzerRunPort: inbound contract between adapter and use case
 │   └── outbound/
-│       ├── test_runner_port.rs             # TestRunnerPort — outbound contract for running forge and parsing its output
-│       └── fuzzer_output_port.rs           # FuzzerOutputPort — outbound contract for writing per-contract files
+│       ├── test_runner_port.rs             # TestRunnerPort: outbound contract for running forge and parsing its output
+│       └── fuzzer_output_port.rs           # FuzzerOutputPort: outbound contract for writing per-contract files
 └── use_cases/
-    ├── run_fuzzer_session.rs               # RunFuzzerUseCase — implements FuzzerRunPort, owns both outbound ports; contains private evaluate_outcome_for_contract
+    ├── run_fuzzer_session.rs               # RunFuzzerUseCase: implements FuzzerRunPort, owns both outbound ports; contains private evaluate_outcome_for_contract
     ├── run_fuzzer.rs                       # Pre-flight forge build check, then run_test()
     └── run_coverage.rs                     # Thin wrapper: calls runner.run_coverage()
 ```
@@ -56,11 +56,11 @@ Orchestrator
     (adapters/outbound)        (adapters/outbound)
 ```
 
-### Inbound adapter — `adapters/inbound/fuzzer.rs`
+### Inbound adapter: `adapters/inbound/fuzzer.rs`
 
-Implements `FuzzerEnginePort`. Holds `Box<dyn FuzzerRunPort>`. Delegates entirely to the use case — contains no logic of its own.
+Implements `FuzzerEnginePort`. Holds `Box<dyn FuzzerRunPort>`. Delegates entirely to the use case: contains no logic of its own.
 
-### Inbound port — `ports/inbound/fuzzer_run_port.rs`
+### Inbound port: `ports/inbound/fuzzer_run_port.rs`
 
 ```rust
 pub trait FuzzerRunPort: Send + Sync {
@@ -70,7 +70,7 @@ pub trait FuzzerRunPort: Send + Sync {
 
 One call covers all contracts. The returned `Vec<FuzzReport>` is in the same order as the input `Vec<RoundSignal>`.
 
-### Use case — `use_cases/run_fuzzer_session.rs`
+### Use case: `use_cases/run_fuzzer_session.rs`
 
 `RunFuzzerUseCase` implements `FuzzerRunPort`. Owns both outbound ports:
 
@@ -83,14 +83,14 @@ pub struct RunFuzzerUseCase {
 
 Sequences the full round:
 1. Guard against empty signals.
-2. Run `forge test` once — covers all contracts.
+2. Run `forge test` once: covers all contracts.
 3. For each contract: ask `runner` to filter stdout and collect bugs; ask `output` to write `fuzz_output.txt`; evaluate outcome.
 4. If any contract passed: run `forge coverage` once; the runner returns raw lcov content via `CoverageResult`; filter per contract; write per-contract `lcov.info`; parse and enrich coverage gaps with nearby source lines; write `.fuzzming/{Contract}/coverage_context.json`; set `FuzzReport.lcov_path`.
 5. Return `Vec<FuzzReport>`.
 
 The use case contains no forge-specific parsing and performs no filesystem I/O directly.
 
-### Outbound port — `ports/outbound/test_runner_port.rs`
+### Outbound port: `ports/outbound/test_runner_port.rs`
 
 ```rust
 pub trait TestRunnerPort: Send + Sync {
@@ -114,7 +114,7 @@ pub struct CoverageResult {
 }
 ```
 
-### Outbound port — `ports/outbound/fuzzer_output_port.rs`
+### Outbound port: `ports/outbound/fuzzer_output_port.rs`
 
 ```rust
 pub trait FuzzerOutputPort: Send + Sync {
@@ -126,12 +126,12 @@ pub trait FuzzerOutputPort: Send + Sync {
 
 Returns the absolute path to the written `lcov.info` so the use case can populate `FuzzReport.lcov_path`.
 
-### Outbound adapter — `adapters/outbound/forge_runner.rs`
+### Outbound adapter: `adapters/outbound/forge_runner.rs`
 
-`ForgeRunner` is the single process boundary — the only struct allowed to spawn forge. Profile is selected via `FOUNDRY_PROFILE` env var (forge 1.x has no `--profile` flag). The `[profile.fuzzming]` section written by the Executor sets `test = "test/fuzzming"`, so forge automatically scopes itself to the generated tests with no CLI flags:
+`ForgeRunner` is the single process boundary: the only struct allowed to spawn forge. Profile is selected via `FOUNDRY_PROFILE` env var (forge 1.x has no `--profile` flag). The `[profile.fuzzming]` section written by the Executor sets `test = "test/fuzzming"`, so forge automatically scopes itself to the generated tests with no CLI flags:
 
 ```rust
-// Pre-flight compile check — fast fail before spending the test run budget
+// Pre-flight compile check: fast fail before spending the test run budget
 tokio::process::Command::new("forge")
     .args(["build"])             // test = "test/fuzzming" from foundry.toml profile
     .env("FOUNDRY_PROFILE", profile_name)
@@ -154,7 +154,7 @@ tokio::process::Command::new("forge")
 
 `ForgeRunner` also owns all forge-specific output parsing:
 
-#### `collect_bugs` — forge output state machine
+#### `collect_bugs`: forge output state machine
 
 Forge reports each failing invariant with a multi-line block. Both tokens are **always on separate lines** (empirically verified):
 
@@ -171,13 +171,13 @@ The state machine walks stdout line by line:
 
 1. Enters the contract's section when a line contains `{Contract}InvariantTest`
 2. Exits if a different `InvariantTest` header appears (multi-contract output)
-3. On `[FAIL` — opens a new block, clears the sequence buffer
-4. On `[Sequence]` or `[Shrunk sequence]` — starts collecting sequence lines
-5. On box-drawing characters (`╭`, `╰`, `├`) — sequence collection ends (call stats table)
-6. On `invariant_` + `(runs:` — saves a `BugInfo`, closes the block; a `HashSet` deduplicates by name
-7. Stops at `Failing tests:` — forge prints results twice; this prevents duplicates
+3. On `[FAIL`: opens a new block, clears the sequence buffer
+4. On `[Sequence]` or `[Shrunk sequence]`: starts collecting sequence lines
+5. On box-drawing characters (`╭`, `╰`, `├`): sequence collection ends (call stats table)
+6. On `invariant_` + `(runs:`: saves a `BugInfo`, closes the block; a `HashSet` deduplicates by name
+7. Stops at `Failing tests:`: forge prints results twice; this prevents duplicates
 
-Returns `Vec<BugInfo>` — one entry per unique failing invariant, each carrying `invariant_name` and `call_sequence`.
+Returns `Vec<BugInfo>`: one entry per unique failing invariant, each carrying `invariant_name` and `call_sequence`.
 
 #### `filter_output`
 
@@ -187,7 +187,7 @@ Captures the full output section for one contract: starts when a line contains `
 
 Walks raw `lcov.info` text line by line; keeps each `SF:` block only if the `SF:` path contains the contract name.
 
-### Outbound adapter — `adapters/outbound/file_system_fuzzer_output.rs`
+### Outbound adapter: `adapters/outbound/file_system_fuzzer_output.rs`
 
 `FileSystemFuzzerOutput` is the only struct that performs filesystem writes for the fuzzer. It owns the `.fuzzming/{Contract}/` path convention:
 
@@ -216,11 +216,11 @@ Otherwise `evaluate_outcome_for_contract` delegates bug collection to the runner
 | Exit code non-zero, `runner.collect_bugs()` returns non-empty | `Bug` | one `BugInfo` per failing invariant |
 | Exit code non-zero, `runner.collect_bugs()` returns empty | `DevTestFailed` | `[]` |
 
-`CompileError` and `DevTestFailed` do **not** terminate the session — the orchestrator continues to the next round so the LLM can fix the generated Solidity.
+`CompileError` and `DevTestFailed` do **not** terminate the session: the orchestrator continues to the next round so the LLM can fix the generated Solidity.
 
 **Setup failure detection:** forge can exit 0 even when `setUp()` reverts and every invariant runs with 0 calls. When that happens, the outcome is coerced to `CompileError` and the fuzzer writes a `SETUP FAILURE` message to `fuzz_output.txt` so the LLM can fix constructor mocks and `targetContract` wiring.
 
-**`DevTestFailed` output capture**: `filter_output` looks for the `{Contract}InvariantTest` section header in forge stdout. For `DevTestFailed` (setUp revert, runtime panic, unused variable error), the error appears outside that section and `filter_output` returns an empty string. In that case the fuzzer falls back to writing the full `stderr + stdout` with a `"TEST FAILED — fix the handler/invariant test:"` header, so the LLM receives the actual error rather than an empty feedback.
+**`DevTestFailed` output capture**: `filter_output` looks for the `{Contract}InvariantTest` section header in forge stdout. For `DevTestFailed` (setUp revert, runtime panic, unused variable error), the error appears outside that section and `filter_output` returns an empty string. In that case the fuzzer falls back to writing the full `stderr + stdout` with a `"TEST FAILED: fix the handler/invariant test:"` header, so the LLM receives the actual error rather than an empty feedback.
 
 Coverage (`forge coverage`) is only triggered when at least one contract's outcome is `Pass`.
 
@@ -297,7 +297,7 @@ pub struct FuzzReport {
 pub enum FuzzOutcome {
     Pass,
     Bug,
-    FullCoverage,   // reserved — not yet returned
+    FullCoverage,   // reserved: not yet returned
     CompileError,   // forge could not compile; LLM repairs next round
     DevTestFailed,
 }
@@ -329,20 +329,20 @@ let fuzzer   = Fuzzer::new(use_case);
 
 ## Hard rules
 
-- `Fuzzer` never writes Solidity files — that is the Executor's job.
-- `Fuzzer` never calls the LLM — that is the Generator's job.
+- `Fuzzer` never writes Solidity files: that is the Executor's job.
+- `Fuzzer` never calls the LLM: that is the Generator's job.
 - `ForgeRunner` is the only struct that spawns forge subprocesses.
 - `ForgeRunner` is the only struct that knows forge's output format.
 - `FileSystemFuzzerOutput` is the only struct that performs filesystem writes for the fuzzer.
 - The use case contains no forge-specific parsing and no direct filesystem I/O.
-- Forge is always scoped to `test/fuzzming/` via the profile's `test` key — no `--match-path` flag is ever passed.
+- Forge is always scoped to `test/fuzzming/` via the profile's `test` key: no `--match-path` flag is ever passed.
 - `run_fuzzer.rs` runs `forge build` before `forge test`; if the build fails the test is skipped and the compile error is returned immediately.
-- Coverage is only run when at least one contract outcome is `Pass` — not on Bug, DevTestFailed, or CompileError rounds.
-- Missing `lcov.info` after coverage is silently tolerated — `CoverageResult.lcov_content` is `None`, `lcov_path` stays `None`.
+- Coverage is only run when at least one contract outcome is `Pass`: not on Bug, DevTestFailed, or CompileError rounds.
+- Missing `lcov.info` after coverage is silently tolerated: `CoverageResult.lcov_content` is `None`, `lcov_path` stays `None`.
 - For `DevTestFailed` with empty filtered output, the fuzzer writes full `stderr + stdout` so the LLM always receives actionable error context.
 
 ---
 
 ## Known issues
 
-1. **`FullCoverage` never returned** — no logic detects 100% coverage from lcov data and promotes the outcome to `FullCoverage`.
+1. **`FullCoverage` never returned**: no logic detects 100% coverage from lcov data and promotes the outcome to `FullCoverage`.

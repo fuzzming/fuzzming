@@ -2,7 +2,7 @@
 
 The `entry/` module is the only place in the codebase that reads external input (CLI flags, environment variables, config file) and translates it into the internal data model. It builds a `SessionConfig` and `SessionRequest`, calls `CompositionRoot::build`, and hands control to the orchestrator.
 
-Neither entry point contains business logic — they translate external input and delegate immediately.
+Neither entry point contains business logic, they translate external input and delegate immediately.
 
 ---
 
@@ -11,16 +11,16 @@ Neither entry point contains business logic — they translate external input an
 ```
 src/entry/
 ├── cli/
-│   ├── arg_parser.rs     # CliArgs — clap derive struct; subcommands: run, guide, report, config
-│   ├── cli_runner.rs     # CliRunner — dispatches subcommands, prints outcomes, sets exit code
-│   ├── interactive.rs    # resolve_cli_config — merges fuzzming.config + flags + prompts
-│   └── ui.rs             # CliUi — banner, info/error/success helpers
+│   ├── arg_parser.rs     # CliArgs: clap derive struct; subcommands: run, guide, report, config
+│   ├── cli_runner.rs     # CliRunner: dispatches subcommands, prints outcomes, sets exit code
+│   ├── interactive.rs    # resolve_cli_config: merges fuzzming.config + flags + prompts
+│   └── ui.rs             # CliUi: banner, info/error/success helpers
 └── mod.rs
 ```
 
 ---
 
-## `src/main.rs` — binary entry point
+## `src/main.rs`: binary entry point
 
 Initialises tracing, then delegates to `CliRunner`:
 
@@ -48,7 +48,7 @@ Tracing is initialised inside `CliRunner::run` after parsing the `--verbose` fla
 
 ---
 
-## `run` subcommand — `RunArgs`
+## `run` subcommand: `RunArgs`
 
 ```rust
 pub struct RunArgs {
@@ -64,7 +64,7 @@ pub struct RunArgs {
     pub from_config: bool,              // Skip all prompts; read from fuzzming.config
     pub llm_timeout_secs: u64,          // Default: 120
     pub full_coverage_rounds: u32,      // Default: 2
-    pub demo: bool,                     // Mock run — no LLM calls, no tokens
+    pub demo: bool,                     // Mock run: no LLM calls, no tokens
 }
 ```
 
@@ -72,7 +72,7 @@ All sensitive values (`--model`, `--llm-key`) accept env vars so they never appe
 
 ---
 
-## Config resolution — `interactive.rs`
+## Config resolution: `interactive.rs`
 
 `resolve_cli_config(args)` merges three sources in priority order:
 
@@ -82,7 +82,7 @@ CLI flags  >  fuzzming.config  >  interactive prompts
 
 1. Load `fuzzming.config` from the current directory (if present).
 2. Overlay any explicit CLI flags (flags always win over saved config).
-3. For any value still missing, prompt the user interactively — unless `--defaults` or `--from-config` is set.
+3. For any value still missing, prompt the user interactively, unless `--defaults` or `--from-config` is set.
 4. Persist the resolved values back to `fuzzming.config` for next time.
 
 `--from-config` fails immediately if any required value is absent from the config file.
@@ -99,7 +99,7 @@ The `prompt_mode` key in `fuzzming.config` controls how verbose the LLM prompt r
 
 ---
 
-## `handle_run` — building config and calling the orchestrator
+## `handle_run`: building config and calling the orchestrator
 
 ```rust
 let config = SessionConfig {
@@ -137,7 +137,7 @@ if has_bugs {
 }
 ```
 
-Exit code 0 means clean (pass, full coverage, or exhausted with no bugs). Exit code 1 means bugs found or tests/compilation failed — CI pipelines treat this as a build failure.
+Exit code 0 means clean (pass, full coverage, or exhausted with no bugs). Exit code 1 means bugs found or tests/compilation failed, and CI pipelines treat this as a build failure.
 
 ---
 
@@ -150,7 +150,7 @@ Reads `.fuzzming/<Contract>/outcome.json` and `lcov.info` for each contract in t
 - Bugs found (with call sequences)
 - Line coverage percentage (from `lcov.info`, only shown on clean runs)
 
-Coverage is not shown for runs that ended with `Bug`, `DevTestFailed`, or `CompileError` — the lcov file may be stale.
+Coverage is not shown for runs that ended with `Bug`, `DevTestFailed`, or `CompileError`: the lcov file may be stale.
 
 ---
 
@@ -165,7 +165,7 @@ Coverage is not shown for runs that ended with `Bug`, `DevTestFailed`, or `Compi
 
 ## Demo mode
 
-`fuzzming run --demo` runs the full session loop with mock adapters — no LLM calls, no forge subprocesses, no tokens spent. It uses a temporary workspace and three scripted contracts (`TokenVault`, `StakingPool`, `PriceOracle`) with pre-canned outcomes (one bug found, one clean, one compile error).
+`fuzzming run --demo` runs the full session loop with mock adapters: no LLM calls, no forge subprocesses, no tokens spent. It uses a temporary workspace and three scripted contracts (`TokenVault`, `StakingPool`, `PriceOracle`) with pre-canned outcomes (one bug found, one clean, one compile error).
 
 Demo mode is the fastest way to see the UI and report format without any API key or Foundry installation.
 
@@ -188,11 +188,11 @@ Key `info`-level events:
 | `session started` | Before the loop | `contracts`, `max_rounds` |
 | `round started` | Each round | `round`, `contracts` |
 | `LLM started` | Before LLM call (per contract) | `contract`, `round` |
-| `LLM done — executor writing files` | After LLM, before executor | `contract`, `round` |
+| `LLM done: executor writing files` | After LLM, before executor | `contract`, `round` |
 | `stripped confirmed invariants` | When confirmed bugs are removed | `contract`, `stripped` |
 | `forge run started` | Before `forge test` | `round` |
 | `forge run finished` | After `forge test` | `round` |
-| `round complete — continuing` | Contract did not terminate | `contract`, `outcome`, `bugs_so_far`, `rounds_remaining` |
+| `round complete: continuing` | Contract did not terminate | `contract`, `outcome`, `bugs_so_far`, `rounds_remaining` |
 | `contract session terminated` | Contract terminated | `contract`, `reason`, `total_bugs`, `rounds` |
 
 ---
@@ -213,10 +213,10 @@ The `--model` value follows the litellm-rs prefix convention:
 ## Example invocations
 
 ```sh
-# First run — interactive prompts, saves fuzzming.config
+# First run: interactive prompts, saves fuzzming.config
 fuzzming run
 
-# Subsequent runs — skip all prompts
+# Subsequent runs: skip all prompts
 fuzzming run --from-config
 
 # Explicit flags, no prompts
@@ -230,7 +230,7 @@ fuzzming run \
 # With debug logging
 RUST_LOG=debug fuzzming run --verbose --targets src/Vault.sol --model groq/... --llm-key $KEY
 
-# Mock run — no LLM, no tokens
+# Mock run: no LLM, no tokens
 fuzzming run --demo
 
 # View the full CLI reference

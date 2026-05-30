@@ -6,7 +6,7 @@ The Executor is the **write gateway** of FuzzMing. After the Generator produces 
 
 ## Responsibility
 
-One job: take `BodiesJson` and `FuzzerConfigArtifact` from `ExecutorInput` and write them to disk. All logic for how to write is inside the use case — the inbound adapter is a thin delegator.
+One job: take `BodiesJson` and `FuzzerConfigArtifact` from `ExecutorInput` and write them to disk. All logic for how to write is inside the use case: the inbound adapter is a thin delegator.
 
 ---
 
@@ -16,19 +16,19 @@ One job: take `BodiesJson` and `FuzzerConfigArtifact` from `ExecutorInput` and w
 src/executor/
 ├── adapters/
 │   ├── inbound/
-│   │   └── executor.rs                     # Inbound adapter — implements ExecutorPort, delegates to ExecutorRunPort
+│   │   └── executor.rs                     # Inbound adapter: implements ExecutorPort, delegates to ExecutorRunPort
 │   └── outbound/
-│       ├── file_system_writer.rs           # FileSystemWriter — only place that calls tokio::fs::write
-│       ├── solidity_generator.rs           # Implements CodeGeneratorPort — assembles .sol files from BodiesJson
-│       └── foundry_config_writer.rs        # Implements ConfigWriterPort — patches foundry.toml
+│       ├── file_system_writer.rs           # FileSystemWriter: only place that calls tokio::fs::write
+│       ├── solidity_generator.rs           # Implements CodeGeneratorPort: assembles .sol files from BodiesJson
+│       └── foundry_config_writer.rs        # Implements ConfigWriterPort: patches foundry.toml
 ├── ports/
 │   ├── inbound/
-│   │   └── executor_run_port.rs            # ExecutorRunPort — inbound contract between adapter and use case
+│   │   └── executor_run_port.rs            # ExecutorRunPort: inbound contract between adapter and use case
 │   └── outbound/
-│       ├── code_generator_port.rs          # CodeGeneratorPort — generate(bodies, writer)
-│       └── config_writer_port.rs           # ConfigWriterPort — write(config, writer)
+│       ├── code_generator_port.rs          # CodeGeneratorPort: generate(bodies, writer)
+│       └── config_writer_port.rs           # ConfigWriterPort: write(config, writer)
 └── use_cases/
-    ├── execute.rs                          # ExecuteUseCase — owns outbound ports, implements ExecutorRunPort
+    ├── execute.rs                          # ExecuteUseCase: owns outbound ports, implements ExecutorRunPort
     └── write_bodies.rs                     # write_bodies + write_config_json: persist BodiesJson and FuzzerConfigArtifact to disk
 ```
 
@@ -58,11 +58,11 @@ Orchestrator
     └─ FileSystemWriter (adapters/outbound)     ← raw I/O boundary, injected into outbound adapters
 ```
 
-### Inbound adapter — `adapters/inbound/executor.rs`
+### Inbound adapter: `adapters/inbound/executor.rs`
 
-Implements `ExecutorPort`. Holds `Box<dyn ExecutorRunPort>`. Delegates entirely to the use case — contains no logic of its own.
+Implements `ExecutorPort`. Holds `Box<dyn ExecutorRunPort>`. Delegates entirely to the use case: contains no logic of its own.
 
-### Inbound port — `ports/inbound/executor_run_port.rs`
+### Inbound port: `ports/inbound/executor_run_port.rs`
 
 ```rust
 pub trait ExecutorRunPort: Send + Sync {
@@ -70,7 +70,7 @@ pub trait ExecutorRunPort: Send + Sync {
 }
 ```
 
-### Use case — `use_cases/execute.rs`
+### Use case: `use_cases/execute.rs`
 
 `ExecuteUseCase` implements `ExecutorRunPort`. Owns all outbound dependencies:
 
@@ -84,18 +84,18 @@ pub struct ExecuteUseCase {
 
 Sequences four write operations: bodies JSON, config JSON, generated Solidity files, Foundry config patch. Before writing, it sets `bodies.meta.solidity` from `ExecutorInput.source_pragma` so the LLM never controls the pragma version. `SolidityGenerator` then re-reads the target source file (best-effort) to enforce the same pragma and to inject ABIEncoderV2 for Solidity 0.7.x.
 
-### Outbound ports — `ports/outbound/`
+### Outbound ports: `ports/outbound/`
 
 | Trait | Purpose |
 |---|---|
 | `CodeGeneratorPort` | Assemble and write `.sol` files from `BodiesJson` |
 | `ConfigWriterPort` | Patch `foundry.toml` with the new `FoundryConfig` |
 
-### Outbound adapters — `adapters/outbound/`
+### Outbound adapters: `adapters/outbound/`
 
-`FileSystemWriter` is the single I/O boundary — the only struct allowed to call `tokio::fs`. Both `SolidityGenerator` and `FoundryConfigWriter` receive it as a parameter. It takes a `PathBuf` base path and enforces a path traversal guard on every write.
+`FileSystemWriter` is the single I/O boundary: the only struct allowed to call `tokio::fs`. Both `SolidityGenerator` and `FoundryConfigWriter` receive it as a parameter. It takes a `PathBuf` base path and enforces a path traversal guard on every write.
 
-`SolidityGenerator` implements `CodeGeneratorPort`. It writes helper contracts (from `handler.helper_contracts`) above the Handler contract, injects `pragma experimental ABIEncoderV2;` for Solidity 0.7.x, and derives output paths from `bodies.meta.contract` — the LLM never decides where files go:
+`SolidityGenerator` implements `CodeGeneratorPort`. It writes helper contracts (from `handler.helper_contracts`) above the Handler contract, injects `pragma experimental ABIEncoderV2;` for Solidity 0.7.x, and derives output paths from `bodies.meta.contract`: the LLM never decides where files go:
 
 | File | Path |
 |---|---|
@@ -104,7 +104,7 @@ Sequences four write operations: bodies JSON, config JSON, generated Solidity fi
 
 The `test/fuzzming/` namespace isolates generated files from the developer's own `test/` code.
 
-`FoundryConfigWriter` implements `ConfigWriterPort`. Builds the `[profile.fuzzming]` and `[profile.fuzzming.invariant]` TOML sections from `FoundryConfig` fields. It always writes `test = "test/fuzzming"` directly under `[profile.fuzzming]` so that `forge test` and `forge build` are automatically scoped to the generated test directory whenever `FOUNDRY_PROFILE=fuzzming` is active — no CLI flags needed. All fuzzing parameters (`runs`, `depth`, `seed`, `max_test_rejects`, `dictionary_weight`) go under the `invariant` subsection where Foundry expects them. It reads the existing `foundry.toml` from disk, replaces only the fuzzming/coverage sections (including their sub-tables), and preserves everything else.
+`FoundryConfigWriter` implements `ConfigWriterPort`. Builds the `[profile.fuzzming]` and `[profile.fuzzming.invariant]` TOML sections from `FoundryConfig` fields. It always writes `test = "test/fuzzming"` directly under `[profile.fuzzming]` so that `forge test` and `forge build` are automatically scoped to the generated test directory whenever `FOUNDRY_PROFILE=fuzzming` is active: no CLI flags needed. All fuzzing parameters (`runs`, `depth`, `seed`, `max_test_rejects`, `dictionary_weight`) go under the `invariant` subsection where Foundry expects them. It reads the existing `foundry.toml` from disk, replaces only the fuzzming/coverage sections (including their sub-tables), and preserves everything else.
 
 `SolidityGenerator` strips any trailing `{` from `constructorSignature` before appending its own opening brace, preventing double-brace errors when the LLM includes the brace in the signature string.
 
@@ -126,7 +126,7 @@ The `test/fuzzming/` namespace isolates generated files from the developer's own
         └── {ContractName}.config.json   ← FuzzerConfigArtifact JSON; read back each round for Patch diffs
 ```
 
-Both `.bodies.json` and `.config.json` go to `.fuzzming/` (not `test/fuzzming/`) because they are not Solidity — forge ignores them, and keeping them separate makes the directory intent clearer. They are also what the Reader loads on rounds 2+ so the LLM can return a `Patch` diff instead of re-generating everything.
+Both `.bodies.json` and `.config.json` go to `.fuzzming/` (not `test/fuzzming/`) because they are not Solidity: forge ignores them, and keeping them separate makes the directory intent clearer. They are also what the Reader loads on rounds 2+ so the LLM can return a `Patch` diff instead of re-generating everything.
 
 ---
 
@@ -155,7 +155,7 @@ Orchestrator
 
 ---
 
-## `FileSystemWriter` — path traversal guard
+## `FileSystemWriter`: path traversal guard
 
 ```rust
 pub fn new(base_path: PathBuf) -> Self
@@ -167,7 +167,7 @@ Every write:
 2. Canonicalises the base path.
 3. Creates the target parent directory.
 4. Canonicalises the target parent.
-5. Asserts the target parent starts with the base — rejects paths that contain `..` or symlinks that escape `workspace_root`.
+5. Asserts the target parent starts with the base: rejects paths that contain `..` or symlinks that escape `workspace_root`.
 
 ---
 
@@ -189,4 +189,4 @@ let executor       = Executor::new(use_case);
 
 - `Executor` reads only two developer-owned files: the target contract source (to preserve its pragma) and `foundry.toml` (to preserve non-fuzzming sections). All other reads and writes are confined to fuzzming-managed paths.
 - `FileSystemWriter` is the only struct that calls `tokio::fs` for writing.
-- The LLM never controls file paths — all paths are derived from `contract_name`.
+- The LLM never controls file paths: all paths are derived from `contract_name`.

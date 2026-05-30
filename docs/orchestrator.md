@@ -1,6 +1,6 @@
 # Orchestrator Component
 
-The Orchestrator is the **session controller** of FuzzMing. It drives the round loop for every target contract — reading context from disk, calling the LLM, writing generated tests, running forge, and deciding whether to continue or terminate. It delegates every unit of work to the other components; it owns no I/O and no business logic beyond loop control.
+The Orchestrator is the **session controller** of FuzzMing. It drives the round loop for every target contract, reading context from disk, calling the LLM, writing generated tests, running forge, and deciding whether to continue or terminate. It delegates every unit of work to the other components; it owns no I/O and no business logic beyond loop control.
 
 ---
 
@@ -8,7 +8,7 @@ The Orchestrator is the **session controller** of FuzzMing. It drives the round 
 
 One job: given a `SessionRequest`, run rounds until every contract reaches a terminal state, emit a report for each, and return the final `SessionOutcome`.
 
-The session ends on **exhaustion or full coverage** — not on the first bug. When a bug is found, the orchestrator records it, removes the broken invariant from the next round's generated test, and continues hunting for more bugs in the remaining invariants.
+The session ends on **exhaustion or full coverage**, not on the first bug. When a bug is found, the orchestrator records it, removes the broken invariant from the next round's generated test, and continues hunting for more bugs in the remaining invariants.
 
 ---
 
@@ -18,10 +18,10 @@ The session ends on **exhaustion or full coverage** — not on the first bug. Wh
 src/orchestrator/
 ├── adapters/
 │   └── inbound/
-│       └── orchestrator.rs          # Inbound adapter — implements OrchestratorPort, delegates to use case
+│       └── orchestrator.rs          # Inbound adapter: implements OrchestratorPort, delegates to use case
 ├── ports/
 │   └── inbound/
-│       └── orchestrator_run_port.rs # OrchestratorRunPort — internal use-case contract
+│       └── orchestrator_run_port.rs # OrchestratorRunPort: internal use-case contract
 └── use_cases/
     ├── initialise_session.rs        # Builds SessionState from SessionRequest
     ├── run_round.rs                 # One round for one contract: LLM → strip confirmed bugs → Executor
@@ -75,12 +75,12 @@ SessionState {
 
 ### `run_round`
 
-Runs the LLM and Executor for a single contract. The fuzzer is intentionally excluded — it is called once for all contracts after all `run_round` calls complete.
+Runs the LLM and Executor for a single contract. The fuzzer is intentionally excluded: it is called once for all contracts after all `run_round` calls complete.
 
-1. **LLM** — `llm_engine.run(signal)` → generates invariant bodies and foundry config, or returns `LlmStatus::Failed` (session does not crash)
-2. **On LLM failure** — emits `StageStatus::Failed` for the LLM stage (closes the terminal spinner), prints the error via `emit_compile_error`, returns early; the error reason is recorded and injected into the next round
-3. **Strip confirmed bugs** — for `Full` responses, removes already-confirmed invariant functions from `bodies.invariant_test.invariants` before passing to the executor
-4. **Executor** — writes generated files to disk (invariant test `.sol` + `foundry.toml` patch)
+1. **LLM**: `llm_engine.run(signal)` → generates invariant bodies and foundry config, or returns `LlmStatus::Failed` (session does not crash)
+2. **On LLM failure**: emits `StageStatus::Failed` for the LLM stage (closes the terminal spinner), prints the error via `emit_compile_error`, returns early; the error reason is recorded and injected into the next round
+3. **Strip confirmed bugs**: for `Full` responses, removes already-confirmed invariant functions from `bodies.invariant_test.invariants` before passing to the executor
+4. **Executor**: writes generated files to disk (invariant test `.sol` + `foundry.toml` patch)
 
 Returns `LlmSignal`.
 
@@ -99,8 +99,8 @@ The `ExecutorInput` variant is determined by the LLM response:
 
 | LLM response | `ExecutorInput` variant | When |
 |---|---|---|
-| `GenerationResponse::Full` | `ExecutorInput::Full` | Round 1 — write everything from scratch |
-| `GenerationResponse::Patch` | `ExecutorInput::Patch` | Round N — apply diff to previous artifacts |
+| `GenerationResponse::Full` | `ExecutorInput::Full` | Round 1: write everything from scratch |
+| `GenerationResponse::Patch` | `ExecutorInput::Patch` | Round N: apply diff to previous artifacts |
 
 **Confirmed bug stripping** applies only to `Full` responses. For `Patch` responses the LLM is instructed via the prompt not to re-generate confirmed invariants.
 
@@ -120,7 +120,7 @@ Pure function. Maps a `FuzzReport` outcome to a `TerminationDecision`.
 | `Pass` | 0 | terminate → `Exhausted` |
 | `Pass` | > 0 | continue |
 
-`Bug`, `CompileError`, and `DevTestFailed` are not immediate terminal states — the session continues while rounds remain. Each terminates with its own `TerminationReason` when the round budget is exhausted.
+`Bug`, `CompileError`, and `DevTestFailed` are not immediate terminal states: the session continues while rounds remain. Each terminates with its own `TerminationReason` when the round budget is exhausted.
 
 ### `run_session` (main loop)
 
@@ -145,7 +145,7 @@ loop:
     ── LLM failure injection ─────────────────────────────────────────────
     for each signal:
         if state.llm_failures[contract] exists:
-            prepend "LLM PARSE FAILURE — ..." to signal.fuzz_output
+            prepend "LLM PARSE FAILURE: ..." to signal.fuzz_output
             remove from state.llm_failures
 
     ── Stage 2: optional security analysis (patch rounds only) ──────────
@@ -221,7 +221,7 @@ pub struct SessionState {
     pub current_round:        u32,
     pub config:               SessionConfig,
     /// All bugs found so far, keyed by contract name. Grows across rounds; never cleared.
-    /// Deduplicated by invariant name — each unique invariant appears at most once.
+    /// Deduplicated by invariant name: each unique invariant appears at most once.
     pub found_bugs:           HashMap<String, Vec<BugInfo>>,
     /// Consecutive full-coverage round count per contract.
     pub full_coverage_streak: HashMap<String, u32>,
@@ -247,7 +247,7 @@ pub struct RoundSignal {
     pub contract_name:           String,                   // e.g. "Vault"
     pub contract_path:           String,                   // e.g. "src/Vault.sol"
     pub source_code:             String,
-    pub source_pragma:           String,                   // e.g. "=0.7.6" — extracted from source_code; never from LLM
+    pub source_pragma:           String,                   // e.g. "=0.7.6": extracted from source_code; never from LLM
     pub fuzz_output:             Option<String>,           // None on round 1
     pub coverage_context:        Option<CoverageContext>,  // None on round 1
     pub existing_bodies:         Option<BodiesJson>,       // None on round 1
@@ -259,7 +259,7 @@ pub struct RoundSignal {
 
 `confirmed_bugs` is populated from `state.found_bugs[contract]` at the start of each round. It flows to both the LLM prompt (so the model avoids re-generating broken invariants) and `run_round` (so confirmed invariants are stripped from `Full` responses before the executor writes them).
 
-`security_analysis` is injected by the orchestrator from `SecurityAnalysisPort` before calling the generator. Only set on patch rounds (round 2+) where the previous round was clean (no compile/setup/LLM error). Always `None` on round 1 — the generator's 3-stage analysis covers that.
+`security_analysis` is injected by the orchestrator from `SecurityAnalysisPort` before calling the generator. Only set on patch rounds (round 2+) where the previous round was clean (no compile/setup/LLM error). Always `None` on round 1: the generator's 3-stage analysis covers that.
 
 ### `SessionOutcome` (output)
 
@@ -274,7 +274,7 @@ pub struct SessionOutcome {
 }
 ```
 
-`bugs` carries every `BugInfo` accumulated across all rounds, deduplicated by invariant name — each unique invariant appears at most once regardless of how many rounds it fired. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination.
+`bugs` carries every `BugInfo` accumulated across all rounds, deduplicated by invariant name: each unique invariant appears at most once regardless of how many rounds it fired. The `Exhausted` report uses `bugs` to show a count and list even when the session ran to completion without a definitive `Bug` termination.
 
 `coverage_snapshots` accumulates one coverage summary string per round that produced a passing `forge coverage` result. These are forwarded to the reporter for display in the `FullCoverage` and `Exhausted` reports.
 
@@ -324,8 +324,8 @@ The orchestrator reads and writes artifacts under a `.fuzzming/` directory at th
 
 ## Known limitations
 
-- **LLM calls are concurrent, not CPU-parallel** — `try_join_all` interleaves LLM and Executor futures on the same async task. For true thread-level parallelism, futures would need to be spawned with `tokio::spawn`, which requires `'static` bounds on all port references.
+- **LLM calls are concurrent, not CPU-parallel**: `try_join_all` interleaves LLM and Executor futures on the same async task. For true thread-level parallelism, futures would need to be spawned with `tokio::spawn`, which requires `'static` bounds on all port references.
 
-- **Confirmed bug stripping only for Full responses** — `run_round` removes confirmed invariants from `GenerationResponse::Full` bodies before the executor writes them. For `Patch` responses, the LLM is relied on to follow the `CONFIRMED BUGS` prompt instruction and not re-add them.
+- **Confirmed bug stripping only for Full responses**: `run_round` removes confirmed invariants from `GenerationResponse::Full` bodies before the executor writes them. For `Patch` responses, the LLM is relied on to follow the `CONFIRMED BUGS` prompt instruction and not re-add them.
 
-- **Security analysis skipped on error rounds** — when the previous round produced a compile, setup, or LLM failure, security analysis is intentionally skipped so the model can focus on fixing the error rather than processing new vulnerability suggestions.
+- **Security analysis skipped on error rounds**: when the previous round produced a compile, setup, or LLM failure, security analysis is intentionally skipped so the model can focus on fixing the error rather than processing new vulnerability suggestions.

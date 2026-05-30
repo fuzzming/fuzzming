@@ -1,6 +1,6 @@
 # Integration Tests
 
-End-to-end tests that verify each component works correctly with real adapters. No external LLM calls are made — the file system is the only real I/O. The fuzzer integration tests spawn real `forge` subprocesses.
+End-to-end tests that verify each component works correctly with real adapters. No external LLM calls are made: the file system is the only real I/O. The fuzzer integration tests spawn real `forge` subprocesses.
 
 ## How to run
 
@@ -21,7 +21,7 @@ cargo test --lib
 
 ---
 
-## Executor — `executor/executor_integration.rs`
+## Executor: `executor/executor_integration.rs`
 
 Verifies the executor write pipeline: `BodiesJson` → JSON artifact + Solidity files on disk.
 
@@ -41,11 +41,11 @@ Uses real `FileSystemWriter` and `SolidityGenerator` writing to `tests/output/`.
 | `test/fuzzming/Vault/VaultHandler.sol` | Contract declaration `VaultHandler is Test {` is present; all handler function names appear |
 | `test/fuzzming/Vault/VaultInvariantTest.sol` | Contract declaration present; `setUp` present; function count matches `invariants.len() + 1` |
 
-The `tests/output/` directory is gitignored — safe to delete and regenerate at any time.
+The `tests/output/` directory is gitignored: safe to delete and regenerate at any time.
 
 ---
 
-## Reader — `reader/reader_integration.rs`
+## Reader: `reader/reader_integration.rs`
 
 Verifies that the reader correctly cleans Solidity source code and loads coverage context artifacts.
 
@@ -66,7 +66,7 @@ Uses real `SolidityContractReader` and `FileSystemReader` against a `TempDir`.
 | `// single line comment` | Absent |
 | `/* block comment */` | Absent |
 | `// inline comment` after a statement | Absent |
-| `function deposit() external {}` | Present — code is not lost |
+| `function deposit() external {}` | Present: code is not lost |
 
 ### Coverage context assertions (`get_coverage_context_reads_enriched_json`)
 
@@ -78,20 +78,20 @@ The reader now loads coverage context from a pre-serialised `CoverageContext` JS
 
 ---
 
-## Fuzzer — `fuzzer/fuzzer_integration.rs`
+## Fuzzer: `fuzzer/fuzzer_integration.rs`
 
 Runs real `forge test` and (where applicable) `forge coverage` against a self-contained Foundry project in `tests/fixtures/foundry_vault/`. Requires Foundry to be installed.
 
 All tests in this suite share a `WORKSPACE_MUT` mutex to prevent filesystem races when writing to the shared fixture workspace.
 
-### Foundry fixture — `tests/fixtures/foundry_vault/`
+### Foundry fixture: `tests/fixtures/foundry_vault/`
 
 A complete Foundry project with no external dependencies beyond `forge-std`:
 
 | File | Description |
 |---|---|
-| `src/Vault.sol` | Single-asset vault — 1:1 shares, deposit cap of 1,000,000 tokens, no intentional bug |
-| `test/fuzzming/Vault/VaultHandler.sol` | Invariant handler — ghost vars tracking deposits and withdrawals |
+| `src/Vault.sol` | Single-asset vault: 1:1 shares, deposit cap of 1,000,000 tokens, no intentional bug |
+| `test/fuzzming/Vault/VaultHandler.sol` | Invariant handler: ghost vars tracking deposits and withdrawals |
 | `test/fuzzming/Vault/VaultInvariantTest.sol` | Two invariants: `totalAssets == deposits - withdrawals` and `totalAssets <= depositCap` |
 | `foundry.toml` | `fuzzming` profile (invariant fuzzer config) and `coverage` profile |
 
@@ -121,7 +121,7 @@ The `healthy_contract_runs_when_peer_has_compile_error` test verifies this full 
 
 The following unit tests live inside source files and run with `cargo test --lib`:
 
-### `ForgeRunner` — `src/fuzzer/adapters/outbound/forge_runner.rs`
+### `ForgeRunner`: `src/fuzzer/adapters/outbound/forge_runner.rs`
 
 Verifies forge output parsing against a hardcoded multi-bug forge stdout fixture.
 
@@ -134,7 +134,7 @@ Verifies forge output parsing against a hardcoded multi-bug forge stdout fixture
 | `filter_output_captures_contract_section` | `filter_output` captures the full section for the target contract and no other |
 | `filter_lcov_keeps_matching_sf_records` | `filter_lcov` keeps only `SF:` blocks whose path contains the contract name |
 
-### `Prompt` — `src/generator/domain/prompt.rs`
+### `Prompt`: `src/generator/domain/prompt.rs`
 
 Verifies that prompt assembly includes the correct sections.
 
@@ -148,6 +148,6 @@ Verifies that prompt assembly includes the correct sections.
 
 ## Fixtures
 
-`tests/fixtures/Vault.bodies.json` — a complete `BodiesJson` for a Vault contract with two handler functions and two invariants. Used by the executor integration test.
+`tests/fixtures/Vault.bodies.json`: a complete `BodiesJson` for a Vault contract with two handler functions and two invariants. Used by the executor integration test.
 
-`tests/fixtures/foundry_vault/` — a self-contained Foundry project used by the fuzzer integration tests. The `out/`, `cache/`, `.fuzzming/`, and `lcov.info` artifacts are gitignored — forge regenerates them on each run.
+`tests/fixtures/foundry_vault/`: a self-contained Foundry project used by the fuzzer integration tests. The `out/`, `cache/`, `.fuzzming/`, and `lcov.info` artifacts are gitignored: forge regenerates them on each run.

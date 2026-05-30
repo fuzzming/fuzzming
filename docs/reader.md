@@ -24,19 +24,19 @@ The Reader never writes anything. It only reads and transforms.
 src/reader/
 ├── adapters/
 │   ├── inbound/
-│   │   └── reader.rs                      # Inbound adapter — implements ReaderPort, delegates to ReaderRunPort
+│   │   └── reader.rs                      # Inbound adapter: implements ReaderPort, delegates to ReaderRunPort
 │   └── outbound/
-│       ├── file_system_reader.rs          # FileSystemReader — only place that calls tokio::fs::read
-│       ├── solidity_contract_reader.rs    # Implements ContractReaderPort — reads .sol, strips comments
+│       ├── file_system_reader.rs          # FileSystemReader: only place that calls tokio::fs::read
+│       ├── solidity_contract_reader.rs    # Implements ContractReaderPort: reads .sol, strips comments
 │       └── foundry_coverage_reader.rs     # Legacy adapter (unused by ReadUseCase)
 ├── ports/
 │   ├── inbound/
-│   │   └── reader_run_port.rs             # ReaderRunPort — inbound contract between adapter and use case
+│   │   └── reader_run_port.rs             # ReaderRunPort: inbound contract between adapter and use case
 │   └── outbound/
-│       ├── contract_reader_port.rs        # ContractReaderPort — read a .sol file
+│       ├── contract_reader_port.rs        # ContractReaderPort: read a .sol file
 │       └── coverage_reader_port.rs        # Legacy port (unused by ReadUseCase)
 └── use_cases/
-    ├── read.rs                            # ReadUseCase — owns outbound ports, implements ReaderRunPort
+    ├── read.rs                            # ReadUseCase: owns outbound ports, implements ReaderRunPort
     └── parse_lcov.rs                      # Pure function: LCOV text → list of CoverageGap
 ```
 
@@ -62,11 +62,11 @@ Orchestrator
     └─ FileSystemReader (adapters/outbound)         ← raw I/O boundary, injected into SolidityContractReader and ReadUseCase
 ```
 
-### Inbound adapter — `adapters/inbound/reader.rs`
+### Inbound adapter: `adapters/inbound/reader.rs`
 
-Implements `ReaderPort`. Holds `Box<dyn ReaderRunPort>`. Delegates all method calls to the use case — contains no logic of its own.
+Implements `ReaderPort`. Holds `Box<dyn ReaderRunPort>`. Delegates all method calls to the use case: contains no logic of its own.
 
-### Inbound port — `ports/inbound/reader_run_port.rs`
+### Inbound port: `ports/inbound/reader_run_port.rs`
 
 ```rust
 pub trait ReaderRunPort: Send + Sync {
@@ -78,7 +78,7 @@ pub trait ReaderRunPort: Send + Sync {
 }
 ```
 
-### Use case — `use_cases/read.rs`
+### Use case: `use_cases/read.rs`
 
 `ReadUseCase` implements `ReaderRunPort`. Owns all outbound dependencies:
 
@@ -89,7 +89,7 @@ pub struct ReadUseCase {
 }
 ```
 
-`FileSystemReader` is the single I/O boundary — the only struct allowed to call `tokio::fs`. It takes a `PathBuf` base path. Both adapters and the use case receive it via `Arc`.
+`FileSystemReader` is the single I/O boundary: the only struct allowed to call `tokio::fs`. It takes a `PathBuf` base path. Both adapters and the use case receive it via `Arc`.
 
 ---
 
@@ -115,7 +115,7 @@ Reads a pre-serialised `CoverageContext` JSON artifact written by the fuzzer at 
 
 **Why a JSON artifact instead of parsing lcov every round?**
 
-The fuzzer enriches each coverage gap with nearby source lines at the point of capture. Storing the enriched `CoverageContext` as JSON means the reader just deserialises it — no extra source file reads are needed in the read path, and the gap-to-source mapping is stable even if the source file later changes.
+The fuzzer enriches each coverage gap with nearby source lines at the point of capture. Storing the enriched `CoverageContext` as JSON means the reader just deserialises it: no extra source file reads are needed in the read path, and the gap-to-source mapping is stable even if the source file later changes.
 
 **How the artifact is built (fuzzer write path):**
 
@@ -124,7 +124,7 @@ The fuzzer enriches each coverage gap with nearby source lines at the point of c
 
 | LCOV record | What it means | Kept if |
 |-------------|--------------|---------|
-| `SF:src/Vault.sol` | start of a file block | always — sets current file |
+| `SF:src/Vault.sol` | start of a file block | always: sets current file |
 | `DA:42,0` | line 42 hit 0 times | hits == 0 |
 | `BRDA:55,0,1,0` | branch on line 55 never taken | hits == 0 or `-` |
 | `FNDA:0,withdraw` | function withdraw never called | hits == 0 |
@@ -188,7 +188,7 @@ Coverage context is loaded from a pre-serialised JSON artifact written by the fu
 
 ## Known limitations
 
-### 1. `FNDA` has no line number — context is wrong
+### 1. `FNDA` has no line number: context is wrong
 
 The LCOV `FNDA` record carries only hits and function name, no line number. The parser stores `line: 0` for every uncovered function. The enrichment attaches lines 1–4 of the file instead of the actual function body.
 

@@ -20,9 +20,9 @@ FuzzMing is an open source tool that closes the loop between an LLM and a fuzzer
 - **Multi-contract sessions:** target multiple contracts in one run, each gets its own concurrent fuzzing lane
 - **Any capable LLM:** OpenRouter, Groq, OpenAI, Anthropic, one flag switches providers
 - **Compile error recovery:** a pre-flight `forge build` catches compile errors immediately before the full test run; the error is fed back to the LLM and retried next round
-- **Isolated test execution:** the `[profile.fuzzming]` section in `foundry.toml` sets `test = "test/fuzzming"` so forge only runs FuzzMing-generated tests — your existing suite is never touched
+- **Isolated test execution:** the `[profile.fuzzming]` section in `foundry.toml` sets `test = "test/fuzzming"` so forge only runs FuzzMing-generated tests: your existing suite is never touched
 - **Bug deduplication:** each unique breaking invariant is recorded once regardless of how many rounds it fires; the final report is never inflated with duplicates
-- **Invariant code in reports:** every confirmed finding includes the full Solidity invariant function alongside the shrunk call sequence — drop it directly into a Foundry regression test
+- **Invariant code in reports:** every confirmed finding includes the full Solidity invariant function alongside the shrunk call sequence: drop it directly into a Foundry regression test
 - **Coverage feedback:** after each passing round, LCOV coverage gaps are fed back to the LLM so it writes better invariants next time
 - **Iterative security analysis:** patch rounds include a dedicated LLM audit pass that reviews fuzz output + confirmed bugs and prints a clean findings summary at the end of the session
 - **Interactive or headless:** guided prompts for first-time users, `--defaults` / `--from-config` for CI pipelines
@@ -36,7 +36,7 @@ FuzzMing is an open source tool that closes the loop between an LLM and a fuzzer
 | Requirement | Install |
 |---|---|
 | Rust stable (2021 edition) | [rustup.rs](https://rustup.rs) |
-| Foundry (`forge`) — required for the Solidity stack | `curl -L https://foundry.paradigm.xyz \| bash` |
+| Foundry (`forge`): required for the Solidity stack | `curl -L https://foundry.paradigm.xyz \| bash` |
 | An LLM API key | OpenRouter, Groq, OpenAI, or Anthropic |
 
 ---
@@ -160,10 +160,10 @@ fuzzming config --reset
 
 | Flag | Default | Description |
 |---|---|---|
-| `--targets <PATHS...>` | — | Paths to target `.sol` files |
+| `--targets <PATHS...>` | - | Paths to target `.sol` files |
 | `--max-rounds <N>` | 10 | Maximum fuzzing rounds per contract |
-| `--model <ID>` | — | LLM model identifier (`LLM_MODEL` env var) |
-| `--llm-key <KEY>` | — | API key for the model's provider (`LLM_KEY` env var) |
+| `--model <ID>` | - | LLM model identifier (`LLM_MODEL` env var) |
+| `--llm-key <KEY>` | - | API key for the model's provider (`LLM_KEY` env var) |
 | `--workspace-root <DIR>` | `.` | Foundry project root |
 | `--max-tokens <N>` | unlimited | Max tokens the LLM may generate per call |
 | `--llm-timeout-secs <N>` | 120 | Per-call LLM timeout in seconds |
@@ -171,7 +171,7 @@ fuzzming config --reset
 | `--defaults` | false | Skip all prompts; use flags and env vars |
 | `--from-config` | false | Skip all prompts; read everything from `fuzzming.config` |
 | `--interactive` | false | Force interactive prompts even when config exists |
-| `--demo` | false | Mock run — full UI, no LLM calls, no tokens spent |
+| `--demo` | false | Mock run: full UI, no LLM calls, no tokens spent |
 | `--verbose` | false | Enable verbose trace logs |
 
 ---
@@ -181,18 +181,18 @@ fuzzming config --reset
 Each fuzzing round follows this sequence:
 
 ```
-1. Reader      — reads the target contract + previous-round artifacts
-2. Security analysis (round 2+ only) — separate LLM pass that reviews fuzz output + confirmed bugs
-3. Generator   — assembles a prompt, calls the LLM, parses the response
-4. Executor    — writes Handler.sol + InvariantTest.sol; patches foundry.toml with
+1. Reader     : reads the target contract + previous-round artifacts
+2. Security analysis (round 2+ only): separate LLM pass that reviews fuzz output + confirmed bugs
+3. Generator  : assembles a prompt, calls the LLM, parses the response
+4. Executor   : writes Handler.sol + InvariantTest.sol; patches foundry.toml with
                  `test = "test/fuzzming"` so forge only sees generated tests
-5. Fuzzer      — runs `forge build` (fast compile check), then `forge test`
+5. Fuzzer     : runs `forge build` (fast compile check), then `forge test`
                  both scoped to `test/fuzzming/` via the profile's `test` key
-6. Orchestrator — accumulates bugs (one entry per unique invariant name), strips confirmed invariants, checks termination
-7. Reporter    — emits a formatted findings summary when a contract's session ends
+6. Orchestrator: accumulates bugs (one entry per unique invariant name), strips confirmed invariants, checks termination
+7. Reporter   : emits a formatted findings summary when a contract's session ends
 ```
 
-The session ends on **full coverage or round exhaustion** — not on the first bug. When an invariant breaks, FuzzMing records it, removes it from the next round's test, and keeps hunting for more bugs.
+The session ends on **full coverage or round exhaustion**, not on the first bug. When an invariant breaks, FuzzMing records it, removes it from the next round's test, and keeps hunting for more bugs.
 
 ### Round outcomes
 
@@ -201,26 +201,26 @@ The session ends on **full coverage or round exhaustion** — not on the first b
 | Bug confirmed | Record bug, strip broken invariant, continue |
 | Compile error | Feed compiler output to LLM, retry next round |
 | Developer test failed | Feed error to LLM, retry next round |
-| Full coverage reached | Stop — no more gaps to cover |
+| Full coverage reached | Stop: no more gaps to cover |
 | Round budget exhausted | Report all bugs found across all rounds |
 
 ---
 
 ## Limitations
 
-FuzzMing finds bugs by generating thousands of random call sequences and checking that properties hold after every step. This approach has known blind spots — classes of bug that invariant fuzzing structurally cannot detect regardless of how many rounds run.
+FuzzMing finds bugs by generating thousands of random call sequences and checking that properties hold after every step. This approach has known blind spots: classes of bug that invariant fuzzing structurally cannot detect regardless of how many rounds run.
 
 ### 1. Bugs with no observable behavioral difference
 
 If a bug changes which internal code path executes but always produces the same output, no invariant can fail. There is no state where the buggy version and the correct version disagree on a return value or storage change.
 
-**Example:** A redundant pre-check that uses the wrong variable — but a try/catch immediately below it handles every failure case anyway. Both paths return `0`. FuzzMing cannot write a rule that fails here because the contract's visible behavior is identical with or without the bug. Detecting this requires static analysis: a tool that reads code structure and flags "these two consecutive blocks always produce the same result."
+**Example:** A redundant pre-check that uses the wrong variable: but a try/catch immediately below it handles every failure case anyway. Both paths return `0`. FuzzMing cannot write a rule that fails here because the contract's visible behavior is identical with or without the bug. Detecting this requires static analysis: a tool that reads code structure and flags "these two consecutive blocks always produce the same result."
 
 ### 2. Bugs in code that never executes during testing
 
-Some code paths are gated on `tx.origin` — the original wallet that started a transaction. In Foundry invariant tests, `tx.origin` is always the test contract's own address, not a real user wallet. If the buggy code only runs when a specific registered address is `tx.origin`, the fuzzer will never trigger it: the test contract is never in the relevant mapping, so the condition is always false, and the code block is skipped on every single call.
+Some code paths are gated on `tx.origin`: the original wallet that started a transaction. In Foundry invariant tests, `tx.origin` is always the test contract's own address, not a real user wallet. If the buggy code only runs when a specific registered address is `tx.origin`, the fuzzer will never trigger it: the test contract is never in the relevant mapping, so the condition is always false, and the code block is skipped on every single call.
 
-FuzzMing handles this via Rule 21 and a dedicated `tx_origin_paths` analysis field: when `tx.origin` is detected in the source, the LLM is instructed to call the target from inside a handler using `vm.prank(addr, addr)` — the two-argument form sets both `msg.sender` and `tx.origin` — then store the result in a ghost variable for the invariant to check. This pattern successfully confirmed the discount-related bugs in the DynamicSwapFeeModule case study.
+FuzzMing handles this via Rule 21 and a dedicated `tx_origin_paths` analysis field: when `tx.origin` is detected in the source, the LLM is instructed to call the target from inside a handler using `vm.prank(addr, addr)`: the two-argument form sets both `msg.sender` and `tx.origin`: then store the result in a ghost variable for the invariant to check. This pattern successfully confirmed the discount-related bugs in the DynamicSwapFeeModule case study.
 
 **Remaining risk:** contracts where the `tx.origin`-dependent path is never reached regardless of caller identity, or where the required state preconditions are too narrow for the fuzzer to stumble upon within the round budget.
 
@@ -228,20 +228,20 @@ FuzzMing handles this via Rule 21 and a dedicated `tx_origin_paths` analysis fie
 
 FuzzMing reads the contract and uses its constants as-is. If a hardcoded constant is the wrong value for the chain the contract will actually be deployed on, FuzzMing has no way to know. That knowledge lives outside the contract entirely.
 
-**Example:** A constant set to `2` with a comment saying "must equal the block time." The contract is internally consistent — `2` is used the same way everywhere. But the target chain produces a block every 0.45 seconds, not every 2 seconds, making the constant 4× too large. No amount of fuzzing the contract reveals this. The fix is a `--chain` flag that loads known parameters (block time, gas limits, oracle patterns) for the target chain, so the analysis stage can compare hardcoded constants against real-world values.
+**Example:** A constant set to `2` with a comment saying "must equal the block time." The contract is internally consistent: `2` is used the same way everywhere. But the target chain produces a block every 0.45 seconds, not every 2 seconds, making the constant 4× too large. No amount of fuzzing the contract reveals this. The fix is a `--chain` flag that loads known parameters (block time, gas limits, oracle patterns) for the target chain, so the analysis stage can compare hardcoded constants against real-world values.
 
 ### 4. Bugs that require two adversarial actors
 
-FuzzMing's invariant testing uses a single actor calling functions randomly. It has no model of one address deliberately trying to harm another. Attacks that require coordinated multi-transaction sequencing — where an attacker moves state before a victim's transaction to cause the victim to pay more or receive less — are invisible to a single-actor model regardless of how many rounds run.
+FuzzMing's invariant testing uses a single actor calling functions randomly. It has no model of one address deliberately trying to harm another. Attacks that require coordinated multi-transaction sequencing: where an attacker moves state before a victim's transaction to cause the victim to pay more or receive less: are invisible to a single-actor model regardless of how many rounds run.
 
-**Example:** A fee formula that uses the live spot price instead of a time-averaged price. An attacker can execute a large swap to push the spot price far from the average, inflating the fee charged to any swap that follows in the same block. The attacker loses money — it is a pure griefing attack. Discovering it requires two actors: one that moves state adversarially, and one that checks whether the victim paid above a fair threshold. This is closer to game-theoretic simulation than property testing and would require a dedicated multi-actor adversarial mode.
+**Example:** A fee formula that uses the live spot price instead of a time-averaged price. An attacker can execute a large swap to push the spot price far from the average, inflating the fee charged to any swap that follows in the same block. The attacker loses money: it is a pure griefing attack. Discovering it requires two actors: one that moves state adversarially, and one that checks whether the victim paid above a fair threshold. This is closer to game-theoretic simulation than property testing and would require a dedicated multi-actor adversarial mode.
 
 ### Summary
 
 | Limitation | Status | What would catch it |
 |---|---|---|
-| Bug produces no observable difference | Open | Static analysis — code linter or formal verifier |
-| `tx.origin`-gated code paths | Handled — Rule 21 + `vm.prank(addr, addr)` | Confirmed discount bugs in DynamicSwapFeeModule |
+| Bug produces no observable difference | Open | Static analysis: code linter or formal verifier |
+| `tx.origin`-gated code paths | Handled: Rule 21 + `vm.prank(addr, addr)` | Confirmed discount bugs in DynamicSwapFeeModule |
 | Wrong constant for a specific chain | Open | `--chain` flag with known chain parameters |
 | Attack requires two adversarial actors | Open | Multi-actor adversarial simulation mode |
 
@@ -251,7 +251,7 @@ These limitations are documented in detail in the [DynamicSwapFeeModule case stu
 
 ## Case Study
 
-Five independent methods were benchmarked against the same 161-line Solidity contract (`DynamicSwapFeeModule.sol`). Full analysis — per-method findings, head-to-head comparisons, strengths and limitations, and a five-way aggregation table — is in the case study:
+Five independent methods were benchmarked against the same 161-line Solidity contract (`DynamicSwapFeeModule.sol`). Full analysis: per-method findings, head-to-head comparisons, strengths and limitations, and a five-way aggregation table: is in the case study:
 
 **[docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md)**
 
@@ -277,23 +277,23 @@ FuzzMing is built on hexagonal architecture so that every language and fuzzer is
 |---|---|
 | [docs/orchestrator.md](docs/orchestrator.md) | Session loop, termination logic, round coordination |
 | [docs/generator.md](docs/generator.md) | 3-stage LLM call chain, prompt assembly, retry/repair |
-| [docs/executor.md](docs/executor.md) | Write gateway — Solidity files, foundry.toml |
+| [docs/executor.md](docs/executor.md) | Write gateway: Solidity files, foundry.toml |
 | [docs/fuzzer.md](docs/fuzzer.md) | Forge subprocess, output parsing, coverage |
-| [docs/reader.md](docs/reader.md) | Read gateway — source files, coverage context |
+| [docs/reader.md](docs/reader.md) | Read gateway: source files, coverage context |
 | [docs/reporter.md](docs/reporter.md) | Report formatters and output adapters |
-| [docs/shared.md](docs/shared.md) | Shared data layer — models, ports, requests, responses |
-| [docs/entry.md](docs/entry.md) | CLI entry point — subcommands, flags, exit codes |
-| [docs/composition.md](docs/composition.md) | Composition root — full wiring graph |
-| [docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md) | FuzzMing vs. Shieldify vs. Claude Web vs. Claude Code — 12 distinct bugs, 0 false positives across all four |
+| [docs/shared.md](docs/shared.md) | Shared data layer: models, ports, requests, responses |
+| [docs/entry.md](docs/entry.md) | CLI entry point: subcommands, flags, exit codes |
+| [docs/composition.md](docs/composition.md) | Composition root: full wiring graph |
+| [docs/case-study-dynamicswapfeemodule.md](docs/case-study-dynamicswapfeemodule.md) | FuzzMing vs. Shieldify vs. Claude Web vs. Claude Code: 12 distinct bugs, 0 false positives across all four |
 
 To add a new language or fuzzer, see the checklist in [docs/composition.md](docs/composition.md).
 
 **How to contribute:**
 
 1. Fork the repo and create a branch from `main`.
-2. Read [docs/shared.md](docs/shared.md) first — understanding the shared data layer is the fastest way to orient yourself.
+2. Read [docs/shared.md](docs/shared.md) first: understanding the shared data layer is the fastest way to orient yourself.
 3. Keep changes inside one component if possible; cross-component changes must go through `src/shared/`.
-4. Run `cargo test` before opening a PR — the fuzzer integration tests require Foundry to be installed.
+4. Run `cargo test` before opening a PR: the fuzzer integration tests require Foundry to be installed.
 5. Open a PR against `main` with a clear description of what changed and why.
 
 ---
@@ -331,7 +331,7 @@ Every contribution matters: code, docs, bug reports, ideas. Thank you to everyon
 
 ## About this project
 
-FuzzMing **started as** a **final year engineering project** by **[AchrefHemissi](https://github.com/AchrefHemissi)**, **[Dhia9030](https://github.com/Dhia9030)**, and **[HanineKhemir](https://github.com/HanineKhemir)**, students in computer engineering at **[INSAT — Institut National des Sciences Appliquées et de Technologie](https://insat.rnu.tn)**, with the support and guidance of **[Dar Blockchain](https://darblockchain.io)**.
+FuzzMing **started as** a **final year engineering project** by **[AchrefHemissi](https://github.com/AchrefHemissi)**, **[Dhia9030](https://github.com/Dhia9030)**, and **[HanineKhemir](https://github.com/HanineKhemir)**, students in computer engineering at **[INSAT: Institut National des Sciences Appliquées et de Technologie](https://insat.rnu.tn)**, with the support and guidance of **[Dar Blockchain](https://darblockchain.io)**.
 
 We are grateful to everyone who guided us through this journey:
 

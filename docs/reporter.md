@@ -16,19 +16,19 @@ One job: given a `SessionOutcome`, dispatch to the right formatter and emit the 
 src/reporter/
 ├── adapters/
 │   ├── inbound/
-│   │   └── reporter.rs                  # Inbound adapter — implements ReporterPort, wires formatters + output
+│   │   └── reporter.rs                  # Inbound adapter: implements ReporterPort, wires formatters + output
 │   └── outbound/
-│       └── terminal_output.rs           # TerminalOutput — prints to stdout
+│       └── terminal_output.rs           # TerminalOutput: prints to stdout
 ├── ports/
 │   └── outbound/
-│       └── output_port.rs              # OutputPort — outbound contract for writing the final message
+│       └── output_port.rs              # OutputPort: outbound contract for writing the final message
 └── use_cases/
     ├── format_bug_report.rs            # formats Bug termination
     ├── format_compile_error.rs         # formats CompileError termination
     ├── format_coverage_report.rs       # formats FullCoverage termination
     ├── format_dev_test_failure.rs      # formats DevTestFailed termination
     ├── format_exhausted_report.rs      # formats Exhausted termination
-    └── format_round_usage.rs           # shared helper — formats per-round LLM token usage
+    └── format_round_usage.rs           # shared helper: formats per-round LLM token usage
 ```
 
 ---
@@ -48,11 +48,11 @@ Orchestrator
            TerminalOutput                    ← prints to stdout
 ```
 
-### Inbound adapter — `adapters/inbound/reporter.rs`
+### Inbound adapter: `adapters/inbound/reporter.rs`
 
 Implements `ReporterPort`. Holds `Box<dyn OutputPort>`. Dispatches to the matching formatter, then writes via `OutputPort`. Contains no reading logic.
 
-### Shared port — `shared/ports/reporter_port.rs`
+### Shared port: `shared/ports/reporter_port.rs`
 
 ```rust
 pub trait ReporterPort: Send + Sync {
@@ -62,7 +62,7 @@ pub trait ReporterPort: Send + Sync {
 
 Called by the orchestrator at the end of each contract's session, once per contract.
 
-### Outbound port — `ports/outbound/output_port.rs`
+### Outbound port: `ports/outbound/output_port.rs`
 
 ```rust
 pub trait OutputPort: Send + Sync {
@@ -79,7 +79,7 @@ Each formatter is a pure function `fn(&SessionOutcome) -> String`. No I/O, no si
 | Formatter | Trigger | Headline |
 |---|---|---|
 | `format_bug_report` | `TerminationReason::Bug` | `## FuzzMing: N bug(s) found in \`{contract}\`` |
-| `format_compile_error_outcome` | `TerminationReason::CompileError` | `## FuzzMing: Compile Error — \`{contract}\` never ran` |
+| `format_compile_error_outcome` | `TerminationReason::CompileError` | `## FuzzMing: Compile Error: \`{contract}\` never ran` |
 | `format_coverage_report` | `TerminationReason::FullCoverage` | `## FuzzMing: Full Coverage Achieved for \`{contract}\`` |
 | `format_dev_test_failure` | `TerminationReason::DevTestFailed` | `## FuzzMing: Forge Tests Failed for \`{contract}\`` |
 | `format_exhausted_report` | `TerminationReason::Exhausted` | `## FuzzMing: Rounds Exhausted for \`{contract}\` ({n} rounds, X bugs found)` |
@@ -88,7 +88,7 @@ Each formatter is a pure function `fn(&SessionOutcome) -> String`. No I/O, no si
 
 **CompileError report** explains that the generated test code never compiled and the contract was never exercised. The raw compiler error is included (truncated to 3 000 chars) so the problem is visible without digging into `.fuzzming/`.
 
-**Exhausted report** shows a count and bulleted list of bugs using `outcome.bugs` (already deduplicated at accumulation — one entry per unique invariant name). Each entry shows the invariant name and its call sequence if one was captured. Coverage snapshots from `outcome.coverage_snapshots` are included when present.
+**Exhausted report** shows a count and bulleted list of bugs using `outcome.bugs` (already deduplicated at accumulation: one entry per unique invariant name). Each entry shows the invariant name and its call sequence if one was captured. Coverage snapshots from `outcome.coverage_snapshots` are included when present.
 
 **Coverage report** includes the coverage snapshot summary.
 
@@ -100,11 +100,11 @@ A shared helper used by `format_exhausted_report` and `format_coverage_report` t
 
 ---
 
-## Outbound adapter — `TerminalOutput`
+## Outbound adapter: `TerminalOutput`
 
 Prints the formatted message to stdout via `println!`. No configuration required.
 
-Previously the reporter also had a `PrCommentOutput` adapter for posting results as GitHub PR comments. This was removed — CI integration is now handled by checking the exit code (exit 1 when bugs are found) rather than posting comments.
+Previously the reporter also had a `PrCommentOutput` adapter for posting results as GitHub PR comments. This was removed: CI integration is now handled by checking the exit code (exit 1 when bugs are found) rather than posting comments.
 
 ---
 
@@ -127,7 +127,7 @@ pub struct SessionOutcome {
 
 `coverage_snapshots` is populated by the orchestrator with one string per round that produced a passing `forge coverage` result.
 
-`security_analysis` is populated by the orchestrator when the optional security analyzer is wired. The Reporter does not render it; the CLI runner prints a clean **Findings** section after all per-contract reports, showing each unique bug's invariant name and call sequence directly from `outcome.bugs` — not the raw AI analysis text.
+`security_analysis` is populated by the orchestrator when the optional security analyzer is wired. The Reporter does not render it; the CLI runner prints a clean **Findings** section after all per-contract reports, showing each unique bug's invariant name and call sequence directly from `outcome.bugs`: not the raw AI analysis text.
 
 ---
 
@@ -151,11 +151,11 @@ Orchestrator
 
 ## Session summary (CLI runner)
 
-After `orchestrator.run()` returns all outcomes, the CLI runner renders two additional sections — neither is part of the Reporter component:
+After `orchestrator.run()` returns all outcomes, the CLI runner renders two additional sections, neither of which is part of the Reporter component:
 
 **Findings section** (`print_security_analyses`): printed for any contract that has at least one confirmed bug. Shows each unique breaking invariant name (deduplicated) with its call sequence indented below. The raw AI analysis text is never shown here.
 
-**Aggregate summary** (`print_aggregate_summary`): coloured session totals —
+**Aggregate summary** (`print_aggregate_summary`): coloured session totals:
 - Total contracts, passed, with bugs, not tested
 - Compile errors and setup failures as sub-counts of "not tested"
 - Total rounds and total bugs across all contracts
@@ -175,8 +175,8 @@ let reporter = Box::new(Reporter::new(output));
 
 ## Hard rules
 
-- `Reporter` never reads from disk — all data arrives pre-populated in `SessionOutcome`.
-- `Reporter` never runs forge subprocesses — that is the Fuzzer's job.
-- `Reporter` never calls the LLM — that is the Generator's job.
-- `Reporter` never writes Solidity files — that is the Executor's job.
-- Formatters are pure functions — no I/O, no side effects.
+- `Reporter` never reads from disk: all data arrives pre-populated in `SessionOutcome`.
+- `Reporter` never runs forge subprocesses: that is the Fuzzer's job.
+- `Reporter` never calls the LLM: that is the Generator's job.
+- `Reporter` never writes Solidity files: that is the Executor's job.
+- Formatters are pure functions: no I/O, no side effects.
