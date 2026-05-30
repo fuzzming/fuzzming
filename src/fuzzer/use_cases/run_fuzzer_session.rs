@@ -194,7 +194,7 @@ impl FuzzerRunPort for RunFuzzerUseCase {
             }
         }
 
-        // No compile error, or every contract is erroring — process normally.
+        // No compile error, or all contracts are erroring — proceed with standard evaluation.
         let empty = HashSet::new();
         self.process_results(&signals, &fuzz_result, &empty, &fuzz_result)
             .await
@@ -290,7 +290,7 @@ fn all_invariants_zero_calls(output: &str) -> bool {
                     .and_then(|s| s.trim().parse::<u64>().ok())
             })
             .map(|n| n > 0)
-            .unwrap_or(true); // if we can't parse, assume non-zero (don't false-positive)
+            .unwrap_or(true); // Default to non-zero on parse failure to prevent false positives.
         if calls_nonzero {
             return false;
         }

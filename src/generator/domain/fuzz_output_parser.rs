@@ -10,7 +10,7 @@ pub struct FailingInvariant {
 /// We further strip passing tests, box-drawing stack frames, sequence markers,
 /// and the suite result line — leaving only the signal the LLM needs.
 pub fn format_for_llm(raw: &str) -> String {
-    // Pass compile errors and dev-test failures through as-is.
+    // Forward compile errors and dev-test failures to the LLM without transformation.
     if raw.starts_with("COMPILATION ERROR") || raw.starts_with("TEST FAILED") {
         return raw.to_string();
     }

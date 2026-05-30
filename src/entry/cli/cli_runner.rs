@@ -32,7 +32,7 @@ impl CliRunner {
             Ok(a) => a,
             Err(e) => {
                 let msg = e.to_string();
-                // Extract the first meaningful line (skip blank lines and "error:" prefix)
+                // Extract the first meaningful line, skipping blank lines and the leading "error:" prefix.
                 let first = msg
                     .lines()
                     .find(|l| {

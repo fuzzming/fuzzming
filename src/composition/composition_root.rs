@@ -42,7 +42,7 @@ impl CompositionRoot {
                 config.llm_timeout_secs,
             ));
 
-        // Generator (LLM engine)
+        // Generator: LLM-based test generation adapter.
         let generation_adapter = Box::new(LiteLlmGenerationAdapter::new(
             &model,
             &api_key,
@@ -52,7 +52,7 @@ impl CompositionRoot {
         let generator_use_case = Box::new(GeneratorRunUseCase::new(generation_adapter));
         let generator = Box::new(Generator::new(generator_use_case));
 
-        // Fuzzer engine
+        // Fuzzer: Foundry-based test runner and output sink.
         let forge_runner = Box::new(ForgeRunner::new(workspace.clone()));
         let fuzzer_output = Box::new(FileSystemFuzzerOutput::new(workspace.clone()));
         let fuzzer_use_case = Box::new(RunFuzzerUseCase::new(
@@ -62,7 +62,7 @@ impl CompositionRoot {
         ));
         let fuzzer = Box::new(FuzzerAdapter::new(fuzzer_use_case));
 
-        // Executor
+        // Executor: writes Solidity test files and Foundry configuration to disk.
         let fs_writer = FileSystemWriter::new(workspace.clone());
         let code_generator = Arc::new(SolidityGenerator);
         let config_writer = Arc::new(FoundryConfigWriter);
@@ -73,7 +73,7 @@ impl CompositionRoot {
         ));
         let executor = Box::new(Executor::new(executor_use_case));
 
-        // Reader
+        // Reader: reads and parses Solidity source contracts from the filesystem.
         let fs_reader = Arc::new(FileSystemReader::new(workspace.clone()));
         let contract_reader = Arc::new(SolidityContractReader::new(fs_reader.clone()));
         let reader_use_case = Box::new(ReadUseCase::new(contract_reader, fs_reader));
@@ -87,7 +87,7 @@ impl CompositionRoot {
         let security_analyzer =
             Box::new(LiteLlmSecurityAnalysisAdapter::new(Arc::clone(&llm_client)));
 
-        // Orchestrator
+        // Orchestrator: coordinates the full multi-contract fuzzing session.
         let run_session = Box::new(
             RunSessionUseCase::new(generator, fuzzer, executor, reporter, reader)
                 .with_security_analyzer(security_analyzer),
