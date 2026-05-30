@@ -13,6 +13,26 @@ FuzzMing is an open source tool that closes the loop between an LLM and a fuzzer
 
 ---
 
+## Contents
+
+- [What FuzzMing offers](#what-fuzzming-offers)
+- [Prerequisites](#prerequisites)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Supported LLM providers](#supported-llm-providers)
+- [fuzzming.config](#fuzzmingconfig)
+- [Subcommands](#subcommands)
+- [How it works](#how-it-works)
+- [Limitations](#limitations)
+- [Case Study](#case-study)
+- [Logging](#logging)
+- [Contributing](#contributing)
+- [Contributors](#contributors)
+- [About this project](#about-this-project)
+- [License](#license)
+
+---
+
 ## What FuzzMing offers
 
 - **Zero boilerplate:** give it a `.sol` file, it generates the full handler + invariant test suite from scratch

@@ -4,6 +4,21 @@ The Fuzzer is the **execution gateway** of FuzzMing. It runs `forge test` agains
 
 ---
 
+## Contents
+
+- [Responsibility](#responsibility)
+- [Directory structure](#directory-structure)
+- [Architecture layers](#architecture-layers)
+- [Outcome evaluation](#outcome-evaluation)
+- [File system layout](#file-system-layout-fuzzer-owned-paths)
+- [Data flow](#data-flow)
+- [`FuzzReport`](#fuzzreport)
+- [Wiring at startup](#wiring-at-startup)
+- [Hard rules](#hard-rules)
+- [Known issues](#known-issues)
+
+---
+
 ## Responsibility
 
 One job: given a batch of `RoundSignal`s (one per contract), run forge once and return a `Vec<FuzzReport>` (one per contract). All subprocess logic and output parsing live in the outbound adapter: the use case only orchestrates.

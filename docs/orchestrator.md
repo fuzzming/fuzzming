@@ -4,6 +4,19 @@ The Orchestrator is the **session controller** of FuzzMing. It drives the round 
 
 ---
 
+## Contents
+
+- [Responsibility](#responsibility)
+- [Directory structure](#directory-structure)
+- [Architecture layers](#architecture-layers)
+- [Use cases](#use-cases)
+- [Data model](#data-model)
+- [Artifact paths](#artifact-paths)
+- [Ports consumed](#ports-consumed)
+- [Known limitations](#known-limitations)
+
+---
+
 ## Responsibility
 
 One job: given a `SessionRequest`, run rounds until every contract reaches a terminal state, emit a report for each, and return the final `SessionOutcome`.

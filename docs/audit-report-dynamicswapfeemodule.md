@@ -9,6 +9,26 @@
 
 ---
 
+## Contents
+
+- [Executive Summary](#executive-summary)
+- [Scope](#scope)
+- [Summary of Findings](#summary-of-findings)
+- [Detailed Findings](#detailed-findings)
+  - [HIGH-01](#high-01)
+  - [HIGH-02](#high-02)
+  - [HIGH-03](#high-03)
+  - [MED-01](#med-01)
+  - [MED-02](#med-02)
+  - [MED-03](#med-03)
+  - [MED-04](#med-04)
+- [Comparison with Shieldify Audit](#comparison-with-shieldify-audit)
+- [Methodology](#methodology)
+- [Known Limitations](#known-limitations)
+- [Appendix: Time and Cost](#appendix-time-and-cost)
+
+---
+
 ## Executive Summary
 
 FuzzMing performed a fully automated invariant fuzzing session against `DynamicSwapFeeModule`: a concentrated liquidity dynamic fee module. The fuzzer discovered **7 confirmed findings** in 23 minutes with no human involvement.

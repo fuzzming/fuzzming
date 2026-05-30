@@ -2,6 +2,17 @@
 
 End-to-end tests that verify each component works correctly with real adapters. No external LLM calls are made: the file system is the only real I/O. The fuzzer integration tests spawn real `forge` subprocesses.
 
+## Contents
+
+- [How to run](#how-to-run)
+- [Executor integration tests](#executor-executorexecutor_integrationrs)
+- [Reader integration tests](#reader-readerreader_integrationrs)
+- [Fuzzer integration tests](#fuzzer-fuzzerfuzzer_integrationrs)
+- [Unit tests](#unit-tests-in-module)
+- [Fixtures](#fixtures)
+
+---
+
 ## How to run
 
 ```bash

@@ -6,6 +6,19 @@ This is the single source of truth for how the orchestrator, LLM, fuzzer, execut
 
 ---
 
+## Contents
+
+- [Directory structure](#directory-structure)
+- [The four categories](#the-four-categories)
+  - [1. Models](#1-models-models)
+  - [2. Ports](#2-ports-ports)
+  - [3. Requests](#3-requests-requests)
+  - [4. Responses](#4-responses-responses)
+- [How the types connect](#how-the-types-connect)
+- [Design rules](#design-rules)
+
+---
+
 ## Directory structure
 
 ```

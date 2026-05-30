@@ -4,6 +4,18 @@ The Reader is the **read gateway** of FuzzMing. Before every LLM round, the orch
 
 ---
 
+## Contents
+
+- [The big picture](#the-big-picture)
+- [Directory structure](#directory-structure)
+- [Architecture layers](#architecture-layers)
+- [What the orchestrator asks for](#what-the-orchestrator-asks-for)
+- [Data flow](#data-flow)
+- [Wiring at startup](#wiring-at-startup)
+- [Known limitations](#known-limitations)
+
+---
+
 ## The big picture
 
 ```

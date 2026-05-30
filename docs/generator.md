@@ -4,6 +4,23 @@ The Generator is the **generation engine** of FuzzMing. Each round the orchestra
 
 ---
 
+## Contents
+
+- [Responsibility](#responsibility)
+- [Directory structure](#directory-structure)
+- [Architecture layers](#architecture-layers)
+- [Data flow](#data-flow)
+- [Round 1: three chained calls](#round-1-three-chained-calls)
+- [Round N: single call](#round-n-single-call)
+- [Fuzz output compaction](#fuzz-output-compaction-domainfuzz_output_parserrs)
+- [Retry and repair](#retry-and-repair)
+- [JSON enforcement](#json-enforcement)
+- [Provider configuration](#provider-configuration)
+- [Wiring at startup](#wiring-at-startup)
+- [Key types](#key-types)
+
+---
+
 ## Responsibility
 
 The Generator has one job: given the current state of the fuzzing session, produce valid Solidity handler and invariant test bodies plus a Foundry configuration. It does not run tests, does not read files, and does not store state. Everything it needs arrives in the signal; everything it produces leaves in the signal.

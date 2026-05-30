@@ -4,6 +4,20 @@
 
 ---
 
+## Contents
+
+- [Responsibility](#responsibility)
+- [Why a single composition root?](#why-a-single-composition-root)
+- [Full wiring graph](#full-wiring-graph)
+- [`LiteLlmClient` configuration](#litellmclient-configuration)
+- [`LiteLlmGenerationAdapter`: prompt mode](#litellmgenerationadapter-prompt-mode)
+- [`LiteLlmSecurityAnalysisAdapter`: optional analyzer](#litellmsecurityanalysisadapter-optional-analyzer)
+- [`RunFuzzerUseCase`: compile-error isolation](#runfuzzerusecase-compile-error-isolation)
+- [Adding a new language or fuzzer](#adding-a-new-language-or-fuzzer)
+- [Hard rule](#hard-rule)
+
+---
+
 ## Responsibility
 
 One job: given a `SessionConfig`, instantiate every concrete type in the right order, wire their dependencies, and return a `Box<dyn OrchestratorPort>` that the entry point can call.

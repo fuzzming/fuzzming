@@ -4,6 +4,19 @@ The Executor is the **write gateway** of FuzzMing. After the Generator produces 
 
 ---
 
+## Contents
+
+- [Responsibility](#responsibility)
+- [Directory structure](#directory-structure)
+- [Architecture layers](#architecture-layers)
+- [File system layout](#file-system-layout-executor-owned-paths)
+- [Data flow](#data-flow)
+- [`FileSystemWriter`: path traversal guard](#filesystemwriter-path-traversal-guard)
+- [Wiring at startup](#wiring-at-startup)
+- [Hard rules](#hard-rules)
+
+---
+
 ## Responsibility
 
 One job: take `BodiesJson` and `FuzzerConfigArtifact` from `ExecutorInput` and write them to disk. All logic for how to write is inside the use case: the inbound adapter is a thin delegator.

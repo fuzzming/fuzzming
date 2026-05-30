@@ -4,6 +4,21 @@ The Reporter is the **output gateway** of FuzzMing. It receives a `SessionOutcom
 
 ---
 
+## Contents
+
+- [Responsibility](#responsibility)
+- [Directory structure](#directory-structure)
+- [Architecture layers](#architecture-layers)
+- [Use cases (formatters)](#use-cases-formatters)
+- [Outbound adapter: `TerminalOutput`](#outbound-adapter-terminaloutput)
+- [Data model](#data-model)
+- [Data flow](#data-flow)
+- [Session summary (CLI runner)](#session-summary-cli-runner)
+- [Wiring at startup](#wiring-at-startup)
+- [Hard rules](#hard-rules)
+
+---
+
 ## Responsibility
 
 One job: given a `SessionOutcome`, dispatch to the right formatter and emit the result. All formatting logic lives in pure functions. The only I/O the reporter performs is writing the final message via `OutputPort`.

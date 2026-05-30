@@ -6,6 +6,23 @@ Neither entry point contains business logic, they translate external input and d
 
 ---
 
+## Contents
+
+- [Directory structure](#directory-structure)
+- [`src/main.rs`: binary entry point](#srcmainrs-binary-entry-point)
+- [Subcommands](#subcommands)
+- [`run` subcommand: `RunArgs`](#run-subcommand-runargs)
+- [Config resolution: `interactive.rs`](#config-resolution-interactivers)
+- [`handle_run`: building config and calling the orchestrator](#handle_run-building-config-and-calling-the-orchestrator)
+- [`report` subcommand](#report-subcommand)
+- [`config` subcommand](#config-subcommand)
+- [Demo mode](#demo-mode)
+- [Tracing](#tracing)
+- [Model identifier format](#model-identifier-format)
+- [Example invocations](#example-invocations)
+
+---
+
 ## Directory structure
 
 ```
