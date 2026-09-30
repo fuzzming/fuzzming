@@ -13,6 +13,14 @@ FuzzMing is an open source tool that closes the loop between an LLM and a fuzzer
 
 ---
 
+## Demo
+
+Watch the demonstration of FuzzMing:
+
+[![FuzzMing Demo](assets/thumbnail-image.png)](https://youtu.be/MW7aNL9ChWw)
+
+---
+
 ## Contents
 
 - [What FuzzMing offers](#what-fuzzming-offers)
